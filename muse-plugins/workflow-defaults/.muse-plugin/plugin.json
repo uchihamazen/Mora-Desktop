@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "name": "workflow-defaults",
+  "displayName": "Muse workflow defaults",
+  "version": "1.0.1",
+  "compat": { "source": "native", "manifestDir": ".muse-plugin" },
+  "description": "Load Ponytail and Superpowers workflow defaults at session startup on Windows.",
+  "capabilities": {
+    "skills": [],
+    "commands": [],
+    "hooks": [{
+      "id": "session-start",
+      "event": "SessionStart",
+      "command": ["node", "hooks/bootstrap.cjs"],
+      "timeoutMs": 5000,
+      "statusMessage": "Loading Ponytail and Superpowers"
+    }],
+    "mcpServers": [],
+    "reminders": []
+  }
+}

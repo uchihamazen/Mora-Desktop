@@ -1,0 +1,56 @@
+{
+  "name": "muse-desktop",
+  "productName": "Muse Desktop",
+  "version": "0.1.0",
+  "description": "Desktop chat for the installed Muse coding engine",
+  "private": true,
+  "license": "MIT",
+  "engines": {
+    "node": ">=24"
+  },
+  "packageManager": "pnpm@11.19.0",
+  "type": "module",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test tests/*.test.js",
+    "smoke": "node scripts/smoke.js",
+    "build": "electron-builder --win nsis --x64 --publish never --config.directories.output=artifacts/release",
+    "build:desktop": "electron-builder --win --dir --x64 --config.directories.output=artifacts/self-build"
+  },
+  "devDependencies": {
+    "electron": "44.5.0",
+    "electron-builder": "26.15.3",
+    "playwright": "1.62.1"
+  },
+  "build": {
+    "appId": "local.muse.desktop",
+    "artifactName": "Muse-Desktop-${version}-${arch}.${ext}",
+    "files": [
+      "src/**/*",
+      "package.json"
+    ],
+    "extraFiles": ["LICENSE", "THIRD_PARTY_NOTICES.md"],
+    "win": {
+      "target": "nsis",
+      "icon": "src/assets/meta-symbol.ico",
+      "signExecutable": false
+    },
+    "nsis": {
+      "artifactName": "Muse-Desktop-Setup-${version}-${arch}.${ext}",
+      "oneClick": false,
+      "perMachine": false,
+      "allowElevation": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": false,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Muse Desktop",
+      "runAfterFinish": false,
+      "deleteAppDataOnUninstall": false
+    },
+    "portable": {
+      "artifactName": "Muse-Desktop-Portable-${version}-${arch}.${ext}",
+      "requestExecutionLevel": "user"
+    }
+  }
+}

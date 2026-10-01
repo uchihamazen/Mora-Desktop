@@ -1,0 +1,42 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {mkdtemp,readFile,writeFile} from 'node:fs/promises';
+import {tmpdir} from 'node:os';
+import path from 'node:path';
+const api=await import('../src/stitch.js').catch(()=>({}));
+test('Stitch MCP connection preserves other engine settings, backs up changes and hides its key',async()=>{
+  assert.equal(typeof api.configureStitch,'function');
+  const file=path.join(await mkdtemp(path.join(tmpdir(),'muse-stitch-config-')),'settings.json');
+  const before={schema_version:1,provider:'meta',permissions:{approval:'on-request'},mcp_servers:{other:{command:'other.exe'}}};
+  await writeFile(file,JSON.stringify(before));
+  const result=await api.configureStitch(file,'AQ.fixture_key-with.dots');
+  const config=JSON.parse(await readFile(file,'utf8'));
+  assert.deepEqual(config.permissions,before.permissions);assert.deepEqual(config.mcp_servers.other,before.mcp_servers.other);assert.equal(config.mcpServers,undefined);
+  assert.deepEqual(config.mcp_servers.stitch,{type:'streamable-http',url:'https://stitch.googleapis.com/mcp',headers:{'X-Goog-Api-Key':'AQ.fixture_key-with.dots'},required:false,startup_timeout_sec:15,tool_timeout_sec:300});
+  assert.doesNotMatch(JSON.stringify(result),/test-key/);assert.equal(result.configured,true);
+  assert.deepEqual(JSON.parse(await readFile(result.backupPath,'utf8')),before);
+  await api.configureStitch(file,null);const removed=JSON.parse(await readFile(file,'utf8'));assert.equal(removed.mcp_servers.stitch,undefined);assert.deepEqual(removed.permissions,before.permissions);
+});
+test('Stitch rejects ambiguous configuration and invalid credentials without overwriting existing settings',async()=>{
+  assert.equal(typeof api.configureStitch,'function');
+  const file=path.join(await mkdtemp(path.join(tmpdir(),'muse-stitch-invalid-')),'settings.json');
+  const original=JSON.stringify({schema_version:1,mcpServers:{},mcp_servers:{}});await writeFile(file,original);
+  await assert.rejects(api.configureStitch(file,'test-key'),/ambiguous/i);assert.equal(await readFile(file,'utf8'),original);
+  for(const key of ['', 'bad\nheader', '${STITCH_API_KEY}'])await assert.rejects(api.configureStitch(file,key));
+  await writeFile(file,'');
+  await assert.rejects(api.configureStitch(file,'test-key'),/unreadable/i);
+  assert.equal(await readFile(file,'utf8'),'');
+  await assert.rejects(api.configureStitch(file,null),/unreadable/i);
+});
+test('Stitch verifies available tools and account access before allowing a connection, redacting upstream errors',async()=>{
+  assert.equal(typeof api.checkStitch,'function');
+  const requests=[];
+  const fetch=async(url,options)=>{const body=JSON.parse(options.body);requests.push({url,body,headers:options.headers});let result;
+    if(body.method==='initialize')result={protocolVersion:'2024-11-05'};
+    else if(body.method==='tools/list')result={tools:[{name:'generate_screen_from_text'},{name:'edit_screens'},{name:'list_projects'}]};
+    else result={content:[{type:'text',text:'{"projects":[]}'}]};
+    return new Response(JSON.stringify({jsonrpc:'2.0',id:body.id,result}));};
+  const result=await api.checkStitch('test-key',fetch);assert.ok(result.tools.includes('edit_screens'));assert.equal(result.projectCount,0);assert.doesNotMatch(JSON.stringify(result),/test-key/);
+  assert.ok(requests.some(item=>item.body.params?.name==='list_projects'));assert.equal(requests[0].headers['X-Goog-Api-Key'],'test-key');
+  await assert.rejects(api.checkStitch('test-key',async()=>new Response('remote error test-key',{status:403})),error=>/key|access|permission/i.test(error.message) && !error.message.includes('test-key'));
+});

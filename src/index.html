@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: https://lh3.googleusercontent.com; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <title>Muse Desktop</title>
+  <link rel="icon" href="assets/meta-symbol.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <svg class="symbols" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><defs>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h5l2 3h7a2 2 0 0 1 2 2v9H3z"/></symbol>
+    <symbol id="i-image" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="4"/><circle cx="8" cy="8" r="1.5"/><path d="m4 17 5-5 4 4 3-3 5 5"/></symbol>
+    <symbol id="i-up" viewBox="0 0 24 24"><path d="M12 19V5m-6 6 6-6 6 6"/></symbol>
+    <symbol id="i-chat" viewBox="0 0 24 24"><path d="M4 5h16v12H9l-5 4z"/></symbol>
+    <symbol id="i-settings" viewBox="0 0 24 24"><path d="M12 3v3m0 12v3M3 12h3m12 0h3M5.6 5.6l2.1 2.1m8.6 8.6 2.1 2.1M5.6 18.4l2.1-2.1m8.6-8.6 2.1-2.1"/><circle cx="12" cy="12" r="5"/></symbol>
+    <symbol id="i-copy" viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V4H4v12h4"/></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></symbol>
+    <symbol id="i-terminal" viewBox="0 0 24 24"><path d="m4 6 6 6-6 6m9 0h7"/></symbol>
+  </defs></svg>
+  <aside class="sidebar">
+    <div class="brand"><img class="brand-mark" src="assets/meta-symbol.svg" alt="Meta"><div><strong>Muse</strong><span class="brand-caption">DESKTOP</span></div><span class="local-tag">LOCAL</span></div>
+    <button id="new-chat" class="new-chat"><svg><use href="#i-plus"/></svg>New conversation<span class="shortcut">Ctrl N</span></button>
+    <nav class="conversation-library" aria-label="Conversations">
+      <div class="section-label">GENERAL CHATS</div>
+      <div id="general-sessions"></div>
+      <div class="section-label projects-label"><span>PROJECTS</span><button id="add-project" title="Add a project folder" aria-label="Add project"><svg><use href="#i-plus"/></svg></button></div>
+      <div id="sessions"></div>
+    </nav>
+    <div class="sidebar-bottom">
+      <div class="engine-card"><span id="connection-dot" class="connection-dot"></span><div><strong id="engine-label">Connecting to Muse</strong><small id="engine-detail">Your engine, your projects</small></div></div>
+      <button id="settings-button" class="settings-button"><svg><use href="#i-settings"/></svg>Engine settings</button>
+      <div id="settings-panel" hidden><p>Uses your installed Muse and existing login.</p><button id="choose-muse">Choose Muse executable</button><button id="reconnect">Reconnect</button><small>This Muse version supports Read only and Full access. Per-action approvals are available in the Muse terminal.</small><section id="stitch-settings"><strong>Google Stitch · MCP</strong><p id="stitch-status" role="status">Checking connection…</p><label for="stitch-key">Stitch API key</label><input id="stitch-key" type="password" autocomplete="off" spellcheck="false" placeholder="Paste your Stitch key" maxlength="512"><div class="stitch-buttons"><button id="stitch-connect">Connect</button><button id="stitch-test" disabled>Test</button><button id="stitch-disconnect" disabled>Disconnect</button><button id="stitch-open">Open Stitch</button></div><small>Profile → Stitch settings → API key. Stored in your local Muse settings; available in Desktop and PowerShell on the next request.</small></section></div>
+    </div>
+  </aside>
+  <main>
+    <header class="topbar">
+      <button id="workspace-button" class="workspace-button" title="Choose a project folder"><span class="folder-badge"><svg><use href="#i-folder"/></svg></span><span><strong id="project-name">Your project</strong><small id="project-path">Select a folder to begin</small></span><span class="chevron">⌄</span></button>
+      <div class="header-right"><button id="browser-button" class="browser-toggle" title="Open browser and annotate a page">Browser</button><span id="workspace-label" class="header-label">PROJECT WORKSPACE</span><span id="connection-badge" class="connection-badge">Connecting</span></div>
+    </header>
+    <div id="error-banner" role="alert" hidden><span id="error-text"></span><button id="dismiss-error" aria-label="Dismiss message">×</button></div>
+    <div id="scroll-area" class="scroll-area">
+      <section id="welcome" class="welcome">
+        <img class="welcome-emblem" src="assets/meta-symbol.svg" alt="Meta">
+        <div class="eyebrow">A LITTLE LESS FRICTION. A LOT MORE BUILDING.</div>
+        <h1>What would you like<br>to <span>make happen?</span></h1>
+        <p>Bring your ideas, code, and screenshots.<br>Muse helps you take the next step.</p>
+        <div class="suggestions">
+          <button id="explore-suggestion" data-prompt="Explore this project and explain its structure. Do not modify anything."><svg><use href="#i-folder"/></svg><strong>Explore my project</strong><small>Get the lay of the land</small><span>↗</span></button>
+          <button id="explain-suggestion" data-prompt="Inspect this project for a concrete bug. Explain what you find before making changes."><svg><use href="#i-terminal"/></svg><strong>Find a bug</strong><small>Make the next fix clearer</small><span>↗</span></button>
+          <button id="image-suggestion"><svg><use href="#i-image"/></svg><strong>Bring an image</strong><small>A screenshot says a lot</small><span>↗</span></button>
+        </div>
+      </section>
+      <section id="messages" class="messages" aria-live="polite" aria-label="Conversation"></section>
+      <div id="working" class="working" hidden><span class="working-dot"></span><span id="working-label">Muse is working on it</span><span id="elapsed"></span></div>
+    </div>
+    <div class="composer-area">
+      <div class="composer" id="composer">
+        <div id="attachments" class="attachments" hidden></div>
+        <textarea id="prompt" dir="auto" rows="2" placeholder="Ask Muse to build, fix, or explain…" aria-label="Message Muse"></textarea>
+        <div class="composer-toolbar">
+          <div class="composer-left"><button id="attach-button" class="icon-button" title="Attach images" aria-label="Attach images"><svg><use href="#i-plus"/></svg></button><span class="toolbar-divider"></span><select id="model" aria-label="Model"></select><select id="effort" aria-label="Reasoning effort"></select></div>
+          <div class="composer-right"><select id="execution-mode" aria-label="Execution mode" title="Read only inspects files. Full access can change files and run commands."><option value="readonly">Read only</option><option value="full">Full access · YOLO</option></select><button id="send-button" class="send-button" aria-label="Send message" title="Send message"><svg><use href="#i-up"/></svg></button><button id="stop-button" class="stop-button" aria-label="Stop request" title="Stop request" hidden><span></span></button></div>
+        </div>
+      </div>
+      <div class="composer-footnote"><span>Arabic or English. Paste an image with <kbd>Ctrl V</kbd>.</span><span><kbd>Enter</kbd> send <span class="footnote-dot">·</span> <kbd>Shift Enter</kbd> new line</span></div>
+    </div>
+  </main>
+  <aside id="browser-panel" class="browser-panel" aria-label="Browser" hidden>
+    <header class="browser-heading"><strong>Browser</strong><span id="browser-title">Open a page to annotate its design</span><button id="browser-expand" aria-label="Expand browser" aria-pressed="false">Expand</button><button id="browser-close" aria-label="Close browser">×</button></header>
+    <form id="browser-address" class="browser-address"><button id="browser-back" type="button" title="Back" aria-label="Back">←</button><button id="browser-forward" type="button" title="Forward" aria-label="Forward">→</button><button id="browser-reload" type="button" title="Reload" aria-label="Reload">↻</button><input id="browser-url" type="text" placeholder="https://… or localhost:3000" aria-label="Browser address"><button type="submit">Go</button></form>
+    <div class="browser-tools"><div class="browser-devices" role="group" aria-label="Preview device"><button id="browser-desktop" aria-pressed="true">Desktop</button><button id="browser-mobile" aria-pressed="false">Mobile</button></div><span id="browser-size" class="browser-size">1280px</span><button id="browser-annotate" title="Click a page element to annotate it">Annotate element</button><button id="browser-region" title="Drag a rectangle over the page">Select region</button><button id="browser-cancel">Cancel selection</button></div>
+    <p id="browser-error" class="browser-error" role="alert" hidden></p>
+    <div id="browser-viewport" class="browser-viewport"><span>Enter a page address above, including your local project server.</span></div>
+    <footer class="browser-annotation"><div id="browser-selection">Choose an element or drag a region.</div><button id="browser-add" disabled>Add to chat</button><small>Attaches a screenshot of your selection and its HTML. Write your request in chat.</small></footer>
+  </aside>
+  <script type="module" src="renderer.js"></script>
+</body>
+</html>

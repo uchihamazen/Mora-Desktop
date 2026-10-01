@@ -1,0 +1,5 @@
+docs/superpowers/ export-ignore
+artifacts/ export-ignore
+dist/ export-ignore
+node_modules/ export-ignore
+.superpowers/ export-ignore
