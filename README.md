@@ -257,6 +257,10 @@ real account keys, chat histories or personal screenshots. Check [AGENTS.md](AGE
 for build and publication guidance. Rebuild and verify the installer when application
 behavior or packaged files change.
 
+## Contributors
+
+- [@Qorsham](https://github.com/Qorsham) — Original idea and contributions to performance optimization.
+
 ## License and attribution
 
 Original project code is available under the [MIT License](LICENSE), allowing use,
