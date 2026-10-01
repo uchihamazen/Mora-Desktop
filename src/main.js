@@ -93,7 +93,7 @@ async function newChat(projectPath = state.projectPath) {
 async function resumeChat(sessionId) {
   assertIdle(state);
   const session = state.sessions.find(item => item.sessionId === sessionId);
-  if (!session) throw new Error('This conversation is not in Muse Desktop.');
+  if (!session) throw new Error('This conversation is not in Mora Desktop.');
   Object.assign(state, createState(), { loading: true, sessionId, projectPath: projectPathFor(session), workspace: session.workspace, modelId: session.modelId || state.modelId, reasoningEffort: session.reasoningEffort || state.reasoningEffort });
   publish();
   try {
@@ -113,7 +113,7 @@ async function resumeChat(sessionId) {
 async function deleteChat(sessionId) {
   if (typeof sessionId !== 'string' || !sessionId) throw new Error('Choose a conversation to delete.');
   const index = state.sessions.findIndex(item => item.sessionId === sessionId);
-  if (index === -1) throw new Error('This conversation is not in Muse Desktop.');
+  if (index === -1) throw new Error('This conversation is not in Mora Desktop.');
   if (state.loading) throw new Error('A conversation is loading. Wait before deleting.');
   if (state.busy && sessionId === state.sessionId) throw new Error('A request is running. Stop it before deleting this chat.');
   state.sessions.splice(index, 1);
@@ -308,7 +308,7 @@ else {
     state.workspace = path.join(app.getPath('userData'), 'general-chat');
     await mkdir(state.workspace, {recursive:true});
   }
-  window = new BrowserWindow({ width: 1230, height: 850, minWidth: 860, minHeight: 620, title: 'Muse Desktop', icon: path.join(directory, 'assets/meta-symbol.ico'), backgroundColor: '#101114', autoHideMenuBar: true, show: false, webPreferences: { preload: path.join(directory, 'preload.cjs'), nodeIntegration: false, contextIsolation: true, sandbox: true } });
+  window = new BrowserWindow({ width: 1230, height: 850, minWidth: 860, minHeight: 620, title: 'Mora Desktop', icon: path.join(directory, 'assets/mora-mark.ico'), backgroundColor: '#101114', autoHideMenuBar: true, show: false, webPreferences: { preload: path.join(directory, 'preload.cjs'), nodeIntegration: false, contextIsolation: true, sandbox: true } });
   window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   window.webContents.on('will-navigate', event => event.preventDefault());
   window.webContents.session.setPermissionRequestHandler((_wc, _permission, callback) => callback(false));
@@ -342,5 +342,5 @@ else {
   await connect();
   app.on('before-quit', event => { if (!quitting && runner.child) { event.preventDefault(); quitting = true; runner.stop().finally(() => app.quit()); } });
   app.on('window-all-closed', () => app.quit());
-  }).catch(error => { dialog.showErrorBox('Muse Desktop could not start', error.message); app.quit(); });
+  }).catch(error => { dialog.showErrorBox('Mora Desktop could not start', error.message); app.quit(); });
 }

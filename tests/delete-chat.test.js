@@ -117,7 +117,7 @@ test('deleteActiveWhileBusyOrLoadingIsBlockedButInactiveIsAllowed', async () => 
 test('deleteMissingChatThrows', async () => {
   const h = harness();
   h.state.sessions = [{ sessionId: 'active-id', title: 'Active', workspace: 'C:/A' }];
-  await assert.rejects(h.deleteChat('nope'), /not in Muse Desktop/);
+  await assert.rejects(h.deleteChat('nope'), /not in Mora Desktop/);
   await assert.rejects(h.deleteChat(''), /choose a conversation/i);
 });
 

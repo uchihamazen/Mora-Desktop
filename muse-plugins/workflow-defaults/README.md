@@ -6,7 +6,7 @@ The full libraries are installed separately as `superpowers` 6.4.2 and
 `engineering-suite-ponytail` 2.0.0. Installation is user-wide and requires no EXE rebuild.
 
 The optional plugin requires Node.js 24+ on PATH on each machine; its hook uses `node`
-without a username or author-specific runtime path. Muse Desktop itself bundles its
+without a username or author-specific runtime path. Mora Desktop itself bundles its
 runtime and does not require Node to launch. The hook only reads
 its bundled instructions and writes Muse's documented additionalContext JSON to stdout.
 It does not access credentials or alter approvals, sandboxing, project files, or model settings.

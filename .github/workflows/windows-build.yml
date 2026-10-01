@@ -23,15 +23,15 @@ jobs:
       - name: Installer checksum
         shell: pwsh
         run: |
-          Get-ChildItem artifacts/release/Muse-Desktop-Setup-*.exe | ForEach-Object {
+          Get-ChildItem artifacts/release/Mora-Desktop-Setup-*.exe | ForEach-Object {
             $hash = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
             "$hash  $($_.Name)" | Set-Content -LiteralPath "$($_.FullName).sha256" -Encoding ascii
           }
       - uses: actions/upload-artifact@v7
         with:
-          name: Muse-Desktop-Windows-x64
+          name: Mora-Desktop-Windows-x64
           if-no-files-found: error
           compression-level: 0
           path: |
-            artifacts/release/Muse-Desktop-Setup-*.exe
-            artifacts/release/Muse-Desktop-Setup-*.exe.sha256
+            artifacts/release/Mora-Desktop-Setup-*.exe
+            artifacts/release/Mora-Desktop-Setup-*.exe.sha256

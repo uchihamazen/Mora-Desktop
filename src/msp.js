@@ -60,7 +60,7 @@ export class MspClient extends EventEmitter {
     this.child.stderr.on('data', chunk => this.emit('diagnostic', chunk.toString('utf8')));
     this.connected = true;
     try {
-      const metadata = await this.request('initialize', { clientInfo: { name: 'muse_desktop', title: 'Muse Desktop', version: '0.1.0' }, capabilities: { requestedCapabilities: ['sessionListStream'], userInputDialogs: true } });
+      const metadata = await this.request('initialize', { clientInfo: { name: 'mora_desktop', title: 'Mora Desktop', version: '0.1.1' }, capabilities: { requestedCapabilities: ['sessionListStream'], userInputDialogs: true } });
       this.notify('initialized', {});
       return metadata;
     } catch (error) { await this.close(); throw error; }

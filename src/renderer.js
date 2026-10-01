@@ -140,7 +140,7 @@ function renderMessages() {
     if (item.kind !== 'agentMessage' && item.kind !== 'userMessage') continue;
     const user = item.kind === 'userMessage'; const article = document.createElement('article'); article.className = `message ${user ? 'user' : 'assistant'}`;
     const avatar = textNode('div', user ? 'Y' : '', 'avatar');
-    if (!user) { const logo = document.createElement('img'); logo.src = 'assets/meta-symbol.svg'; logo.alt = 'Meta'; avatar.append(logo); }
+    if (!user) { const logo = document.createElement('img'); logo.src = 'assets/mora-mark.svg'; logo.alt = 'Mora'; avatar.append(logo); }
     article.append(avatar);
     const content = textNode('div', '', 'message-content'); content.append(textNode('div', user ? 'You' : 'Muse', 'message-label'));
     if (item.images?.length) { const imgs = textNode('div', '', 'message-images'); for (const image of item.images) { const img = document.createElement('img'); img.src = `data:${image.mediaType};base64,${image.base64Data}`; img.alt = 'Attached image'; imgs.append(img); } content.append(imgs); }

@@ -4,6 +4,7 @@ import path from 'node:path';
 export function profilePath(appData, env = process.env) {
   const testDirectory = env.MUSE_DESKTOP_TEST_USER_DATA;
   if (testDirectory && !path.isAbsolute(testDirectory)) throw new Error('Test profile must be an absolute path.');
+  // Keep the original profile path so rebranding preserves existing chats and settings.
   return testDirectory || path.join(appData, 'Muse Desktop');
 }
 

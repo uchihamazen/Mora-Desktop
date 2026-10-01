@@ -1,7 +1,7 @@
 # Features
 
 ## Chat and project operations
-- Arabic/English chat, image attachments, saved native Muse conversations, and project selection.
+- Chat, image attachments, saved native Muse conversations, and project selection.
 - Requires the installed and signed-in Muse engine; no extra model API key or credential copy.
 - Read only inspects; Full access permits project edits and commands under the user's Windows permissions.
 - Uses Muse 1.4.1's working `exec --json` interface; interactive per-command approvals remain available in the native terminal.
@@ -36,20 +36,21 @@
 - Verify with `node scripts/activity-smoke.js` and the existing lifecycle tests.
 
 ## Branding
-- Meta's blue symbol appears in the EXE/window icon, sidebar, welcome screen, and assistant avatars; “make happen” uses `#0082FB`.
+- Mora Desktop uses an original geometric M in the EXE/window icon, sidebar, welcome screen, and assistant avatars; the existing blue accent and layout are retained.
 - Local SVG and multi-size ICO assets require no runtime image service or new app dependency.
-- Preserve the original artwork and recorded attribution in `src/assets/README.md`.
+- The original icon is MIT-licensed; `src/assets/README.md` records its source. Engine settings and README identify the app as an independent Muse Code interface without Meta endorsement.
+- Keep the legacy profile folder, installer app ID, and internal test/IPC identifiers stable so branding changes do not reset existing chats or engine integration.
 - Verify with the frontend/packaged UI smoke and inspect the rebuilt EXE icon.
 
 ## Windows Start and Search
-- A current-user Start menu shortcut registers the app as “Muse Desktop”, searchable by “Muse”.
-- Targets `Muse Desktop.exe` in the chosen Setup folder (local development uses `dist`) and uses its embedded Meta icon; no extra runtime or administrator permission is required.
-- Keep the target path stable when rebuilding. Verify the saved shortcut target/icon and confirm `Get-StartApps` lists Muse Desktop.
+- A current-user Setup shortcut registers the app as “Mora Desktop”, searchable by “Mora”.
+- Targets `Mora Desktop.exe` in the chosen Setup folder (local development uses `dist`) and uses its embedded Mora icon; no extra runtime or administrator permission is required.
+- Point existing manual development shortcuts at the renamed EXE. Verify the saved shortcut target/icon and confirm `Get-StartApps` lists Mora Desktop after Setup.
 - Reopening the EXE reveals and focuses an existing hidden/minimized window; verify with `scripts/window-smoke.js` rather than treating a running process as proof of a visible app.
 
 ## Desktop installation and antivirus compatibility
-- The installed app runs directly from its installation folder with the complete Electron package beside it; local development uses `dist/Muse Desktop.exe`. Startup does not extract another EXE into a random temporary folder.
-- Deploy a verified staged `win-unpacked` folder with `scripts/install-desktop.ps1` after closing the app, from an external terminal; the stable shortcut, Meta icon, chat data, and engine permissions remain.
+- The installed app runs directly from its installation folder with the complete Electron package beside it; local development uses `dist/Mora Desktop.exe`. Startup does not extract another EXE into a random temporary folder.
+- Deploy a verified staged `win-unpacked` folder with `scripts/install-desktop.ps1` after closing the app, from an external terminal; chat data and engine permissions remain. Update any old manual shortcut to `Mora Desktop.exe`.
 - The installer backs up the previous EXE/app archive, checks required resources and installed hashes, and refuses to overwrite a running installed app.
 - Packaging removes the portable extraction stage; binaries remain unsigned without a trusted code-signing certificate, and antivirus acceptance is not guaranteed. No exclusions or security settings are changed automatically.
 - Verify packaged history/UI tests and direct shortcut launch; review any remaining behavioral alert with the antivirus vendor or apply an explicit app-only exception manually.
@@ -69,10 +70,10 @@
 - Decision: reused the existing `#i-x` SVG symbol and `deleteChat` IPC/Main logic; the change is renderer markup plus CSS only, so the five `delete-chat` main-process tests still apply unchanged.
 - Verification: `scripts/frontend-smoke.js` covers hover/focus, arm-then-delete clicks, and the `deleteChat` call; the existing deletion and lifecycle tests cover the main process.
 
-## Building while Muse Desktop is open
+## Building while Mora Desktop is open
 - Build into a separate output folder (for example `artifacts/self-build`) while the installed app remains open.
 - Wait for exit code 0 and verify the package before deploying its complete `win-unpacked` folder with the external installer; keep the portable artifact for optional distribution only.
-- Closing Muse Desktop stops its engine process tree; use an external terminal/Codex for replacement after closing the old app.
+- Closing Mora Desktop stops its engine process tree; use an external terminal/Codex for replacement after closing the old app.
 - Keep the installed EXE path stable so the Windows Search shortcut continues working.
 
 ## File change review
@@ -118,6 +119,6 @@
 
 ## Public documentation and licensing
 - README covers features, per-chat context, setup, technology stack, workflows, privacy, limitations and contribution steps; source code uses the repository's MIT license.
-- `THIRD_PARTY_NOTICES.md` preserves Meta/OpenAI brand ownership and separate artwork/service/dependency rights; it does not claim endorsement or trademark permission. Setup includes project license and notices alongside vendor licenses.
+- `THIRD_PARTY_NOTICES.md` preserves Meta/OpenAI brand ownership and separate service/dependency rights, identifies the original MIT-licensed Mora artwork, and does not claim endorsement or trademark permission. Setup includes project license and notices alongside vendor licenses.
 - README includes three native desktop screenshots: workspace, browser annotation and engine settings, captured with an isolated profile and local demo; no personal chats or API keys are included.
 - Verify public source membership/privacy, README's relative links and packaged notices; original third-party license files remain intact.

@@ -1,20 +1,25 @@
 # Third-party notices and attribution
 
-Muse Desktop's original project code is licensed under the [MIT License](LICENSE).
+Mora Desktop's original project code is licensed under the [MIT License](LICENSE).
 That license does not transfer rights in third-party names, trademarks, artwork,
 services or separately installed software.
 
 ## Meta
 
-The Meta name, Meta symbol and associated brand assets belong to Meta and its
-respective rights holders. All rights in those assets are reserved to their owners.
-The bundled SVG and ICO artwork is documented in [src/assets/README.md](src/assets/README.md)
-and is outside this project's MIT license. Its use remains subject to the applicable
-[Meta brand guidelines](https://www.meta.com/brand/resources/meta/company-brand/).
+The Meta and Muse names and associated trademarks and brand assets belong to
+Meta and their respective rights holders. References to Muse Code describe the
+separately installed engine this app works with. Meta's logo is not bundled with
+Mora Desktop. See the [Meta brand guidelines](https://www.meta.com/brand/resources/meta/company-brand/).
 Attribution alone is not a grant of permission to use or redistribute a trademark.
 
 The Muse engine is installed separately and remains subject to its own applicable
 license, account requirements and service terms.
+
+## Mora artwork
+
+The Mora M icon is original project artwork covered by this repository's MIT
+license. Its SVG source and Windows ICO are documented in
+[src/assets/README.md](src/assets/README.md).
 
 ## OpenAI
 

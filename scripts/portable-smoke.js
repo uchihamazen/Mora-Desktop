@@ -15,7 +15,7 @@ const env = { ...process.env }; delete env.ELECTRON_RUN_AS_NODE;
 env.MUSE_DESKTOP_TEST_USER_DATA = await mkdtemp(path.join(tmpdir(), 'muse-portable-profile-'));
 // The portable wrapper does not forward Electron's debugger pipe to Playwright.
 // A temporary local CDP port verifies the actual extracted app; normal launch has no port.
-const child = spawn(path.resolve(process.argv[2] || 'artifacts/self-build/Muse Desktop.exe'), [`--remote-debugging-port=${port}`], { env, windowsHide: true, stdio: 'ignore' });
+const child = spawn(path.resolve(process.argv[2] || 'artifacts/self-build/Mora Desktop.exe'), [`--remote-debugging-port=${port}`], { env, windowsHide: true, stdio: 'ignore' });
 const ended = once(child, 'close');
 let browser;
 try {
@@ -67,7 +67,7 @@ try {
   assert.equal(state.sessionId, sessionId);
   assert.equal(state.items.some(item => item.kind === 'agentMessage' && item.text?.includes(marker)), true);
   await page.locator('.message.assistant').filter({ hasText: marker }).waitFor();
-  await page.screenshot({ path: 'artifacts/muse-desktop-portable.png' });
+  await page.screenshot({ path: 'artifacts/mora-desktop-portable.png' });
   assert.deepEqual(errors, []);
   await page.evaluate(() => window.muse.setOptions({ reasoningEffort: 'max' }));
   await page.evaluate(() => window.muse.newChat());

@@ -4,8 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: https://lh3.googleusercontent.com; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
-  <title>Muse Desktop</title>
-  <link rel="icon" href="assets/meta-symbol.svg" type="image/svg+xml">
+  <title>Mora Desktop</title>
+  <link rel="icon" href="assets/mora-mark.svg" type="image/svg+xml">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -21,7 +21,7 @@
     <symbol id="i-terminal" viewBox="0 0 24 24"><path d="m4 6 6 6-6 6m9 0h7"/></symbol>
   </defs></svg>
   <aside class="sidebar">
-    <div class="brand"><img class="brand-mark" src="assets/meta-symbol.svg" alt="Meta"><div><strong>Muse</strong><span class="brand-caption">DESKTOP</span></div><span class="local-tag">LOCAL</span></div>
+    <div class="brand"><img class="brand-mark" src="assets/mora-mark.svg" alt="Mora"><div><strong>Mora</strong><span class="brand-caption">DESKTOP</span></div><span class="local-tag">LOCAL</span></div>
     <button id="new-chat" class="new-chat"><svg><use href="#i-plus"/></svg>New conversation<span class="shortcut">Ctrl N</span></button>
     <nav class="conversation-library" aria-label="Conversations">
       <div class="section-label">GENERAL CHATS</div>
@@ -32,7 +32,7 @@
     <div class="sidebar-bottom">
       <div class="engine-card"><span id="connection-dot" class="connection-dot"></span><div><strong id="engine-label">Connecting to Muse</strong><small id="engine-detail">Your engine, your projects</small></div></div>
       <button id="settings-button" class="settings-button"><svg><use href="#i-settings"/></svg>Engine settings</button>
-      <div id="settings-panel" hidden><p>Uses your installed Muse and existing login.</p><button id="choose-muse">Choose Muse executable</button><button id="reconnect">Reconnect</button><small>This Muse version supports Read only and Full access. Per-action approvals are available in the Muse terminal.</small><section id="stitch-settings"><strong>Google Stitch · MCP</strong><p id="stitch-status" role="status">Checking connection…</p><label for="stitch-key">Stitch API key</label><input id="stitch-key" type="password" autocomplete="off" spellcheck="false" placeholder="Paste your Stitch key" maxlength="512"><div class="stitch-buttons"><button id="stitch-connect">Connect</button><button id="stitch-test" disabled>Test</button><button id="stitch-disconnect" disabled>Disconnect</button><button id="stitch-open">Open Stitch</button></div><small>Profile → Stitch settings → API key. Stored in your local Muse settings; available in Desktop and PowerShell on the next request.</small></section></div>
+      <div id="settings-panel" hidden><p>Uses your installed Muse and existing login.</p><small>Mora Desktop is an independent interface for Muse Code, not affiliated with or endorsed by Meta.</small><button id="choose-muse">Choose Muse executable</button><button id="reconnect">Reconnect</button><small>This Muse version supports Read only and Full access. Per-action approvals are available in the Muse terminal.</small><section id="stitch-settings"><strong>Google Stitch · MCP</strong><p id="stitch-status" role="status">Checking connection…</p><label for="stitch-key">Stitch API key</label><input id="stitch-key" type="password" autocomplete="off" spellcheck="false" placeholder="Paste your Stitch key" maxlength="512"><div class="stitch-buttons"><button id="stitch-connect">Connect</button><button id="stitch-test" disabled>Test</button><button id="stitch-disconnect" disabled>Disconnect</button><button id="stitch-open">Open Stitch</button></div><small>Profile → Stitch settings → API key. Stored in your local Muse settings; available in Desktop and PowerShell on the next request.</small></section></div>
     </div>
   </aside>
   <main>
@@ -43,10 +43,10 @@
     <div id="error-banner" role="alert" hidden><span id="error-text"></span><button id="dismiss-error" aria-label="Dismiss message">×</button></div>
     <div id="scroll-area" class="scroll-area">
       <section id="welcome" class="welcome">
-        <img class="welcome-emblem" src="assets/meta-symbol.svg" alt="Meta">
+        <img class="welcome-emblem" src="assets/mora-mark.svg" alt="Mora">
         <div class="eyebrow">A LITTLE LESS FRICTION. A LOT MORE BUILDING.</div>
         <h1>What would you like<br>to <span>make happen?</span></h1>
-        <p>Bring your ideas, code, and screenshots.<br>Muse helps you take the next step.</p>
+        <p>Bring your ideas, code, and screenshots.<br>Mora brings your next step into focus.</p>
         <div class="suggestions">
           <button id="explore-suggestion" data-prompt="Explore this project and explain its structure. Do not modify anything."><svg><use href="#i-folder"/></svg><strong>Explore my project</strong><small>Get the lay of the land</small><span>↗</span></button>
           <button id="explain-suggestion" data-prompt="Inspect this project for a concrete bug. Explain what you find before making changes."><svg><use href="#i-terminal"/></svg><strong>Find a bug</strong><small>Make the next fix clearer</small><span>↗</span></button>
@@ -65,7 +65,7 @@
           <div class="composer-right"><select id="execution-mode" aria-label="Execution mode" title="Read only inspects files. Full access can change files and run commands."><option value="readonly">Read only</option><option value="full">Full access · YOLO</option></select><button id="send-button" class="send-button" aria-label="Send message" title="Send message"><svg><use href="#i-up"/></svg></button><button id="stop-button" class="stop-button" aria-label="Stop request" title="Stop request" hidden><span></span></button></div>
         </div>
       </div>
-      <div class="composer-footnote"><span>Arabic or English. Paste an image with <kbd>Ctrl V</kbd>.</span><span><kbd>Enter</kbd> send <span class="footnote-dot">·</span> <kbd>Shift Enter</kbd> new line</span></div>
+      <div class="composer-footnote"><span>Paste an image with <kbd>Ctrl V</kbd>.</span><span><kbd>Enter</kbd> send <span class="footnote-dot">·</span> <kbd>Shift Enter</kbd> new line</span></div>
     </div>
   </main>
   <aside id="browser-panel" class="browser-panel" aria-label="Browser" hidden>

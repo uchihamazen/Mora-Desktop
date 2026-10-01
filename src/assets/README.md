@@ -1,8 +1,9 @@
-The Meta symbol is the original SVG favicon served by Meta's official website:
-https://static.xx.fbcdn.net/rsrc.php/yf/r/-7pQO6hUGK_.svg
+# Mora icon
 
-Source page: https://www.meta.com/brand/resources/meta/company-brand/
-Retrieved 2026-09-30. The artwork is owned by Meta.
+`mora-mark.svg` is original project artwork: a white geometric M on a rounded
+blue tile. It is covered by the repository's [MIT License](../../LICENSE).
+It does not use Meta's symbol or OpenAI's artwork.
 
-The ICO contains transparent PNG frames at 16, 24, 32, 48, 64, 128, and 256 px,
-rasterized from the unchanged SVG using the existing bundled Sharp runtime.
+`mora-mark.ico` contains PNG frames at 16, 24, 32, 48, 64, 128, and 256 px,
+rendered from the SVG with Chromium. The SVG is the editable source; regenerate
+the ICO from it when changing the design. Neither asset needs a runtime service.

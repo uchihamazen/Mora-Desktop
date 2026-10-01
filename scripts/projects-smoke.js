@@ -40,18 +40,18 @@ try {
  assert.equal(await page.locator('#general-sessions .session-row').count(),1);
  assert.equal(await page.locator('#execution-mode').isVisible(),false);
  if(process.argv.includes('--send')) {
-  await page.locator('#prompt').fill('كم ناتج 2 + 2؟ أجب بالرقم فقط، دون استخدام أدوات.');
+  await page.locator('#prompt').fill('What is 2 + 2? Reply with the number only, without tools.');
   await page.locator('#prompt').press('Enter');
   const answer=await waitState(s=>!s.busy&&s.items.some(i=>i.kind==='agentMessage'&&i.text));assert.equal(answer.error,'');
-  assert.match(answer.items.filter(i=>i.kind==='agentMessage').map(i=>i.text).join('\n'),/[4٤]/);
+  assert.match(answer.items.filter(i=>i.kind==='agentMessage').map(i=>i.text).join('\n'),/4/);
   await page.evaluate(id=>window.muse.resumeChat(id),legacyId);
   await page.evaluate(id=>window.muse.resumeChat(id),generalId);
   const reopened=await state();assert.equal(reopened.historyMissing,false);assert.equal(reopened.error,'');
-  await page.locator('#prompt').fill('زود 1 على الإجابة اللي قلتها في الرسالة السابقة. أجب بالرقم فقط، دون أدوات.');
+  await page.locator('#prompt').fill('Add 1 to your previous answer. Reply with the number only, without tools.');
   await page.locator('#send-button').click();
   const continued=await waitState(s=>!s.busy&&s.items.filter(i=>i.kind==='agentMessage'&&i.text).length>=2);
   assert.equal(continued.error,'');assert.equal(continued.sessionId,generalId);
-  assert.match(continued.items.filter(i=>i.kind==='agentMessage').at(-1).text,/[5٥]/);
+  assert.match(continued.items.filter(i=>i.kind==='agentMessage').at(-1).text,/5/);
  }
  await page.evaluate(folder=>window.muse.newChat(folder),first);
  assert.equal((await state()).projectPath,first);
@@ -67,7 +67,7 @@ try {
  if(process.argv.includes('--send')) {
   assert.equal(restored.historyMissing,false);assert.equal(restored.error,'');
   assert.equal(restored.items.filter(i=>i.kind==='agentMessage'&&i.text).length,2);
-  assert.match(restored.items.filter(i=>i.kind==='agentMessage').at(-1).text,/[5٥]/);
+  assert.match(restored.items.filter(i=>i.kind==='agentMessage').at(-1).text,/5/);
   await page.locator('#prompt').fill('Ready for a third message');
   assert.equal(await page.locator('#send-button').isEnabled(),true);
   await page.locator('#prompt').fill('');
@@ -75,5 +75,5 @@ try {
  const saved=JSON.parse(await readFile(path.join(profile,'conversations.backup.json'),'utf8'));
  assert.equal(saved.sessions.find(s=>s.sessionId===generalId).projectPath,null);
  await page.screenshot({path:'artifacts/muse-projects-installed.png'});
- console.log(`PASS project grouping, legacy IDs, separate general workspace, retained Full access for projects, restart after settings reset${process.argv.includes('--send')?', two Arabic answers in same general context and sending remains enabled':''}`);
+ console.log(`PASS project grouping, legacy IDs, separate general workspace, retained Full access for projects, restart after settings reset${process.argv.includes('--send')?', two answers in same general context and sending remains enabled':''}`);
 } finally {await app?.close();}

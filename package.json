@@ -1,7 +1,7 @@
 {
-  "name": "muse-desktop",
-  "productName": "Muse Desktop",
-  "version": "0.1.0",
+  "name": "mora-desktop",
+  "productName": "Mora Desktop",
+  "version": "0.1.1",
   "description": "Desktop chat for the installed Muse coding engine",
   "private": true,
   "license": "MIT",
@@ -25,7 +25,7 @@
   },
   "build": {
     "appId": "local.muse.desktop",
-    "artifactName": "Muse-Desktop-${version}-${arch}.${ext}",
+    "artifactName": "Mora-Desktop-${version}-${arch}.${ext}",
     "files": [
       "src/**/*",
       "package.json"
@@ -33,23 +33,23 @@
     "extraFiles": ["LICENSE", "THIRD_PARTY_NOTICES.md"],
     "win": {
       "target": "nsis",
-      "icon": "src/assets/meta-symbol.ico",
+      "icon": "src/assets/mora-mark.ico",
       "signExecutable": false
     },
     "nsis": {
-      "artifactName": "Muse-Desktop-Setup-${version}-${arch}.${ext}",
+      "artifactName": "Mora-Desktop-Setup-${version}-${arch}.${ext}",
       "oneClick": false,
       "perMachine": false,
       "allowElevation": false,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": false,
       "createStartMenuShortcut": true,
-      "shortcutName": "Muse Desktop",
+      "shortcutName": "Mora Desktop",
       "runAfterFinish": false,
       "deleteAppDataOnUninstall": false
     },
     "portable": {
-      "artifactName": "Muse-Desktop-Portable-${version}-${arch}.${ext}",
+      "artifactName": "Mora-Desktop-Portable-${version}-${arch}.${ext}",
       "requestExecutionLevel": "user"
     }
   }

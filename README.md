@@ -1,25 +1,27 @@
-# Muse Desktop
+# Mora Desktop
 
 **A Windows desktop workspace for the Muse coding engine.**
 
-Chat in Arabic or English, work with local projects, inspect live file changes, and
+Chat with your coding engine, work with local projects, inspect live file changes, and
 send selected browser designs to Muse with a cropped screenshot and HTML context.
 
 [Screenshots](#screenshots) · [Features](#features) · [Installation](#installation) · [Technology stack](#technology-stack) ·
 [Build from source](#build-from-source) · [Privacy](#privacy-and-local-data) ·
 [License & attribution](#license-and-attribution)
 
-Muse Desktop is an independent community project with a Codex-inspired workflow.
+Mora Desktop is an independent desktop interface for Muse Code, with a
+Codex-inspired workflow. It is not affiliated with or endorsed by Meta or OpenAI.
 It uses your separately installed Muse engine and that engine's existing login.
+Previously named Muse Desktop, it now has its own name and original M icon.
 
 ## Screenshots
 
-Captured from Muse Desktop using an isolated profile and a local demo page.
+Captured from Mora Desktop using an isolated profile and a local demo page.
 No personal chats, API keys, or private project data are shown.
 
 ### Desktop workspace
 
-![Muse Desktop welcome screen and chat workspace](docs/screenshots/desktop-overview.png)
+![Mora Desktop welcome screen and chat workspace](docs/screenshots/desktop-overview.png)
 
 ### Browser annotations
 
@@ -38,7 +40,7 @@ Choose your Muse executable, reconnect the engine, and configure your own Google
 
 | Feature | What it does |
 | --- | --- |
-| Arabic & English chat | Mixed-language messages, automatic text direction, multiline input and code blocks. |
+| Chat workspace | Multiline messages, code blocks, image attachments and automatic text direction. |
 | Image attachments | Pick or paste PNG, JPEG and WebP images into the main chat. |
 | Projects & general chat | Group conversations under local project folders, or ask general questions without attaching a project. |
 | Persistent conversations | Restore chats across restarts and upgrades; remove a conversation explicitly from the sidebar. |
@@ -93,9 +95,9 @@ to its provider must be obtained separately; this repository does not bundle the
 
 1. Install Muse and sign in on your Windows account.
 2. Open [Releases](https://github.com/uchihamazen/Muse-Desktop/releases) and, when an
-   installer is published, download `Muse-Desktop-Setup-<version>-x64.exe`.
+   installer is published, download `Mora-Desktop-Setup-<version>-x64.exe`.
 3. Run Setup and choose an installation folder. Installation is for the current user
-   and creates **Muse Desktop** in Start/Windows Search.
+   and creates **Mora Desktop** in Start/Windows Search.
 4. Open the app. It discovers Muse under `%LOCALAPPDATA%\Programs\muse`; for another
    location, select **Engine settings → Choose Muse executable**.
 5. Start a general conversation, or use **Add project** to choose a local folder.
@@ -188,7 +190,7 @@ Build the Windows installer:
 pnpm run build
 ```
 
-Output: `artifacts/release/Muse-Desktop-Setup-<version>-x64.exe`.
+Output: `artifacts/release/Mora-Desktop-Setup-<version>-x64.exe`.
 The build includes the desktop runtime and license notices. Output is staged outside
 the local installed `dist` package.
 
@@ -201,9 +203,10 @@ pnpm run build:desktop
 ```
 
 The local deployment helper installs `artifacts/self-build/win-unpacked` into `dist`
-and preserves its shortcut path. Wait for a successful build exit before deployment.
+as `Mora Desktop.exe`. Update any old manual development shortcut to that renamed
+EXE. Wait for a successful build exit before deployment.
 Do not overwrite a running EXE or install a portable extraction wrapper in its place.
-Quitting Muse Desktop stops its own engine process tree, so replacement must happen
+Quitting Mora Desktop stops its own engine process tree, so replacement must happen
 from an external terminal. End users launch the Setup-created Start shortcut directly.
 
 ### GitHub Actions and releases
@@ -217,8 +220,9 @@ workflow does not publish a Release automatically or require a Muse account/API 
 ## Privacy and local data
 
 Each Windows account stores preferences and the conversation index in
-`%APPDATA%\Muse Desktop`. Native Muse logs retain message context; the embedded
-browser retains its own cookies locally. Local storage does not imply offline AI:
+`%APPDATA%\Muse Desktop`. This original profile location is retained so the Mora
+rebrand preserves saved chats and settings. Native Muse logs retain message context;
+the embedded browser retains its own cookies locally. Local storage does not imply offline AI:
 messages, images and tool context are sent through the selected engine/provider and
 are subject to that provider's terms.
 
@@ -285,15 +289,16 @@ behavior or packaged files change.
 
 ## License and attribution
 
-Original project code is available under the [MIT License](LICENSE), allowing use,
-modification and redistribution subject to its notice requirements.
+Original project code and the Mora icon are available under the [MIT License](LICENSE),
+allowing use, modification and redistribution subject to its notice requirements.
 
 **Meta retains all rights in its name, logo and brand assets. OpenAI retains all rights
 in OpenAI/Codex names and associated brand assets.** Third-party software, artwork,
 services and trademarks remain covered by their owners' terms and are not relicensed
 by this project's MIT license. Attribution does not itself grant trademark permission.
+Mora Desktop does not bundle Meta or OpenAI logos; its M icon is original project artwork.
 
-Muse Desktop is an independent project; no Meta or OpenAI sponsorship, affiliation
+Mora Desktop is an independent project; no Meta or OpenAI sponsorship, affiliation
 or endorsement is claimed. The workflow's inspiration does not transfer ownership
 of the project's original code to either company.
 

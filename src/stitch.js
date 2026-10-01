@@ -68,7 +68,7 @@ export async function checkStitch(key,fetch=globalThis.fetch) {
     return result.result;
   }
   try{
-    await rpc('initialize',{protocolVersion:'2024-11-05',capabilities:{},clientInfo:{name:'muse-desktop',version:'0.1.0'}});
+    await rpc('initialize',{protocolVersion:'2024-11-05',capabilities:{},clientInfo:{name:'mora-desktop',version:'0.1.1'}});
     await rpc('notifications/initialized',{},true);
     const catalog=await rpc('tools/list',{}),tools=(catalog.tools || []).map(tool=>tool.name).filter(name=>typeof name==='string');
     if(!['generate_screen_from_text','edit_screens','list_projects'].every(name=>tools.includes(name)))throw new Error('Stitch did not expose the expected design tools.');

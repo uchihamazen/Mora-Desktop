@@ -7,7 +7,7 @@ const require=createRequire(import.meta.url);
 const {chromium}=require('./runtime-packages.cjs').runtimeRequire('playwright');
 const png='iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+ip1sAAAAASUVORK5CYII=';
 const server=createServer(async(req,res)=>{
-  const file={'/':'index.html','/style.css':'style.css','/renderer.js':'renderer.js','/images.js':'images.js','/projects.js':'projects.js','/browser-ui.js':'browser-ui.js','/assets/meta-symbol.svg':'assets/meta-symbol.svg'}[req.url];
+  const file={'/':'index.html','/style.css':'style.css','/renderer.js':'renderer.js','/images.js':'images.js','/projects.js':'projects.js','/browser-ui.js':'browser-ui.js','/assets/mora-mark.svg':'assets/mora-mark.svg'}[req.url];
   if(!file){res.writeHead(404).end();return;}
   res.setHeader('Content-Type',file.endsWith('.svg')?'image/svg+xml':file.endsWith('.css')?'text/css':file.endsWith('.js')?'application/javascript':'text/html');
   res.end(await readFile(path.join('src',file)));
@@ -22,6 +22,8 @@ try{
   window.muse={getState:async()=>state,onEvent:cb=>{callback=cb;return()=>{}},copyText:async text=>{window.smoke.copied=text},setOptions:async options=>{state={...state,...options};return state},pickImages:async()=>[{mediaType:'image/png',base64Data:png,name:'image.png'}],newChat:async projectPath=>{window.smoke.created.push(projectPath);return state},resumeChat:async()=>state,deleteChat:async id=>{window.smoke.deleted.push(id);return state},chooseWorkspace:async()=>state,chooseMuse:async()=>state,connect:async()=>state,stopTurn:async()=>window.smoke.emit({busy:false,stopping:false,pendingQueue:[]}),sendMessage:async value=>{window.smoke.sent.push(value);return{accepted:true}}};
  },{png});
  await page.goto(`http://127.0.0.1:${server.address().port}`);
+ assert.equal(await page.title(),'Mora Desktop');
+ assert.equal(await page.locator('.brand strong').textContent(),'Mora');
  await page.waitForFunction(()=>[...document.querySelectorAll('.brand-mark,.welcome-emblem')].every(img=>img.complete&&img.naturalWidth>0));
  await page.evaluate(()=>window.smoke.emit({sessionId:'missing-history',error:'The original engine log is missing.',historyMissing:true}));
  await page.locator('#dismiss-error').click();
@@ -38,13 +40,13 @@ try{
  assert.equal(await page.locator('#error-banner').isVisible(),true);
  await page.evaluate(()=>window.smoke.emit({error:''}));
  await page.evaluate(()=>window.smoke.emit({projectPath:null,projects:['C:\\Muse','C:\\ExampleProject'],sessions:[
-  {sessionId:'g',title:'سؤال عام',projectPath:null,workspace:'C:\\Profile\\general-chat'},
-  {sessionId:'m',title:'تطوير Muse',workspace:'C:\\Muse'},
-  {sessionId:'s',title:'شرح المشروع',workspace:'C:\\ExampleProject'},
+  {sessionId:'g',title:'General question',projectPath:null,workspace:'C:\\Profile\\general-chat'},
+  {sessionId:'m',title:'Develop Muse',workspace:'C:\\Muse'},
+  {sessionId:'s',title:'Explain the project',workspace:'C:\\ExampleProject'},
  ]}));
  assert.equal(await page.locator('#general-sessions .session-row').count(),1);
  assert.equal(await page.locator('.project-group').count(),2);
- assert.equal(await page.locator('.project-group').first().locator('.session-button').textContent(),'تطوير Muse');
+ assert.equal(await page.locator('.project-group').first().locator('.session-button').textContent(),'Develop Muse');
  await page.evaluate(()=>{document.querySelector('.project-group summary').click();window.smoke.emit({engineVersion:'streaming update'});});
  assert.equal(await page.locator('.session-row[data-session-id="m"]').isVisible(),false);
  await page.locator('.project-group').first().locator('summary').click();
@@ -59,8 +61,8 @@ try{
  assert.equal(await page.locator('#execution-mode').isVisible(),false);
  await page.screenshot({path:'artifacts/muse-project-groups.png'});
  await page.evaluate(()=>window.smoke.emit({projectPath:'C:\\Test',projects:[],sessions:[]}));
- await page.screenshot({path:'artifacts/muse-meta-welcome.png'});
- await page.locator('#prompt').fill('عربي English');
+ await page.screenshot({path:'artifacts/mora-welcome.png'});
+ await page.locator('#prompt').fill('Hello Mora');
  await page.evaluate(()=>document.querySelector('#prompt').dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',isComposing:true,bubbles:true,cancelable:true})));
  assert.equal(await page.evaluate(()=>window.smoke.sent.length),0);
  await page.locator('#prompt').press('Shift+Enter');
@@ -72,17 +74,17 @@ try{
  await page.locator('#prompt').press('Enter');
  await page.waitForFunction(()=>window.smoke.sent.length===1);
  assert.equal(await page.evaluate(()=>window.smoke.sent[0].images.length),2);
- assert.match(await page.evaluate(()=>window.smoke.sent[0].text),/عربي/);
+ assert.match(await page.evaluate(()=>window.smoke.sent[0].text),/Hello Mora/);
  await page.waitForFunction(()=>document.querySelector('#prompt').value==='');
  await page.evaluate(()=>window.smoke.emit({items:[{itemId:'a',kind:'agentMessage',revision:1,status:'completed',text:'<img src=x onerror="window.pwned=1">\n```js\nconsole.log(42);\n```'}]}));
  assert.equal(await page.evaluate(()=>window.pwned),undefined);
  assert.equal(await page.locator('.message-body img').count(),0);
  await page.waitForFunction(()=>document.querySelector('.message.assistant .avatar img')?.naturalWidth>0);
- await page.screenshot({path:'artifacts/muse-meta-message.png'});
+ await page.screenshot({path:'artifacts/mora-message.png'});
  await page.locator('.code-header button').click();
  assert.equal(await page.evaluate(()=>window.smoke.copied),'console.log(42);\n');
  await page.route('https://lh3.googleusercontent.com/aida/**',route=>route.fulfill({contentType:'image/png',body:Buffer.from(png,'base64')}));
- await page.evaluate(()=>window.smoke.emit({items:[{itemId:'stitch-preview',kind:'agentMessage',status:'completed',text:'التصميم الجديد\n(https://lh3.googleusercontent.com/aida/fixture-design)\n```text\nhttps://lh3.googleusercontent.com/aida/code-example\n```'}]}));
+ await page.evaluate(()=>window.smoke.emit({items:[{itemId:'stitch-preview',kind:'agentMessage',status:'completed',text:'The new design\n(https://lh3.googleusercontent.com/aida/fixture-design)\n```text\nhttps://lh3.googleusercontent.com/aida/code-example\n```'}]}));
  assert.equal(await page.locator('.stitch-image img').count(),1,'A plain Stitch output URL must render as an image; code URLs remain literal');
  await page.waitForFunction(()=>document.querySelector('.stitch-image img')?.naturalWidth>0);
  await page.locator('.stitch-image .image-preview-button').click();
@@ -112,11 +114,11 @@ try{
  await page.evaluate(()=>window.smoke.emit({busy:true,finishing:true,items:[{itemId:'answer',kind:'agentMessage',status:'inProgress',text:'The reply is ready'}]}));
  assert.match(await page.locator('#working-label').textContent(),/Reply ready/);
  assert.equal(await page.locator('#prompt').isEnabled(),true);
- await page.locator('#prompt').fill('مسودة الرسالة الجاية');
+ await page.locator('#prompt').fill('Draft the next message');
  await page.locator('#prompt').press('Enter');
  await page.waitForFunction(()=>window.smoke.sent.length===2);
  await page.waitForFunction(()=>document.querySelector('#prompt').value==='');
- await page.evaluate(()=>window.smoke.emit({pendingQueue:[{queueId:'q1',text:'مسودة الرسالة الجاية',images:[]}]}));
+ await page.evaluate(()=>window.smoke.emit({pendingQueue:[{queueId:'q1',text:'Draft the next message',images:[]}]}));
  await page.waitForFunction(()=>document.querySelectorAll('.queue-badge').length===1);
  assert.equal(await page.locator('.queue-badge').textContent(),'Queued');
  assert.equal(await page.locator('#send-button').isVisible(),true);
@@ -169,6 +171,6 @@ try{
  assert.equal(await page.locator('#elapsed').textContent(),'2m 15s');
  await page.evaluate(()=>{window.smoke.restoreClock();window.smoke.emit({busy:false});});
  await mkdir('artifacts',{recursive:true});
- await page.screenshot({path:'artifacts/muse-desktop-tools.png'});
+ await page.screenshot({path:'artifacts/mora-desktop-tools.png'});
  console.log('PASS deterministic UI: chat, images, activity, lifecycle, hover delete icon, change badge, colored diff panel, safe literal code, close');
 }finally{await browser.close();await new Promise(resolve=>server.close(resolve));}

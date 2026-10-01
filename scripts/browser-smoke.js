@@ -216,7 +216,7 @@ try {
   await page.locator('#browser-error').filter({hasText:'Page stopped responding'}).waitFor();
   assert.equal(await page.locator('#browser-desktop').isDisabled(),true,'A stopped renderer must be reloaded before changing viewport');
   await app.evaluate(({BrowserWindow})=>{const window=BrowserWindow.getAllWindows()[0];const [width,height]=window.getSize();window.setSize(width+30,height);});
-  await page.waitForTimeout(200);assert.equal(page.isClosed(),false,'A crashed web page must not close Muse Desktop');
+  await page.waitForTimeout(200);assert.equal(page.isClosed(),false,'A crashed web page must not close Mora Desktop');
   await page.locator('#browser-reload').click();
   let recovered;const recoveryDeadline=Date.now()+10000;
   do{try{recovered=await app.evaluate(({webContents})=>webContents.getAllWebContents().find(web=>web.getURL().startsWith('http:')).executeJavaScript('({bootWidth:window.bootWidth,hasCard:!!document.getElementById("card")})'));}catch{}if(recovered?.hasCard)break;await new Promise(resolve=>setTimeout(resolve,100));}while(Date.now()<recoveryDeadline);

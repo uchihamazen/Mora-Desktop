@@ -6,7 +6,7 @@ import { ExecRunner } from '../src/runtime.js';
 
 const workspace = await mkdtemp(path.join(tmpdir(), 'muse-desktop-latency-'));
 const promptFile = path.join(workspace, 'prompt.txt');
-await writeFile(promptFile, 'تمام يا برنس، كنت بس بتأكد منك. رد بجملة واحدة قصيرة من غير أدوات.');
+await writeFile(promptFile, 'Reply with one short sentence without using tools.');
 const runner = new ExecRunner();
 const started = performance.now(), events = [];
 let firstDelta, lastDelta, terminal;

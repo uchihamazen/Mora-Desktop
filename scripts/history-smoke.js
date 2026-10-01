@@ -14,7 +14,7 @@ const sessionId = uuid7();
 const filename = sessionLogPath(sessionId, home);
 await mkdir(path.dirname(filename), {recursive:true});
 await writeFile(filename, [
- {payload:{kind:'run',run_id:'saved-turn',event:{kind:'started',prompt:'رسالة محفوظة'}}},
+ {payload:{kind:'run',run_id:'saved-turn',event:{kind:'started',prompt:'Saved message'}}},
  {payload:{kind:'run',run_id:'saved-turn',event:{kind:'assistant_message_committed',text:'SAVED_HISTORY_OK'}}},
 ].map(x=>JSON.stringify(x)).join('\n')+'\n');
 const prefs = path.join(profile,'preferences.json');
