@@ -12,7 +12,7 @@ send selected browser designs to Muse with a cropped screenshot and HTML context
 Mora Desktop is an independent desktop interface for Muse Code, with a
 Codex-inspired workflow. It is not affiliated with or endorsed by Meta or OpenAI.
 It uses your separately installed Muse engine and that engine's existing login.
-Previously named Muse Desktop, it now has its own name and original M icon.
+Mora Desktop uses its own name and original M icon.
 
 ## Screenshots
 
@@ -292,15 +292,12 @@ behavior or packaged files change.
 Original project code and the Mora icon are available under the [MIT License](LICENSE),
 allowing use, modification and redistribution subject to its notice requirements.
 
-**Meta retains all rights in its name, logo and brand assets. OpenAI retains all rights
-in OpenAI/Codex names and associated brand assets.** Third-party software, artwork,
-services and trademarks remain covered by their owners' terms and are not relicensed
-by this project's MIT license. Attribution does not itself grant trademark permission.
-Mora Desktop does not bundle Meta or OpenAI logos; its M icon is original project artwork.
+Third-party software, artwork and services remain subject to their respective
+licenses and terms. Third-party names and trademarks belong to their respective
+owners; this project's MIT license does not grant permission to use those marks.
 
-Mora Desktop is an independent project; no Meta or OpenAI sponsorship, affiliation
-or endorsement is claimed. The workflow's inspiration does not transfer ownership
-of the project's original code to either company.
+Mora Desktop is independently developed and is not affiliated with, sponsored by,
+or endorsed by Meta or OpenAI.
 
 See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md),
 [Meta's brand guidelines](https://www.meta.com/brand/resources/meta/company-brand/),
