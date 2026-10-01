@@ -119,4 +119,5 @@
 ## Public documentation and licensing
 - README covers features, per-chat context, setup, technology stack, workflows, privacy, limitations and contribution steps; source code uses the repository's MIT license.
 - `THIRD_PARTY_NOTICES.md` preserves Meta/OpenAI brand ownership and separate artwork/service/dependency rights; it does not claim endorsement or trademark permission. Setup includes project license and notices alongside vendor licenses.
+- README includes three native desktop screenshots: workspace, browser annotation and engine settings, captured with an isolated profile and local demo; no personal chats or API keys are included.
 - Verify public source membership/privacy, README's relative links and packaged notices; original third-party license files remain intact.

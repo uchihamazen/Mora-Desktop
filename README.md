@@ -5,12 +5,34 @@
 Chat in Arabic or English, work with local projects, inspect live file changes, and
 send selected browser designs to Muse with a cropped screenshot and HTML context.
 
-[Features](#features) · [Installation](#installation) · [Technology stack](#technology-stack) ·
+[Screenshots](#screenshots) · [Features](#features) · [Installation](#installation) · [Technology stack](#technology-stack) ·
 [Build from source](#build-from-source) · [Privacy](#privacy-and-local-data) ·
 [License & attribution](#license-and-attribution)
 
 Muse Desktop is an independent community project with a Codex-inspired workflow.
 It uses your separately installed Muse engine and that engine's existing login.
+
+## Screenshots
+
+Captured from Muse Desktop using an isolated profile and a local demo page.
+No personal chats, API keys, or private project data are shown.
+
+### Desktop workspace
+
+![Muse Desktop welcome screen and chat workspace](docs/screenshots/desktop-overview.png)
+
+### Browser annotations
+
+Select a page element, preview its cropped screenshot, and attach its HTML context to the main chat.
+The example below uses the Mobile preview.
+
+![Browser annotation with a selected demo card and screenshot attached to chat](docs/screenshots/browser-annotation.png)
+
+### Engine settings
+
+Choose your Muse executable, reconnect the engine, and configure your own Google Stitch MCP connection.
+
+![Engine settings and Google Stitch MCP controls with an empty API key field](docs/screenshots/engine-settings.png)
 
 ## Features
 
