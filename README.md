@@ -161,7 +161,24 @@ unless an action is already pending in the browser: then Mora closes it to cance
 action and records an uncertain outcome. Reopen the site before continuing in that case.
 Starting a fresh check re-observes the page. Discovery is bounded and describes observed
 coverage only. Other roles need supplied logins; canvas and drag-and-drop are unsupported.
-Workflow teaching, report export and broader reliability benchmarking remain later work.
+Choose a discovered feature, or use **Select in browser** to pick a control (click or
+focus it and press Enter). **Record workflow** follows up to eight deliberate actions;
+finish recording and provide the expected outcome before using the demonstration.
+Demonstrations guide a fresh plan and never grant execution permission. Update paths,
+scope and budgets with **Update testing focus**; older pending approvals are cancelled.
+
+**Reopen saved report** opens a fresh browser while preserving prior evidence. Coverage
+separates discovered controls, exercised controls and controls with outcome assertions.
+**Export HTML** and **Export JSON** use the operating-system save dialog. Masked local
+screenshots are optional; ordinary exports omit login storage and raw runtime traces.
+Review content before sharing because private text outside recognized fields may remain.
+
+The repeated acceptance harness independently verifies eight healthy/faulty counterparts
+before three fresh autonomous trials per variant. Run `node scripts/website-acceptance.js`
+after preparing the packaged browser; reports and every trial stay under `artifacts/`.
+Use `--oracles-only` to validate fixtures without model calls. The release remains
+experimental: broad discovery can leave workflows unchecked or unable to restore their
+starting state. Completed runs do not establish whole-site reliability.
 Website testing has no source-editing or repair capability.
 
 ### Project tester (experimental)

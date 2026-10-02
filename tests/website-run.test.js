@@ -101,3 +101,37 @@ test('page mode blocks proposed navigation to another page before permission or 
  run.onChange=report=>{if(report.pending&&run.pending)setImmediate(()=>run.approve(report.pending.id,true));};
  await run.start(undefined,{mode:'page'});await run.completion;assert.equal(performed.length,0);assert.equal(run.report.status,'blocked');assert.match(run.report.message,/selected page/i);
 });
+
+test('scope steering invalidates pending approvals and preserves explicit narrowed paths',async()=>{
+ const {run,performed}=await setup([{action:'plan',cases:[plannedCase()]},{action:'finish'}]);await run.start();while(!run.report.pending)await new Promise(r=>setTimeout(r,5));const id=run.report.pending.id;
+ run.onChange=report=>{if(report.pending&&report.pending.id!==id&&run.pending)setImmediate(()=>run.approve(report.pending.id,false));};
+ await run.steer('Check only this page',{mode:'page'},{excludePaths:['/settings']});await run.completion;assert.deepEqual(run.report.scope.excludePaths,['/settings']);assert.equal(run.report.options.mode,'page');assert.equal(performed.length,0);await assert.rejects(run.approve(id,true),/permission/i);
+});
+test('teaching pauses automation, keeps demonstration distinct, and requires an outcome',async()=>{
+ const {run,browser,performed}=await setup([]);let emit;browser.beginTeaching=async(mode,fn)=>{emit=fn;};browser.stopTeaching=async()=>{};
+ await run.beginTeaching('record');await emit({action:'click',target:'save',targetLabel:'Save',value:'',url:'https://site.example/'});await run.finishTeaching();assert.equal(run.report.teaching.status,'review');assert.equal(performed.length,0);
+ await assert.rejects(run.useTeaching(''),/expected/i);await run.useTeaching('Saving shows Ready');assert.equal(run.report.workflows.length,1);assert.match(run.report.request,/Saving shows Ready/);assert.equal(performed.length,0);
+});
+test('reopening a saved report preserves results but requires fresh browser observation',async()=>{
+ const {run,browser}=await setup([]);const id=run.report.id;await run.stop();run.makeBrowser=()=>({...browser,closed:false});await run.reopen(id);assert.equal(run.report.id,id);assert.equal(run.report.status,'manual');assert.match(run.report.message,/fresh|Sign in/i);
+});
+
+test('stopping a recording cancels teaching instead of leaving an active recorder in the report',async()=>{
+ const {run,browser}=await setup([]);browser.beginTeaching=async()=>{};browser.stopTeaching=async()=>{};await run.beginTeaching('record');await run.stop();assert.equal(run.report.teaching.status,'cancelled');
+});
+
+test('finishing bounded discovery identifies queued cases as not tested',async()=>{
+ const {run}=await setup([]);let passes=0;const original=run.observe.bind(run);run.observe=async epoch=>{const observation=await original(epoch);if(++passes===1)run.report.cases.push({id:'leftover',status:'queued',family:'boundary'});return observation;};
+ // Force the discovery repetition guard without depending on any model output.
+ run.atomic=async()=>({result:{status:'ok'}});await run.start(undefined,{mode:'site',maxActions:100,accessibility:false});await run.completion;assert.equal(run.report.cases[0].status,'not tested');
+});
+
+test('Stop during recorder shutdown prevents a late Start from launching a model',async()=>{
+ const {run,browser}=await setup([]);let release,models=0;browser.stopTeaching=()=>new Promise(resolve=>{release=resolve;});run.makeModel=()=>{models++;return {initialize:async()=>{},decide:async()=>({action:'finish'}),stop:async()=>{},close:async()=>{}};};
+ const starting=run.start();const rejected=assert.rejects(starting,/interrupted/i);while(!release)await new Promise(r=>setTimeout(r,5));await run.stop();release();await rejected;assert.equal(run.report.status,'stopped');assert.equal(models,0);
+});
+
+test('path steering can narrow a homepage session to the current subpage',async()=>{
+ const {run,browser}=await setup([]);browser.page={url:()=> 'https://site.example/settings'};run.onChange=report=>{if(report.pending&&run.pending)setImmediate(()=>run.approve(report.pending.id,false));};
+ await run.steer('Check settings only',{mode:'page'},{includePaths:['/settings']});await run.completion;assert.equal(run.report.scope.entryUrl,'https://site.example/settings');assert.deepEqual(run.report.scope.includePaths,['/settings']);assert.equal(browser.policy.scope.entryUrl,run.report.scope.entryUrl);
+});

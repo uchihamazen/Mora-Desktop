@@ -7,7 +7,7 @@ import {mkdtemp,mkdir,writeFile,readFile,readdir} from 'node:fs/promises';
 import path from 'node:path';
 import assert from 'node:assert/strict';
 import {chromium} from 'playwright';
-const require=createRequire(import.meta.url),supplied=process.argv[2],exe=supplied?path.resolve(supplied):require('electron');
+const require=createRequire(import.meta.url),supplied=process.argv[2],exe=supplied?path.resolve(supplied):require('electron'),version=JSON.parse(await readFile('package.json','utf8')).version;
 const base=path.resolve('artifacts/build-temp');await mkdir(base,{recursive:true});const profile=await mkdtemp(path.join(base,'website-journey-'));
 const server=createServer((req,res)=>{res.setHeader('Content-Type','text/html');res.setHeader('Set-Cookie','session=fixture-session; HttpOnly; SameSite=Lax');res.end('<!doctype html><html lang="en"><title>Counter check</title><main><h1>Counter check</h1><button onclick="document.querySelector(\'output\').textContent=\'Count: 1\'">Increase</button><output aria-label="Counter value">Count: 0</output></main></html>');});await new Promise(r=>server.listen(0,'127.0.0.1',r));const url=`http://127.0.0.1:${server.address().port}`;
 let child,browser,page;
@@ -35,6 +35,7 @@ try {
  await page.locator('details[open]').getByRole('button',{name:'View screenshot',exact:true}).first().click();await page.locator('.website-dialog img').waitFor();await page.screenshot({path:'artifacts/mora-website-tester.png'});
  const started=Date.now();await page.getByRole('button',{name:'Stop and close browser',exact:true}).click();await page.waitForFunction(()=>document.querySelector('.website-dialog [role=status]').textContent.startsWith('stopped'));const stopMs=Date.now()-started;
  const id=result.id;await close();await launch();const saved=await page.evaluate(id=>window.muse.websiteTesterCommand('load',{id}),id);assert.ok(saved.steps.some(s=>s.result?.status==='passed'));
- await writeFile(`artifacts/website-${supplied?'packaged':'native'}-journey-0.5.0.json`,JSON.stringify({passed:true,packaged:!!supplied,reportId:id,actions:result.actions,checks:result.steps.filter(s=>s.action.action==='assert').length,approvals,stopMs,restart:true,encryptedLogin:true,sourceIndependent:true},null,2));
+ const resumed=await page.evaluate(id=>window.muse.websiteTesterCommand('reopen',{id}),id);assert.equal(resumed.id,id);assert.equal(resumed.status,'manual');assert.equal(resumed.steps.length,saved.steps.length);await page.evaluate(()=>window.muse.websiteTesterCommand('stop'));
+ await writeFile(`artifacts/website-${supplied?'packaged':'native'}-journey-${version}.json`,JSON.stringify({passed:true,packaged:!!supplied,reportId:id,actions:result.actions,checks:result.steps.filter(s=>s.action.action==='assert').length,approvals,stopMs,restart:true,reopen:true,encryptedLogin:true,sourceIndependent:true},null,2));
  console.log(`PASS ${supplied?'packaged':'native'} website journey: no project, rejected repair, encrypted login, real native click/assertion/evidence, Stop ${stopMs}ms, report recovered after restart`);
 }finally{await close();await new Promise(r=>server.close(r));}

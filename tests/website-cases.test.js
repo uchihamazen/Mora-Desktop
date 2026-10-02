@@ -27,6 +27,12 @@ test('normal cases cover different features before deep variations and duplicate
  const report={cases:[]};api.addWebsiteCases(report,[candidate(),candidate()],context);assert.equal(report.cases.length,1);
 });
 
+test('interrupted cases can be planned again without losing their history',()=>{
+ const report={cases:[]};api.addWebsiteCases(report,[candidate()],context);report.cases[0].status='not tested';
+ assert.equal(api.addWebsiteCases(report,[candidate()],context),1);assert.equal(report.cases.length,2);assert.equal(report.cases[0].status,'not tested');
+ assert.equal(api.addWebsiteCases(report,[candidate()],context),0);
+});
+
 test('exposed constraints generate finite boundary cases and do not invent business limits',()=>{
  const control={id:'e1',name:'Quantity',tag:'input',type:'number',value:'1',constraints:{required:true,min:'1',max:'5',step:'1'}};
  const cases=api.constraintCases({...context,observation:{...observation,controls:[control]}});

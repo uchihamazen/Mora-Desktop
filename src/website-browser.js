@@ -6,6 +6,7 @@ import path from 'node:path';
 import {authorizeStep,allowedNavigation,allowedResource,redactObservation,redactText} from './website-policy.js';
 import {controlKey} from './website-discovery.js';
 import {summarizeAccessibility} from './website-findings.js';
+import {installWebsiteTeaching,sanitizeTeachingEvent} from './website-teaching.js';
 
 const selector='button,input:not([type=hidden]),textarea,select,a[href],[role=button],[role=checkbox],[role=tab],[contenteditable=true],output,[role=status]';
 function blockedByModal(element){const doc=element.ownerDocument,modal=[...doc.querySelectorAll('dialog:modal,[role=dialog][aria-modal=true]')].filter(e=>e.getClientRects().length&&getComputedStyle(e).visibility!=='hidden').at(-1);return !!element.closest('[inert]')||!!modal&&!modal.contains(element);}
@@ -36,6 +37,30 @@ export class WebsiteBrowser {
     if(this.closed){await this.browser.close();throw Error('Website browser was stopped.');}
     this.context=await this.browser.newContext({viewport:scope.viewport==='mobile'?{width:390,height:844}:{width:1280,height:800},acceptDownloads:false,serviceWorkers:'block',...(storageState?{storageState}:{})});
     this.context.setDefaultTimeout(8000);this.context.setDefaultNavigationTimeout(15000);
+    this.teachingQueue=Promise.resolve();this.teachingEpoch=0;
+    await this.context.exposeBinding('__moraTeachingEvent',(source,payload)=>{
+      const session=this.teaching;if(!session||!this.manual||source.page!==this.page||payload?.token!==session.token||!allowedNavigation(this.scope,source.frame.url()))return;
+      if(session.received++>=100){if(!session.overflow){session.overflow=true;this.teachingQueue=this.teachingQueue.then(async()=>{if(this.teaching===session&&!this.closed)await session.onEvent({error:'Recording input-event limit reached; this demonstration is incomplete. Record a shorter workflow or paste longer text.'});}).catch(()=>{});}return this.teachingQueue;}
+      this.teachingQueue=this.teachingQueue.then(async()=>{
+        if(this.teaching!==session||this.closed)return;
+        try{
+          if(payload.action==='cancel'){await session.onEvent({cancelled:true});return;}
+          if(!['pick','click','type','select','press'].includes(payload.action)||typeof payload.selector!=='string'||payload.selector.length>512)throw Error('Invalid recording event.');
+          // A navigation may already have replaced the DOM. Click snapshots contain
+          // no input values and remain untrusted proposals requiring user review.
+          if(['click','press'].includes(payload.action)){const event=sanitizeTeachingEvent({action:payload.action,url:payload.url,control:payload.control,value:payload.action==='press'?payload.value:''},this.scope);if(this.teaching===session)await session.onEvent(event);return;}
+          const matches=await source.frame.locator('css='+payload.selector).elementHandles();
+          try{
+            if(matches.length!==1)throw Error('A recorded control changed before it could be verified. Record that action again.');
+            const element=matches[0],control={...await element.evaluate(describe),frameUrl:source.frame.url()};
+            const value=payload.action==='type'?control.value:payload.action==='select'?await element.evaluate(e=>e.selectedOptions[0]?.label||''):payload.action==='press'?payload.value:'';
+            const event=sanitizeTeachingEvent({action:payload.action,url:source.page.url(),control,value},this.scope);
+            if(this.teaching===session)await session.onEvent(event);
+          }finally{for(const element of matches)await element.dispose().catch(()=>{});}
+        }catch(error){if(this.teaching===session)await session.onEvent({error:redactText(error.message)});}
+      }).catch(()=>{});
+      return this.teachingQueue;
+    });
     await this.context.route('**/*',async route=>{
       const request=route.request(),url=request.url();
       const allowed=request.isNavigationRequest()?allowedNavigation(this.scope,url):allowedResource(this.scope,url);
@@ -55,12 +80,27 @@ export class WebsiteBrowser {
       if(!this.scanning)this.page=page;
       page.on('dialog',dialog=>dialog.dismiss().catch(()=>{}));
       page.on('download',download=>download.cancel().catch(()=>{}));
+      page.on('framenavigated',frame=>this.enableTeaching(frame).catch(()=>{}));
       page.on('close',()=>{if(this.page===page){this.page=this.context.pages().at(-1);if(!this.page&&!this.closed)this.onClose();}});
     });
     this.browser.on('disconnected',()=>{if(!this.closed)this.onClose();});
     this.page=await this.context.newPage();await this.page.goto(scope.entryUrl,{waitUntil:'domcontentloaded'});
   }
   grant(fingerprint){this.policy.grants.push(fingerprint);}
+  async enableTeaching(frame){
+    const session=this.teaching;if(!session||this.closed||!this.manual||!allowedNavigation(this.scope,frame.url()))return;
+    await frame.waitForLoadState('domcontentloaded');if(this.teaching!==session)return;
+    await frame.evaluate(installWebsiteTeaching,{mode:session.mode,token:session.token,epoch:session.epoch});
+  }
+  async beginTeaching(mode,onEvent){
+    if(!['pick','record'].includes(mode)||this.closed||!this.manual)throw Error('Take over the website before selecting or recording.');
+    await this.stopTeaching();this.teaching={mode,onEvent,token:randomUUID(),epoch:++this.teachingEpoch,received:0};
+    await Promise.all(this.page.frames().map(frame=>this.enableTeaching(frame)));await this.page.bringToFront();
+  }
+  async stopTeaching({drain=false}={}){
+    if(drain)await this.teachingQueue;this.teaching=null;const epoch=++this.teachingEpoch;
+    await Promise.all((this.context?.pages()||[]).flatMap(page=>page.frames().map(frame=>frame.evaluate(installWebsiteTeaching,{mode:'off',epoch}).catch(()=>{}))));
+  }
   invalidate(){this.observation=null;this.policy.version++;this.policy.grants=[];}
   async observe() {
     if(this.closed||!this.page)throw Error('Open a website browser first.');
@@ -153,5 +193,5 @@ export class WebsiteBrowser {
     if(this.inFlight){await this.close();return;}
     await this.page?.bringToFront();
   }
-  async close(){if(this.closed)return;this.closed=true;this.manual=true;this.invalidate();await this.browser?.close();}
+  async close(){if(this.closed)return;this.closed=true;this.manual=true;this.teaching=null;this.invalidate();await this.browser?.close();}
 }

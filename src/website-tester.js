@@ -21,14 +21,15 @@ export class WebsiteReports {
   valid(report){return report?.kind==='website'&&report.schemaVersion===1&&!('project' in report)&&!('revision' in report)&&!('solver' in report)&&Array.isArray(report.steps)&&Array.isArray(report.findings)&&Array.isArray(report.gaps)&&report.scope&&normalizeWebsiteScope(report.scope);}
   async save(report) {
     if(!this.valid(report))throw Error('Invalid website report; project data is not accepted.');
-    const filename=this.filename(report.id),data=JSON.stringify(report);if(data.length>4*1024*1024)throw Error('Website report reached its size limit.');
+    const filename=this.filename(report.id),data=JSON.stringify(report);if(Buffer.byteLength(data,'utf8')>4*1024*1024)throw Error('Website report reached its size limit.');
     const operation=(this.writes.get(filename)||Promise.resolve()).catch(()=>{}).then(async()=>{await mkdir(this.directory,{recursive:true});for(const target of [filename.replace('.json','.backup.json'),filename]){const temp=`${target}.${randomUUID()}.tmp`;try{await writeFile(temp,data,{flag:'wx',flush:true});await rename(temp,target);}finally{await rm(temp,{force:true});}}});
     this.writes.set(filename,operation);try{await operation;}finally{if(this.writes.get(filename)===operation)this.writes.delete(filename);}
   }
   async load(id) {
     const file=this.filename(id);
     for(const filename of [file,file.replace('.json','.backup.json')])try{if((await stat(filename)).size>4*1024*1024)continue;const report=JSON.parse(await readFile(filename,'utf8'));if(report.id!==id||!this.valid(report))continue;
-      if(['running','awaiting permission','opening','manual'].includes(report.status)){report.status='paused';report.message='Interrupted session. Review uncertain actions before starting a fresh check.';for(const step of report.steps)if(step.status==='pending')step.status='uncertain';for(const c of report.cases||[]){if(['running','queued'].includes(c.status)){c.status='not tested';c.reason='Interrupted before the case finished. Start a fresh check.';}for(const execution of c.executions||[])for(const step of execution.steps||[])if(step.status==='pending')step.status='uncertain';}delete report.pending;}
+      if(['running','awaiting permission','opening','manual'].includes(report.status)){report.status='paused';report.message='Interrupted session. Review uncertain actions before starting a fresh check.';for(const step of report.steps)if(step.status==='pending'){step.status='uncertain';step.result={status:'uncertain',reason:'Interrupted before the outcome was verified.'};}for(const c of report.cases||[]){if(['running','queued'].includes(c.status)){c.status='not tested';c.reason='Interrupted before the case finished. Start a fresh check.';}for(const execution of c.executions||[])for(const step of execution.steps||[])if(step.status==='pending'){step.status='uncertain';step.result={status:'uncertain',reason:'Interrupted before the outcome was verified.'};}}delete report.pending;}
+      if(['recording','selecting'].includes(report.teaching?.status)){report.teaching.status='cancelled';report.teaching.errors||=[];report.teaching.errors.push('Recording was interrupted. Record this workflow again.');}
       return report;
     }catch{}
     throw Error('Website report and backup could not be read. Files were preserved.');

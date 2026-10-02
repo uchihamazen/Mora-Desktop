@@ -23,6 +23,7 @@ import {TesterNative,createWebsiteObserver} from './tester-native.js';
 import {WebsiteReports,parseWebsiteTesterCommand} from './website-tester.js';
 import {WebsiteBrowser} from './website-browser.js';
 import {WebsiteRun,websiteDecisionSchema} from './website-run.js';
+import {buildWebsiteExport,evidenceName} from './website-report.js';
 import {TesterSolver} from './tester-solver.js';
 import {checkStitch,configureStitch,readStitchSettings,stitchStatus} from './stitch.js';
 
@@ -35,7 +36,7 @@ let projectRunner, desktopBrowser, drainCompletion, projectOperation=false, proj
 let testerReports,testerRun,testerCompletion,testerEpoch=0;
 let websiteReports,websiteRun,websiteCommandBusy=false;
 async function websiteCommand(action,payload={}) {
-  if(!['open','start','steer','stop','takeover','approve','list','load','evidence','save-login','forget-login'].includes(action))throw Error('This website action is unavailable. Website testing cannot repair source.');
+  if(!['open','start','steer','focus','teach','finish-teaching','use-teaching','reopen','export','stop','takeover','approve','list','load','evidence','save-login','forget-login'].includes(action))throw Error('This website action is unavailable. Website testing cannot repair source.');
   if(action==='stop'){await websiteRun?.stop();return state.website;}
   if(action==='takeover'){await websiteRun?.pause();return state.website;}
   if(action==='approve'){await websiteRun?.approve(payload.id,payload.allow);return state.website;}
@@ -47,7 +48,20 @@ async function websiteCommand(action,payload={}) {
   try {
     if(action==='load'){if(state.websiteActive)throw Error('Close the website browser before opening a saved report.');state.website=await websiteReports.load(payload.id);publish();return state.website;}
     if(action==='open')return await websiteRun.open(payload);
-    if(action==='start'||action==='steer'){if(state.connection!=='ready')throw Error('Connect to Muse before starting website checks.');state.queuePaused=true;return action==='steer'?await websiteRun.steer(payload.request):await websiteRun.start(payload.request,payload.options);}
+    if(action==='reopen')return await websiteRun.reopen(payload.id);
+    if(action==='teach')return await websiteRun.beginTeaching(payload.mode);
+    if(action==='finish-teaching')return await websiteRun.finishTeaching();
+    if(action==='use-teaching')return await websiteRun.useTeaching(payload.expected);
+    if(['start','steer','focus'].includes(action)){if(state.connection!=='ready')throw Error('Connect to Muse before starting website checks.');state.queuePaused=true;if(action==='focus')return await websiteRun.focusFeature(payload.id);return action==='steer'?await websiteRun.steer(payload.request,payload.options,payload.scope):await websiteRun.start(payload.request,payload.options);}
+    if(action==='export'){
+      if(!['html','json'].includes(payload.format))throw Error('Choose HTML or JSON export format.');
+      if(state.websiteActive&&['opening','running','awaiting permission'].includes(state.website?.status))throw Error('Take over or stop before exporting this report.');
+      const report=state.websiteActive&&websiteRun.report?.id===payload.id?structuredClone(websiteRun.report):await websiteReports.load(payload.id),evidence={};
+      if(payload.includeEvidence===true){let size=0;const names=new Set([...(report.steps||[]).map(s=>s.result?.screenshot?.name),...(report.accessibility||[]).map(s=>s.screenshot?.name)].filter(evidenceName));for(const name of names){const data=await websiteReports.evidence(report.id,name);if((size+=data.length)>32*1024*1024)throw Error('Evidence exceeds the export limit. Export without images.');evidence[name]=data;}}
+      const content=buildWebsiteExport(report,{format:payload.format,evidence});
+      const chosen=await dialog.showSaveDialog(window,{title:'Export website test report',defaultPath:`website-test-${report.id}.${payload.format}`,filters:[{name:payload.format==='html'?'HTML report':'JSON report',extensions:[payload.format]}]});
+      if(chosen.canceled||!chosen.filePath)return {cancelled:true};await writeFile(chosen.filePath,content,{encoding:'utf8',flush:true});return {saved:true,name:path.basename(chosen.filePath)};
+    }
     if(action==='save-login')return await websiteRun.saveLogin();
     if(action==='forget-login'){if(!state.website)throw Error('Choose a website session first.');await websiteReports.forgetLogin(state.website.scope);return state.website;}
   }finally{websiteCommandBusy=false;}

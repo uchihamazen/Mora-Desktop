@@ -40,7 +40,7 @@ export function validateWebsiteCase(candidate,{observation,scope,request,stateId
 }
 export function addWebsiteCases(report,candidates,context) {
   report.cases||=[];let added=0;
-  for(const candidate of candidates.slice(0,8)){if(report.cases.length>=80)break;const record=validateWebsiteCase(candidate,context);if(!report.cases.some(c=>c.fingerprint===record.fingerprint)){report.cases.push(record);added++;}}
+  for(const candidate of candidates.slice(0,8)){if(report.cases.length>=80)break;const record=validateWebsiteCase(candidate,context);if(!report.cases.some(c=>c.fingerprint===record.fingerprint&&c.status!=='not tested')){report.cases.push(record);added++;}}
   return added;
 }
 export function nextWebsiteCase(cases,{normalOnly=false}={}) {

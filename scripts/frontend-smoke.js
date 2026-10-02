@@ -8,13 +8,13 @@ const {chromium}=require('./runtime-packages.cjs').runtimeRequire('playwright');
 const png='iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+ip1sAAAAASUVORK5CYII=';
 const server=createServer(async(req,res)=>{
   const file={'/':'index.html','/style.css':'style.css','/renderer.js':'renderer.js','/markdown.js':'markdown.js','/project-ui.js':'project-ui.js','/work-ui.js':'work-ui.js','/images.js':'images.js','/projects.js':'projects.js','/browser-ui.js':'browser-ui.js','/assets/mora-mark.svg':'assets/mora-mark.svg'}[req.url];
-  if(['/tester-ui.js','/website-ui.js'].includes(req.url)){res.setHeader('Content-Type','application/javascript');res.end(await readFile('src'+req.url));return;}
+  if(['/tester-ui.js','/website-ui.js','/website-coverage.js'].includes(req.url)){res.setHeader('Content-Type','application/javascript');res.end(await readFile('src'+req.url));return;}
   if(!file){res.writeHead(404).end();return;}
   res.setHeader('Content-Type',file.endsWith('.svg')?'image/svg+xml':file.endsWith('.css')?'text/css':file.endsWith('.js')?'application/javascript':'text/html');
   res.end(await readFile(path.join('src',file)));
 });
 await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
-const browser=await chromium.launch({channel:'msedge',headless:true});
+const browser=await chromium.launch({...(process.argv[2]?{executablePath:path.resolve(process.argv[2])}:{channel:'msedge'}),headless:true});
 try{
  const page=await browser.newPage({viewport:{width:1200,height:820}});
  await page.addInitScript(({png})=>{
@@ -257,6 +257,15 @@ try{
  await page.evaluate(()=>window.smoke.emit({website:{id:'site1',scope:{entryUrl:'https://example.com'},status:'awaiting permission',steps:[],findings:[],gaps:[],cases:[{title:'Search timing',family:'timing',status:'queued'}],discovery:{states:[{title:'Search',url:'https://example.com'}],features:[],transitions:[],relations:[]},pending:{id:'case1',kind:'case',title:'Search timing',reason:'Review this exact case',steps:[{action:'type',targetLabel:'Search',value:'Tea'},{action:'assert',check:'textValue',expected:'Tea'}]}}}));
  assert.match(await page.locator('.website-permission').innerText(),/Tea/);await page.getByRole('button',{name:'Allow this case',exact:true}).click();assert.equal(await page.evaluate(()=>window.smoke.websiteCalls.at(-1).payload.id),'case1');
  await page.getByRole('button',{name:'Update testing focus',exact:true}).click();assert.equal(await page.evaluate(()=>window.smoke.websiteCalls.at(-1).action),'steer');
- await page.getByRole('button',{name:'Stop and close browser',exact:true}).click();assert.equal(await page.evaluate(()=>window.smoke.websiteCalls.at(-1).action),'stop');await page.keyboard.press('Escape');
+ await page.getByText('Website scope and limits',{exact:true}).click();await page.getByLabel('Exclude paths',{exact:true}).fill('/private');await page.getByRole('button',{name:'Update testing focus',exact:true}).click();assert.equal(await page.evaluate(()=>window.smoke.websiteCalls.at(-1).payload.scope.excludePaths),'/private');
+ await page.evaluate(()=>window.smoke.emit({websiteActive:true,website:{id:'site1',scope:{entryUrl:'https://example.com'},request:'Search finds matching results',status:'manual',steps:[],findings:[],gaps:[],discovery:{states:[],features:[{id:'feature1',key:'k1',name:'Search',url:'https://example.com'}],transitions:[],relations:[]}}}));
+ await page.getByText('Choose a discovered feature',{exact:true}).click();await page.getByRole('button',{name:'Focus on Search',exact:true}).click();assert.deepEqual(await page.evaluate(()=>window.smoke.websiteCalls.at(-1)),{action:'focus',payload:{id:'feature1'}});
+ await page.getByText('Select a control or demonstrate a workflow',{exact:true}).click();await page.getByRole('button',{name:'Record workflow',exact:true}).click();assert.deepEqual(await page.evaluate(()=>window.smoke.websiteCalls.at(-1)),{action:'teach',payload:{mode:'record'}});
+ await page.evaluate(()=>window.smoke.emit({website:{id:'site1',scope:{entryUrl:'https://example.com'},status:'manual',steps:[],findings:[],gaps:[],teaching:{mode:'record',status:'recording',steps:[{action:'type',targetLabel:'Search',value:'<b>Tea</b>'}],errors:[]}}}));
+ assert.equal(await page.locator('[aria-label="Recorded workflow"] b').count(),0);assert.equal(await page.getByRole('button',{name:'Start checking',exact:true}).isDisabled(),true);await page.getByRole('button',{name:'Finish recording',exact:true}).click();assert.equal(await page.evaluate(()=>window.smoke.websiteCalls.at(-1).action),'finish-teaching');
+ await page.evaluate(()=>window.smoke.emit({website:{id:'site1',scope:{entryUrl:'https://example.com'},status:'manual',steps:[],findings:[],gaps:[],teaching:{mode:'record',status:'review',steps:[{action:'type',targetLabel:'Search',value:'Tea'}],errors:[]}}}));
+ await page.getByLabel('Demonstrated workflow expected outcome',{exact:true}).fill('Search shows Tea');await page.getByRole('button',{name:'Use this workflow',exact:true}).click();assert.deepEqual(await page.evaluate(()=>window.smoke.websiteCalls.at(-1)),{action:'use-teaching',payload:{expected:'Search shows Tea'}});
+ await page.getByLabel('Include masked screenshots in export',{exact:true}).check();await page.getByRole('button',{name:'Export HTML',exact:true}).click();assert.deepEqual(await page.evaluate(()=>window.smoke.websiteCalls.at(-1)),{action:'export',payload:{id:'site1',format:'html',includeEvidence:true}});
+ await page.getByRole('button',{name:'Stop and close browser',exact:true}).click();assert.equal(await page.evaluate(()=>window.smoke.websiteCalls.at(-1).action),'stop');await page.evaluate(()=>window.smoke.emit({websiteActive:false}));await page.getByRole('button',{name:'Reopen saved report',exact:true}).click();assert.equal(await page.evaluate(()=>window.smoke.websiteCalls.at(-1).action),'reopen');await page.keyboard.press('Escape');
  console.log('PASS deterministic UI: existing chat/project flows and website setup without a project, safe permission rendering, approval and Stop');
 }finally{await browser.close();await new Promise(resolve=>server.close(resolve));}
