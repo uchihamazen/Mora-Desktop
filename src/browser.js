@@ -35,6 +35,21 @@ export class DesktopBrowser {
     window.on('closed',()=>{clearInterval(this.timer);if(!web.isDestroyed())web.close();});
   }
   async initialize(){this.ready ??= this.view.webContents.loadURL('about:blank');await this.ready;}
+  async checkPage(url) {
+    const target=browserURL(url),parsed=new URL(target);
+    if(!['localhost','127.0.0.1','[::1]'].includes(parsed.hostname))return {status:'not checked',message:'Run a local app before checking page loading.'};
+    const web=this.view.webContents,errors=[];
+    const receive=(event,level,message)=>{const detail=event.details || event;if(detail?.level==='error' || detail?.level===3 || level===3)errors.push(String(detail?.message || message || 'Browser error').slice(0,1000));};
+    web.on('console-message',receive);let timer;
+    try {
+      await this.command('open');
+      await Promise.race([this.navigate(target),new Promise((_,reject)=>{timer=setTimeout(()=>reject(new Error('Page load timed out.')),15000);})]);
+      await new Promise(resolve=>setTimeout(resolve,300));
+      if(errors.length || this.state.error || !this.pageReady)throw new Error(errors.slice(0,5).join('\n') || this.state.error || 'Page did not finish loading.');
+      return {status:'passed',message:'Local page loaded without reported console errors. Interaction behavior was not checked.'};
+    }catch(error){return {status:'failed',message:error.message};}
+    finally{clearTimeout(timer);web.off('console-message',receive);}
+  }
   publish() {
     if(this.window.isDestroyed() || this.view.webContents.isDestroyed())return;
     const web=this.view.webContents;
@@ -97,7 +112,28 @@ export class DesktopBrowser {
     if(this.epoch!==epoch || url!==this.view.webContents.getURL() || !stillSelected || stillSelected.html!==selected.html || JSON.stringify(latest.scroll)!==JSON.stringify(snapshot.scroll) || JSON.stringify(latest.viewport)!==JSON.stringify(snapshot.viewport) || JSON.stringify(clipRectangle(stillSelected.rect,latest.viewport.width,latest.viewport.height))!==JSON.stringify(selected.rect))throw new Error('The page changed. Select it again before adding it to chat.');
     const png=Buffer.from(screenshot.data,'base64');if(!png.length || png.length>10*1024*1024)throw new Error('Screenshot is too large. Select a smaller area and try again.');
     await this.cancel();
-    return {mediaType:'image/png',base64Data:png.toString('base64'),name:`Browser: ${selected.title || selected.selector}`,contextText};
+    return {mediaType:'image/png',base64Data:png.toString('base64'),name:`Browser: ${selected.title || selected.selector}`.slice(0,200),contextText,sourceUrl:url,note:''};
+  }
+  async captureComparison() {
+    if(!this.state.open || !this.pageReady || this.state.loading || !/^https?:/.test(this.state.url))throw new Error('Open a loaded preview before capturing.');
+    await this.cancel();await this.layout();
+    const epoch=this.epoch,url=this.view.webContents.getURL();
+    const geometry=await this.script('({width:innerWidth,height:innerHeight,x:scrollX,y:scrollY})');
+    const source={url,device:this.state.deviceMode,...geometry};
+    const screenshot=await this.view.webContents.debugger.sendCommand('Page.captureScreenshot',{format:'png',captureBeyondViewport:false});
+    const latest=await this.script('({width:innerWidth,height:innerHeight,x:scrollX,y:scrollY})');
+    if(epoch!==this.epoch || url!==this.view.webContents.getURL() || JSON.stringify(geometry)!==JSON.stringify(latest))throw new Error('The preview changed during capture. Try again.');
+    const png=Buffer.from(screenshot.data,'base64');if(!png.length || png.length>10*1024*1024)throw new Error('Preview screenshot is too large.');
+    return {mediaType:'image/png',base64Data:screenshot.data,source,capturedAt:new Date().toISOString()};
+  }
+  async compare(action) {
+    if(action==='compare-before') {
+      this.comparisonBefore=await this.captureComparison();this.state.hasComparisonBefore=true;this.publish();return this.state;
+    }
+    if(!this.comparisonBefore)throw new Error('Capture before again to start a comparison.');
+    const after=await this.captureComparison(),before=this.comparisonBefore;
+    if(JSON.stringify(before.source)!==JSON.stringify(after.source))throw new Error('The address, device, viewport or scroll position changed. Capture before again.');
+    return {before,after};
   }
   async command(action,payload={}) {
     switch(action) {
@@ -118,6 +154,7 @@ export class DesktopBrowser {
       case 'annotate':return this.annotate(payload.mode);
       case 'cancel':await this.cancel();break;
       case 'capture':return this.capture(payload.note);
+      case 'compare-before':case 'compare-after':return this.compare(action);
       default:throw new Error('Unknown browser action.');
     }
     return this.state;

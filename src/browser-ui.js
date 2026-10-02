@@ -26,6 +26,8 @@ export function setupBrowser(api,addCapture) {
     $('browser-cancel').disabled=!state.annotating && !state.selection;
     $('browser-selection').textContent=state.selection ? `${state.selection.mode==='region' ? 'Region · ' : ''}${state.selection.selector}` : state.annotating ? 'Select on the page. Escape cancels.' : 'Choose an element or drag a region.';
     $('browser-add').disabled=capturing || !state.selection || state.loading;
+    $('browser-before').disabled=capturing || state.loading || !state.deviceReady || !/^https?:/.test(state.url || '');
+    $('browser-after').disabled=$('browser-before').disabled || !state.hasComparisonBefore;
     $('browser-error').textContent=state.error || '';$('browser-error').hidden=!state.error;
     if(state.open)bounds();
   }
@@ -42,6 +44,20 @@ export function setupBrowser(api,addCapture) {
   $('browser-annotate').addEventListener('click',()=>command('annotate',{mode:'element'}));
   $('browser-region').addEventListener('click',()=>command('annotate',{mode:'region'}));
   $('browser-cancel').addEventListener('click',()=>command('cancel'));
+  $('browser-before').addEventListener('click',()=>command('compare-before'));
+  $('browser-after').addEventListener('click',async()=>{
+    if(capturing)return;capturing=true;$('browser-after').disabled=true;
+    try {
+      const comparison=await api.browserCommand('compare-after'),viewer=document.createElement('dialog');viewer.className='comparison-viewer image-viewer';
+      const heading=document.createElement('h2');heading.textContent='Visual comparison';
+      const note=document.createElement('p');note.textContent='This shows the captured appearance. It does not verify functionality or tests.';
+      const close=document.createElement('button');close.textContent='Close comparison';close.className='image-viewer-close';close.setAttribute('aria-label','Close comparison');close.addEventListener('click',()=>viewer.close());
+      viewer.append(close,heading,note);const grid=document.createElement('div');grid.className='comparison-grid';
+      for(const [label,capture] of [['Before',comparison.before],['After',comparison.after]]){const figure=document.createElement('figure'),caption=document.createElement('figcaption'),image=document.createElement('img');caption.textContent=label+' · '+new Date(capture.capturedAt).toLocaleTimeString()+' · '+capture.source.device+' · '+capture.source.url;image.alt=label+' preview';image.src='data:'+capture.mediaType+';base64,'+capture.base64Data;figure.append(caption,image);grid.append(figure);}viewer.append(grid);
+      viewer.addEventListener('close',()=>{viewer.remove();api.browserCommand('occlude',{hidden:!!document.querySelector('.changes-panel, .image-viewer[open]')}).catch(showError);});
+      document.body.append(viewer);await api.browserCommand('occlude',{hidden:true});viewer.showModal();close.focus();
+    }catch(error){showError(error);}finally{capturing=false;$('browser-after').disabled=!state.hasComparisonBefore;}
+  });
   $('browser-add').addEventListener('click',async()=>{
     if(capturing)return;capturing=true;$('browser-add').disabled=true;
     try {const capture=await api.browserCommand('capture');if(expanded)expand(false);addCapture(capture);$('prompt').focus();}

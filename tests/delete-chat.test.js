@@ -6,6 +6,7 @@ import { readFile } from 'node:fs/promises';
 import { EventEmitter } from 'node:events';
 import { createState, assertIdle, applyEvent } from '../src/state.js';
 import { validateImages } from '../src/images.js';
+import {accountState,AccountLogin} from '../src/account.js';
 
 // Execute the real main-process orchestration with controlled filesystem I/O.
 const source = await readFile(new URL('../src/main.js', import.meta.url), 'utf8');
@@ -20,7 +21,8 @@ function harness(overrides = {}) {
   const writes = [];
   const context = vm.createContext({
     path, Buffer, setTimeout, clearTimeout,
-    ExecRunner: Runner,
+    ExecRunner: Runner, accountState,AccountLogin,
+    Checkpoints:class {async create(){return {id:"checkpoint"};}async seal(){}},
     createState, assertIdle, applyEvent, validateImages,
     applyExecRecord: () => {}, applyNativeRecord: () => {},
     snapshotProject: async () => ({}), compareProject: async () => ({ files: [], added: 0, removed: 0 }),
@@ -34,6 +36,7 @@ function harness(overrides = {}) {
     writeFile: async (_file, text) => { writes.push(text); },
     rename: async () => {},
     saveConversations: async () => {},
+    deleteWork: async () => {},
     rm: async (...args) => { rmCalls.push(args); },
     readHistory: async () => [],
     handle: (name, fn) => { handlers[name] = fn; },

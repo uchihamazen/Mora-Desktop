@@ -40,16 +40,21 @@ Choose your Muse executable, reconnect the engine, and configure your own Google
 
 | Feature | What it does |
 | --- | --- |
-| Chat workspace | Multiline messages, code blocks, image attachments and automatic text direction. |
+| Chat workspace | Saved drafts, safe Markdown headings/lists/tables, copyable code, images and automatic text direction. |
 | Image attachments | Pick or paste PNG, JPEG and WebP images into the main chat. |
+| Muse sign-in | Uses the existing engine login or opens native Meta browser sign-in, with cancellation and clear account status. |
+| Run my app | Starts your configured local app, waits for readiness and opens its preview; supports Stop/Restart. |
+| Test my app | Runs configured checks with actual results, plus local page-load checking and one explicit repair/recheck. |
+| Checkpoints | Saves source before changes; previews selective restore, protects newer edits and retains recovery checkpoints. |
 | Projects & general chat | Group conversations under local project folders, or ask general questions without attaching a project. |
 | Persistent conversations | Restore chats across restarts and upgrades; remove a conversation explicitly from the sidebar. |
 | Live activity | Show current work, public progress messages, actual commands, tool arguments, output and exit codes supplied by Muse. |
 | Live file reviews | Update a changed-file badge and added/removed line counts during edits; open a colored diff preview. |
-| Request queue | Draft and send follow-ups while Muse works; queued messages run in order. |
+| Request queue | Durable follow-ups with images, edit/remove controls and explicit pause/resume; Stop preserves pending work. |
 | Execution controls | Read only for inspection, Full access for project operations, and Stop for the active request. |
 | Integrated browser | Browse websites and local development servers in a Chromium panel with Desktop/Mobile previews and an expanded view. |
-| Design annotations | Select an element or region and attach only its visible screenshot area, along with selected HTML, URL and styles. |
+| Design annotations | Numbered selections with editable notes, source URL and bounded HTML; compare before/after screenshots of the same preview. |
+| Work speed | Quick, Balanced and Thorough use supported efforts on your selected model; explicit effort controls stay available. |
 | Google Stitch MCP | Connect, test and disconnect your own Stitch account; use design tools through Muse's native MCP integration. |
 | Image previews | Display supported Stitch image links in chat, enlarge them, or copy the original link. |
 | Windows integration | Per-user Setup, Start/Search shortcut, single-instance activation and minutes/seconds activity timing. |
@@ -72,8 +77,11 @@ are labelled rather than presented as a complete review.
 
 A reply can appear before the engine finishes its final work. **Reply ready · finishing
 final checks** reflects that state. Follow-up messages wait in the queue until native
-completion. Stop terminates the active engine process tree and discards queued messages;
-file edits already completed remain on disk.
+completion. Stop terminates the active engine process tree and pauses queued messages;
+file edits already completed remain on disk. Pending messages and draft images survive
+restarts. Recovered queues stay paused until Resume, and interrupted admitted requests
+are never sent again automatically. Completion summaries report observable outcomes;
+screenshots and generated replies do not establish that tests passed.
 
 ## Installation
 
@@ -84,8 +92,8 @@ file edits already completed remain on disk.
 | Windows 10/11 x64 | Required | Required for Windows packaging and desktop checks |
 | Muse engine | Installed and signed in on that PC | Required for live engine checks |
 | Git for Windows | Required for full diff previews | Required for repository work and diff tests |
-| Node.js 24+ | Bundled desktop runtime; no separate installation needed | Required on PATH |
-| pnpm 11.19.0 | Not required | Required on PATH |
+| Node.js 24+ | Required on PATH for Run/Test; desktop UI runtime is bundled | Required on PATH |
+| Package manager | npm, pnpm or yarn on PATH as declared by your project | pnpm 11.19.0 on PATH |
 | Stitch account/key | Only for Stitch features | Only for live Stitch features |
 
 Engine compatibility has been tested with Muse Code **1.4.1**. The engine and access
@@ -93,14 +101,14 @@ to its provider must be obtained separately; this repository does not bundle the
 
 ### Install a release
 
-1. Install Muse and sign in on your Windows account.
+1. Install Muse Code on your Windows account. Sign in with Muse or use Mora’s browser sign-in.
 2. Open [Releases](https://github.com/uchihamazen/Muse-Desktop/releases) and, when an
    installer is published, download `Mora-Desktop-Setup-<version>-x64.exe`.
 3. Run Setup and choose an installation folder. Installation is for the current user
    and creates **Mora Desktop** in Start/Windows Search.
 4. Open the app. It discovers Muse under `%LOCALAPPDATA%\Programs\muse`; for another
    location, select **Engine settings → Choose Muse executable**.
-5. Start a general conversation, or use **Add project** to choose a local folder.
+5. Use **New project** for a starter app, **Open/Add project** for an existing folder, or start a general conversation.
 
 Setup installs the complete Electron package beside the EXE. Keep those resources
 together. The current package is unsigned; a trusted signing certificate is not
@@ -108,6 +116,16 @@ included, and antivirus acceptance is not guaranteed. Setup does not change Wind
 security settings. Upgrades and uninstall preserve the local chat profile.
 
 ## Using the app
+
+### Build, run, check and restore
+
+1. Create or open a project. The starter runs without additional packages; existing projects need their dependencies installed.
+2. Choose **Full access** when you want Muse to edit files. A complete source checkpoint is saved before each request.
+3. Select **Run my app** to see the local app in the preview. Use browser annotations to describe changes.
+4. Select **Test my app** for configured checks and page loading. Expand **Show results** for outputs. Interactions still need suitable project tests.
+5. Select **Fix failures** for one Muse repair and one recheck, or stop the app and open **Checkpoints → Review restore** to select files to undo.
+
+Run/Test currently support Node projects with package.json scripts and Node/package manager on PATH. Checkpoints exclude secrets, generated files and oversized/linked source; they preserve Git history and unrelated later edits. They are source recovery, rather than whole-project backups.
 
 ### Chat and projects
 
@@ -119,7 +137,8 @@ security settings. Upgrades and uninstall preserve the local chat profile.
   edits and commands under your Windows account's permissions.
 - Hover a conversation's delete control: the first click arms it, the second deletes
   the conversation and its native history. There is no built-in undo.
-- The queue accepts up to 10 pending messages and is not retained after quitting.
+- The queue retains up to 10 pending messages, including images. Edit or remove a
+  pending message, pause/resume the queue, or clear it separately from Stop.
 
 ### Browser annotations
 
@@ -128,7 +147,12 @@ security settings. Upgrades and uninstall preserve the local chat profile.
 3. Use **Annotate element** to click an element, or **Select region** to drag an area.
 4. Click **Add to chat**. Muse receives a cropped screenshot of the visible selection
    with bounded HTML, URL and computed styles.
-5. Write your design question in the main composer and send it.
+5. Add an editable note to the numbered selection card, select more areas if needed,
+   and write your overall request in the main composer.
+
+Use **Capture before**, make a change, then **Compare after** to compare the same
+page, device, viewport and scroll position. Both images show their capture times.
+This is a visual comparison; it does not verify functionality or tests.
 
 Desktop fits a minimum **1280px CSS viewport**; Mobile previews a **390px viewport**.
 Mobile changes responsive width, without emulating a phone's hardware, touch or user agent.
@@ -162,7 +186,7 @@ or image-generation service bundled in the desktop app.
 | Frontend | JavaScript ES modules, HTML5, CSS | Chat UI, responsive layout, activity cards, file reviews and image viewers. |
 | Engine integration | Muse CLI, JSON Lines and JSON-RPC | `exec --json --session-id` runs turns; native logs restore context; `serve` discovers models. |
 | Design integration | MCP over Streamable HTTP | Google Stitch tools configured through the native engine settings. |
-| Local persistence | JSON files and Muse JSONL logs | Atomic preferences/conversation indexes, backups and per-conversation review data. |
+| Local persistence | JSON files and Muse JSONL logs | Atomic conversation indexes, separate draft/queue work files, backups and per-conversation reviews. |
 | File review | Git CLI and Node filesystem watchers | Baseline comparisons, ignore-aware discovery and live diff updates. |
 | Tests | Node.js test runner and Playwright **1.62.1** | Deterministic unit/lifecycle checks and browser/Electron smoke checks. |
 | Package management | pnpm **11.19.0** | Pinned dependencies and frozen-lockfile installs. |
@@ -192,7 +216,9 @@ pnpm run build
 
 Output: `artifacts/release/Mora-Desktop-Setup-<version>-x64.exe`.
 The build includes the desktop runtime and license notices. Output is staged outside
-the local installed `dist` package.
+the local installed `dist` package. `powershell -File scripts/source-archive.ps1` creates
+a clean versioned source ZIP and SHA-256 checksum from reviewed public files. It
+refuses to overwrite an existing archive; inspect file membership before uploading.
 
 For an unpacked development build:
 
@@ -254,9 +280,14 @@ pnpm test
 node scripts/frontend-smoke.js
 node scripts/browser-smoke.js
 node scripts/ui-smoke.js
+node scripts/work-smoke.js
+node scripts/journey-smoke.js
+node scripts/performance-smoke.js
 ```
 
-Frontend smoke uses Microsoft Edge; desktop smoke checks use temporary profiles.
+Frontend/performance smoke uses Microsoft Edge; desktop smoke checks use temporary profiles.
+Pass a staged EXE path to desktop smoke scripts to check the packaged application.
+Performance reports measure local fixtures, rather than provider response speed.
 Live engine checks require a signed-in Muse installation. Adding `--send` to supported
 smoke scripts uses the provider account. Reports and screenshots stay in ignored `artifacts`.
 

@@ -1,5 +1,5 @@
 export function createState() {
-  return { items: [], busy: false, finishing: false, activity: '', activeTurnId: null, stopping: false, error: '', pendingApprovals: [], pendingQuestions: [], needsRecovery: false, pendingQueue: [], historyMissing: false };
+  return { items: [], busy: false, finishing: false, activity: '', activeTurnId: null, stopping: false, error: '', pendingApprovals: [], pendingQuestions: [], needsRecovery: false, pendingQueue: [], queuePaused: false, draft: {text:'',images:[]}, activeRequest: null, lastOutcome: null, workUnavailable: false, historyMissing: false };
 }
 
 export function assertIdle(state) {

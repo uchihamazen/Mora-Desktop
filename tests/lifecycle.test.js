@@ -9,6 +9,8 @@ import { validateImages } from '../src/images.js';
 import { snapshotProject, compareProject } from '../src/changes.js';
 import * as changesApi from '../src/changes.js';
 import { projectPathFor, groupConversations } from '../src/projects.js';
+import {effortForPreset} from '../src/speed.js';
+import {accountState,AccountLogin} from '../src/account.js';
 import { mkdtemp, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 
@@ -26,13 +28,15 @@ function harness(overrides = {}) {
   }
   const handlers = {};
   const context = vm.createContext({
-    path, Buffer, setTimeout, clearTimeout, ExecRunner: Runner,
-    createState, assertIdle, applyEvent, validateImages, projectPathFor, groupConversations, applyExecRecord: () => {},
+    path, Buffer, setTimeout, clearTimeout, ExecRunner: Runner,accountState,AccountLogin,
+    Checkpoints:class {async create(){return {id:"checkpoint"};}async seal(){}},
+    createState, assertIdle, applyEvent, validateImages, projectPathFor, groupConversations, effortForPreset, applyExecRecord: () => {},
     uuid7: () => 'session', app: { getPath: () => 'C:/temp' },
     mkdir: async () => {}, stat: async () => ({isDirectory:()=>true}),
     mkdtemp: async () => 'C:/temp/muse-desktop-input-test',
     writeFile: async () => {}, rename: async () => {}, rm: async () => {},
     saveConversations: async () => {},
+    saveWork: async () => {}, loadWork: async () => ({draft:{text:'',images:[]},pendingQueue:[],queuePaused:false,activeRequest:null,lastOutcome:null}), deleteWork: async () => {}, validateDraft: value => value,
     readHistory: async () => [], handle: (name, fn) => { handlers[name] = fn; },
     readCachedHistory: async () => [],
     snapshotProject: async () => ({}), compareProject: async () => ({ files: [], added: 0, removed: 0 }),
@@ -43,7 +47,7 @@ function harness(overrides = {}) {
   const body = source.slice(source.indexOf('const directory ='), source.indexOf('\nfunction handle('))
     .replace(/^const directory =[^\n]+/, 'const directory = "C:/Projects/example/src";');
   vm.runInContext(body + '\n' + source.split('\n').find(line => line.includes("handle('stop',")) +
-    '\nglobalThis.subject = {state, runner, sendMessage, resumeChat, newChat, save, connect};', context);
+    '\nglobalThis.subject = {state, runner, sendMessage, resumeChat, newChat, save, connect, queueCommand, saveDraft, projectCommand, checkpointCommand, setProjectRunner:value=>{projectRunner=value;}};', context);
   const subject = context.subject;
   subject.state.connection = 'ready';
   subject.state.sessionId = 'session';
@@ -52,6 +56,44 @@ function harness(overrides = {}) {
   return { ...subject, stop: handlers.stop };
 }
 const tick = () => new Promise(resolve => setImmediate(resolve));
+
+test('concurrent reconnects share discovery and reconcile fallback reasoning effort', async () => {
+  let attempts = 0, release;
+  const gate = new Promise(resolve => { release = resolve; });
+  const subject = harness({
+    discoverMuse: async () => 'C:/engine.exe',
+    MspClient: class {
+      async connect() { attempts++; await gate; return {serverInfo:{version:'fixture'}}; }
+      async request() { return {models:[{modelId:'replacement',isDefault:true,variants:['minimal','high'],defaultReasoningEffort:'high'}]}; }
+      async close() {}
+    },
+  });
+  subject.state.modelId = 'removed-model'; subject.state.reasoningEffort = 'max';
+  const first = subject.connect(), second = subject.connect();
+  await tick(); release(); await Promise.all([first, second]);
+  assert.equal(attempts, 1);
+  assert.equal(subject.state.modelId, 'replacement');
+  assert.equal(subject.state.reasoningEffort, 'high');
+});
+
+test('invalid model discovery is recoverable without replacing the saved model', async () => {
+  let catalog = {models:[]};
+  const subject = harness({
+    discoverMuse: async () => 'C:/engine.exe',
+    MspClient: class {
+      async connect() { return {serverInfo:{version:'fixture'}}; }
+      async request() { return catalog; }
+      async close() {}
+    },
+  });
+  await subject.connect();
+  assert.equal(subject.state.connection, 'disconnected');
+  assert.match(subject.state.error, /model catalog/i);
+  catalog = {models:[{modelId:'recovered',variants:['low'],defaultReasoningEffort:'invalid'}]};
+  await subject.connect();
+  assert.equal(subject.state.connection, 'ready');
+  assert.equal(subject.state.reasoningEffort, 'low');
+});
 
 test('file edits update one live review before the engine finishes and stop watching afterwards', async () => {
   assert.equal(typeof changesApi.watchProjectChanges, 'function');
@@ -269,6 +311,7 @@ test('historyLoadingBlocksAnotherChatAndSendingUntilComplete', async () => {
   const first = subject.resumeChat('A');
   const second = assert.rejects(subject.resumeChat('B'), /loading|opening/i);
   const sending = assert.rejects(subject.sendMessage({ text: 'Which project?' }), /loading|opening/i);
+  await tick();
   release([{ itemId: 'A', text: 'A history' }]);
   await Promise.all([first, second, sending]);
   assert.equal(subject.state.sessionId, 'A');
@@ -364,14 +407,15 @@ test('sameTickSendsKeepFifoOrder', async () => {
   assert.deepEqual(subject.state.pendingQueue.map(e => e.text), ['A', 'B']);
 });
 
-test('stopDuringDrainClearsRest', async () => {
+test('stopDuringDrainPreservesAndPausesRest', async () => {
   const { subject, release, prompts, runs } = queueSubject();
   subject.sendMessage({ text: 'gated' }); await tick();
   await subject.sendMessage({ text: 'q1' }); await subject.sendMessage({ text: 'q2' });
   await subject.stop(); release({ code: 1, stopped: true }); await waitForIdle(subject);
   assert.equal(runs(), 1);
   assert.deepEqual(prompts, ['gated']);
-  assert.equal(subject.state.pendingQueue.length, 0);
+  assert.equal(subject.state.pendingQueue.length, 2);
+  assert.equal(subject.state.queuePaused, true);
   assert.equal(subject.state.busy, false);
 });
 
@@ -382,7 +426,8 @@ test('enqueueDuringStoppingLeavesNoOrphans', async () => {
   assert.equal((await subject.sendMessage({ text: 'late' })).queued, true);
   await stopping; release({ code: 1, stopped: true }); await waitForIdle(subject);
   assert.deepEqual(prompts, ['gated']);
-  assert.equal(subject.state.pendingQueue.length, 0);
+  assert.equal(subject.state.pendingQueue.length, 1);
+  assert.equal(subject.state.queuePaused, true);
   assert.equal(subject.state.busy, false);
 });
 
@@ -408,15 +453,48 @@ test('disconnectedSendWhileBusyRejected', async () => {
   await assert.rejects(subject.sendMessage({ text: 'q' }), /Connect/);
 });
 
-test('failedTurnStillDrainsNext', async () => {
+test('failedTurnPausesNextWithoutDiscardingIt', async () => {
   const { subject, release, runs } = queueSubject();
   subject.sendMessage({ text: 'bad' }); await tick();
   await subject.sendMessage({ text: 'good' });
   release({ code: 1 }); await waitForIdle(subject);
-  assert.equal(runs(), 2);
+  assert.equal(runs(), 1);
   assert.match(subject.state.error, /exited \(1\)/);
   assert.equal(subject.state.busy, false);
-  assert.equal(subject.state.pendingQueue.length, 0);
+  assert.equal(subject.state.pendingQueue.length, 1);
+  assert.equal(subject.state.queuePaused, true);
+});
+
+test('a recovered queue stays paused after a fresh send and resumes only explicitly', async () => {
+  const {subject,release,prompts} = queueSubject();
+  subject.state.pendingQueue = [{queueId:'q',text:'Recovered',images:[]}]; subject.state.queuePaused = true;
+  await subject.sendMessage({text:'Fresh'}); release(); await waitForIdle(subject);
+  assert.deepEqual(prompts,['Fresh']); assert.equal(subject.state.pendingQueue.length,1);
+  await subject.queueCommand('resume'); await waitForIdle(subject);
+  assert.deepEqual(prompts,['Fresh','Recovered']);
+});
+
+test('a queue save failure rejects admission and leaves the draft available', async () => {
+  const subject = harness({saveWork:async()=>{throw new Error('Disk full');}});
+  subject.state.draft = {text:'Keep me',images:[]};
+  await assert.rejects(subject.sendMessage({text:'Keep me'}),/Disk full/);
+  assert.equal(subject.runner.spawned,0); assert.equal(subject.state.draft.text,'Keep me');
+});
+
+test('an admitted receipt protects missing native history even if the index write was interrupted', async()=>{
+  const subject=harness({readHistory:async()=>{throw Object.assign(new Error('Missing'),{code:'ENOENT'});},loadWork:async()=>({draft:{text:'',images:[]},pendingQueue:[],queuePaused:true,activeRequest:{phase:'admitted',text:'Already accepted',images:[],turnId:'old'}})});
+  subject.state.sessions[0].hasMessages=false;
+  await subject.resumeChat('session');
+  assert.equal(subject.state.historyMissing,true);
+  await assert.rejects(subject.sendMessage({text:'Continue'}),/original engine log/);
+});
+
+test('a failed queue removal preserves the instruction and pauses execution', async()=>{
+  const subject=harness({saveWork:async()=>{throw new Error('Disk full');}});
+  subject.state.pendingQueue=[{queueId:'q',text:'Keep this',images:[]}];
+  await assert.rejects(subject.queueCommand('remove',{queueId:'q'}),/Disk full/);
+  assert.equal(subject.state.pendingQueue[0].text,'Keep this');
+  assert.equal(subject.state.queuePaused,true);
 });
 
 test('finishingPhaseSendQueues', async () => {
@@ -432,4 +510,28 @@ test('queuedImagesReachExecutedTurn', async () => {
   await subject.sendMessage({ text: '', images: [{ mediaType: 'image/png', base64Data: ONE_PX_PNG }] });
   release(); await waitForIdle(subject);
   assert.deepEqual(imageBytes(), Buffer.from(ONE_PX_PNG, 'base64'));
+});
+
+test('a failed checkpoint blocks Full access before an engine can mutate files',async()=>{
+ const h=harness({Checkpoints:class {async create(){throw new Error('Checkpoint storage unavailable');}}});h.state.executionMode='full';
+ await assert.rejects(h.sendMessage({text:'Edit this file'}),/Checkpoint storage/);await tick();assert.equal(h.runner.spawned,0);assert.equal(h.state.queuePaused,true);
+});
+
+test('Fix failures sends exactly one repair, rechecks once and preserves paused follow-ups',async()=>{
+ const h=harness();h.state.executionMode='full';h.state.pendingQueue=[{queueId:'later',text:'Keep this follow-up',images:[]}];
+ let count=0;const work={root:h.state.projectPath,run:{status:'stopped'},tests:{status:'failed',results:[{script:'test',status:'failed',message:'Counter fails',output:'expected 1'}],preview:{message:'not checked'}}};
+ h.setProjectRunner({state:work,test:async()=>{count++;work.tests.status='failed';}});
+ await h.projectCommand('fix');assert.equal(h.runner.spawned,1);assert.equal(count,1);assert.equal(h.state.pendingQueue.length,1);assert.equal(h.state.queuePaused,true);assert.equal(h.state.projectRepair,false);
+});
+test('Fix failures requires Full access and a failed test result',async()=>{
+ const h=harness();h.setProjectRunner({state:{root:h.state.projectPath,tests:{status:'passed'}}});
+ await assert.rejects(h.projectCommand('fix'),/Full access/);h.state.executionMode='full';await assert.rejects(h.projectCommand('fix'),/failures/);assert.equal(h.runner.spawned,0);
+});
+
+test('pending checkpoint restore reserves project work until success or failure',async()=>{
+ for(const fail of [false,true]){let release;const gate=new Promise(r=>release=r),h=harness({Checkpoints:class{async restore(){await gate;if(fail)throw Error('restore failed');return {restored:1};}}});
+ h.setProjectRunner({state:{run:{status:'stopped'}},active:false});const pending=h.checkpointCommand('restore',{});await tick();
+ for(const attempt of [()=>h.sendMessage({text:'Edit'}),()=>h.projectCommand('run'),()=>h.queueCommand('resume'),()=>h.newChat('C:/another'),()=>h.checkpointCommand('restore',{})])await assert.rejects(attempt(),/project|Stop|Wait/i);
+ release();if(fail)await assert.rejects(pending,/restore failed/);else await pending;assert.equal(h.state.projectOperation,false);
+ }
 });

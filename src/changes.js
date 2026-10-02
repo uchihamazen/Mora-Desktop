@@ -20,9 +20,9 @@ async function git(args, settings = {}) {
   return exec(await gitCommand, args, { ...options, ...settings });
 }
 
-export async function snapshotProject(workspace) {
+export async function snapshotProject(workspace, {previous,dirtyPaths,filter,refuseLinks=false} = {}) {
   const files = new Map(), skipped = new Set();
-  let names, partial = false, bytes = 0, excluded = [], gitVisible = false;
+  let names, partial = false, bytes = 0, excluded = [], gitVisible = false, readCount = 0;
   try {
     const { stdout } = await git(['-C', workspace, 'ls-files', '--cached', '--others', '--exclude-standard', '-z']);
     names = stdout.split('\0').filter(Boolean);
@@ -34,12 +34,14 @@ export async function snapshotProject(workspace) {
       for (const entry of await readdir(path.join(workspace, folder), { withFileTypes: true })) {
         if (names.length >= 5000) { partial = true; return; }
         const name = path.join(folder, entry.name);
+        if (filter && !filter(name.replaceAll('\\', '/'))) continue;
         if (entry.isDirectory() && !ignored.has(entry.name)) await walk(name);
-        else if (entry.isFile()) names.push(name);
+        else if (entry.isFile() || (refuseLinks && entry.isSymbolicLink())) names.push(name);
       }
     }
     try { await walk(); } catch { partial = true; }
   }
+  if (filter) names = names.filter(name=>filter(name.replaceAll('\\', '/')));
   if (names.length > 5000) partial = true;
   const sorted = [...new Set(names)].sort();
   for (const name of sorted.slice(5000)) skipped.add(name.replaceAll('\\', '/'));
@@ -50,18 +52,21 @@ export async function snapshotProject(workspace) {
     if (relative.startsWith('..') || path.isAbsolute(relative)) continue;
     try {
       const info = await lstat(filename);
+      if (refuseLinks && info.isSymbolicLink()) { skipped.add(name); partial = true; continue; }
       if (!info.isFile()) continue; // Do not follow symlinks outside the project.
       if (info.size > 2 * 1024 * 1024 || bytes + info.size > 32 * 1024 * 1024) { skipped.add(name); partial = true; continue; }
-      const content = await readFile(filename);
+      const reusable = previous && !previous.partial && dirtyPaths && ![...dirtyPaths].some(changed=>name===changed || name.startsWith(`${changed}/`)) && previous.files.has(name);
+      const content = reusable ? previous.files.get(name) : await readFile(filename);
+      if(!reusable)readCount++;
       bytes += content.length;
       files.set(name, content);
     } catch (error) { if (error.code !== 'ENOENT') { skipped.add(name); partial = true; } }
   }
-  return { files, skipped, partial, excluded, gitVisible };
+  return { files, skipped, partial, excluded, gitVisible, readCount };
 }
 
-export async function compareProject(workspace, before) {
-  const after = await snapshotProject(workspace);
+export async function compareProject(workspace, before, {after,cache} = {}) {
+  after ||= await snapshotProject(workspace);
   const result = { files: [], added: 0, removed: 0, partial: before.partial || after.partial };
   const temp = await mkdtemp(path.join(tmpdir(), 'muse-diff-'));
   try {
@@ -75,6 +80,8 @@ export async function compareProject(workspace, before) {
         catch (error) { if (error.code !== 'ENOENT') { result.partial = true; continue; } }
       }
       if (left && right && left.equals(right)) continue;
+      const retained=cache?.get(name);
+      if(retained && retained.left===left && retained.right===right){result.files.push(retained.item);result.added+=retained.item.added;result.removed+=retained.item.removed;continue;}
       const item = { path: name, status: !left ? 'added' : !right ? 'deleted' : 'modified', added: 0, removed: 0, patch: '' };
       if (left?.includes(0) || right?.includes(0)) { item.binary = true; item.patch = 'Binary file changed.'; }
       else {
@@ -90,6 +97,7 @@ export async function compareProject(workspace, before) {
         item.patch = patch.length > 8000 ? `${patch.slice(0, 8000)}\n… Preview truncated.` : patch;
         item.truncated = patch.length > 8000;
       }
+      cache?.set(name,{left,right,item});
       result.files.push(item); result.added += item.added; result.removed += item.removed;
     }
     return result;
@@ -101,6 +109,7 @@ export async function compareProject(workspace, before) {
 
 export function watchProjectChanges(workspace, before, onUpdate) {
   let timer, running, dirty = false, closed = false, watcher;
+  let previous=before, fullScan=false;const dirtyPaths=new Set(),cache=new Map();
   const schedule = () => {
     if (closed) return;
     dirty = true; clearTimeout(timer);
@@ -109,7 +118,11 @@ export function watchProjectChanges(workspace, before, onUpdate) {
   async function scan() {
     if (closed || running) return;
     dirty = false;
-    running = compareProject(workspace, before).then(changes => { if (!closed) onUpdate(changes); }).catch(() => {
+    const paths=new Set(dirtyPaths),forceFull=fullScan;dirtyPaths.clear();fullScan=false;
+    running = snapshotProject(workspace,forceFull?{}:{previous,dirtyPaths:paths}).then(async after=>{
+      const changes=await compareProject(workspace,before,{after,cache});previous=after;if(!closed)onUpdate(changes);
+    }).catch(() => {
+      fullScan=true;
       // A transient write/read race must not interrupt the engine; final review retries.
     }).finally(() => { running = null; if (dirty && !closed) schedule(); });
     await running;
@@ -117,13 +130,14 @@ export function watchProjectChanges(workspace, before, onUpdate) {
   try {
     watcher = watch(workspace, { recursive: true }, (_event, filename) => {
       const name = String(filename || '').replaceAll('\\', '/');
+      if(!name || name.split('/').at(-1)==='.gitignore' || name==='.git/info/exclude'){fullScan=true;schedule();return;}
       if (name.split('/').includes('.git')) return;
       if (before.excluded.some(excluded => name === excluded || (excluded.endsWith('/') && name.startsWith(excluded)))) return;
       // Git decides visibility in repositories; ordinary folders skip generated directories.
       if (!before.gitVisible && name.split('/').some(part => ignored.has(part))) return;
-      schedule();
+      dirtyPaths.add(name);schedule();
     });
-    watcher.on('error', () => { watcher.close(); });
+    watcher.on('error', () => { fullScan=true;watcher.close();schedule(); });
   } catch { /* Unsupported/unavailable watchers still get the final authoritative review. */ }
   return { async close() { closed = true; clearTimeout(timer); watcher?.close(); await running; } };
 }

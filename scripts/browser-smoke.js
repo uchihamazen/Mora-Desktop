@@ -84,6 +84,8 @@ try {
   await page.locator('#browser-add').click();
   const context=await page.locator('.attachment-context').textContent();
   assert.match(context,/Updated heading before capture/);assert.doesNotMatch(context,/private-form-value|onclick|<script/);
+  await page.getByRole('textbox',{name:'Note for selection 1'}).fill('Make this card blue');
+  assert.equal(await page.locator('.annotation-source').textContent(),url+'/');
   if(!realSend) await app.evaluate(({ipcMain})=>{
     globalThis.browserSmokePayload=null;
     ipcMain.removeHandler('muse:send');
@@ -101,9 +103,10 @@ try {
     assert.match(state.items.filter(item=>item.kind==='agentMessage').map(item=>item.text).join('\n'),/BROWSER_OK/);
     const user=state.items.find(item=>item.kind==='userMessage');sent={text:user.text,images:user.images};
     console.log('PASS real Muse general chat: annotation HTML and PNG accepted, contextual answer returned');
-  }else sent=await app.evaluate(()=>globalThis.browserSmokePayload);
+  }else {await page.waitForFunction(()=>document.querySelector('#prompt').value==='');sent=await app.evaluate(()=>globalThis.browserSmokePayload);}
   assert.match(sent.text,/How can we improve this card\?/);assert.match(sent.text,/#card/);assert.match(sent.text,/Updated heading before capture/);
   assert.equal(sent.images[0].mediaType,'image/png');
+  assert.match(sent.text,/Selection 1.*Make this card blue/);
   await writeFile('artifacts/browser-annotation-proof.png',Buffer.from(sent.images[0].base64Data,'base64'));
   await page.locator('#browser-region').click();
   const start=await point(42,42),end=await point(250,180);
@@ -222,6 +225,17 @@ try {
   do{try{recovered=await app.evaluate(({webContents})=>webContents.getAllWebContents().find(web=>web.getURL().startsWith('http:')).executeJavaScript('({bootWidth:window.bootWidth,hasCard:!!document.getElementById("card")})'));}catch{}if(recovered?.hasCard)break;await new Promise(resolve=>setTimeout(resolve,100));}while(Date.now()<recoveryDeadline);
   assert.equal(recovered?.hasCard,true,'Reload must recover a crashed browser without restarting Muse');
   assert.equal(recovered.bootWidth,390,'Reload after a page crash must retain the mobile viewport at boot');
+  await page.locator('#browser-before').click();
+  await page.waitForFunction(()=>document.querySelector('#browser-after')?.disabled===false);
+  await app.evaluate(({webContents})=>webContents.getAllWebContents().find(web=>web.getURL().startsWith('http:')).executeJavaScript('document.getElementById("card").style.background="pink"'));
+  await page.locator('#browser-after').click();
+  await page.locator('.comparison-viewer').waitFor();
+  assert.equal(await page.locator('.comparison-viewer img').count(),2);
+  assert.match(await page.locator('.comparison-viewer').textContent(),/Visual comparison.*does not verify/i);
+  await page.getByRole('button',{name:'Close comparison',exact:true}).click();
+  assert.equal(await page.locator('#browser-mobile').getAttribute('aria-pressed'),'true');
+  await page.locator('#browser-desktop').click();
+  await assert.rejects(page.evaluate(()=>window.muse.browserCommand('compare-after')),/capture before again/i);
   await page.locator('#browser-close').click();
   assert.equal(await page.locator('#browser-panel').isVisible(),false);
   console.log('PASS browser: Desktop/Mobile viewport, cropped element/region PNG and HTML, scrolling, app/page zoom, expansion, isolation and renderer-crash recovery');

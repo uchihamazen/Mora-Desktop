@@ -7,6 +7,22 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { snapshotProject, compareProject, watchProjectChanges, saveChangeSummary, loadChangeSummaries, deleteChangeSummaries } from '../src/changes.js';
 
+test('incremental snapshots read changed paths and final snapshots reconcile missed events', async()=>{
+  const workspace=await mkdtemp(path.join(tmpdir(),'mora-incremental-'));
+  try {
+    for(let i=0;i<20;i++)await writeFile(path.join(workspace,`${i}.txt`),'before\n');
+    const before=await snapshotProject(workspace);
+    await writeFile(path.join(workspace,'3.txt'),'after\n');
+    await writeFile(path.join(workspace,'7.txt'),'missed event\n');
+    const after=await snapshotProject(workspace,{previous:before,dirtyPaths:new Set(['3.txt'])});
+    assert.equal(after.readCount,1);
+    assert.equal(after.files.get('3.txt').toString(),'after\n');
+    assert.equal(after.files.get('7.txt').toString(),'before\n');
+    const final=await compareProject(workspace,before);
+    assert.deepEqual(final.files.map(file=>file.path),['3.txt','7.txt']);
+  }finally{await rm(workspace,{recursive:true,force:true});}
+});
+
 test('live watching follows Git visibility for a new file in a normally generated directory', async () => {
   const workspace = await mkdtemp(path.join(tmpdir(), 'muse-watch-git-'));
   let watcher;

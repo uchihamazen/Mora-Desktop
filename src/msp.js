@@ -35,7 +35,7 @@ export class MspClient extends EventEmitter {
   pending = new Map();
   nextId = 0;
 
-  async connect({ executable, workspace, args = ['serve'], timeoutMs = 20000 }) {
+  async connect({ executable, workspace, args = ['serve'], timeoutMs = 20000, experimentalApi = false }) {
     await this.close();
     this.closing = false;
     this.timeoutMs = timeoutMs;
@@ -60,7 +60,7 @@ export class MspClient extends EventEmitter {
     this.child.stderr.on('data', chunk => this.emit('diagnostic', chunk.toString('utf8')));
     this.connected = true;
     try {
-      const metadata = await this.request('initialize', { clientInfo: { name: 'mora_desktop', title: 'Mora Desktop', version: '0.1.1' }, capabilities: { requestedCapabilities: ['sessionListStream'], userInputDialogs: true } });
+      const metadata = await this.request('initialize', { clientInfo: { name: 'mora_desktop', title: 'Mora Desktop', version: '0.2.0' }, capabilities: { requestedCapabilities: ['sessionListStream'], userInputDialogs: true, ...(experimentalApi ? {experimentalApi:true} : {}) } });
       this.notify('initialized', {});
       return metadata;
     } catch (error) { await this.close(); throw error; }

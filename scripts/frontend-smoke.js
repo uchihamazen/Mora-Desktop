@@ -7,7 +7,7 @@ const require=createRequire(import.meta.url);
 const {chromium}=require('./runtime-packages.cjs').runtimeRequire('playwright');
 const png='iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+ip1sAAAAASUVORK5CYII=';
 const server=createServer(async(req,res)=>{
-  const file={'/':'index.html','/style.css':'style.css','/renderer.js':'renderer.js','/images.js':'images.js','/projects.js':'projects.js','/browser-ui.js':'browser-ui.js','/assets/mora-mark.svg':'assets/mora-mark.svg'}[req.url];
+  const file={'/':'index.html','/style.css':'style.css','/renderer.js':'renderer.js','/markdown.js':'markdown.js','/project-ui.js':'project-ui.js','/work-ui.js':'work-ui.js','/images.js':'images.js','/projects.js':'projects.js','/browser-ui.js':'browser-ui.js','/assets/mora-mark.svg':'assets/mora-mark.svg'}[req.url];
   if(!file){res.writeHead(404).end();return;}
   res.setHeader('Content-Type',file.endsWith('.svg')?'image/svg+xml':file.endsWith('.css')?'text/css':file.endsWith('.js')?'application/javascript':'text/html');
   res.end(await readFile(path.join('src',file)));
@@ -18,8 +18,8 @@ try{
  const page=await browser.newPage({viewport:{width:1200,height:820}});
  await page.addInitScript(({png})=>{
   let state={items:[],sessions:[],models:[{modelId:'muse-test',displayLabel:'Muse test',variants:['minimal','max']}],modelId:'muse-test',reasoningEffort:'max',executionMode:'readonly',workspace:'C:\\Test',connection:'ready',engineVersion:'fixture',busy:false,pendingQueue:[]};
-  let callback;window.smoke={sent:[],copied:'',deleted:[],created:[],emit:next=>{state={...state,...next};callback?.({type:'state',state});}};
-  window.muse={getState:async()=>state,onEvent:cb=>{callback=cb;return()=>{}},copyText:async text=>{window.smoke.copied=text},setOptions:async options=>{state={...state,...options};return state},pickImages:async()=>[{mediaType:'image/png',base64Data:png,name:'image.png'}],newChat:async projectPath=>{window.smoke.created.push(projectPath);return state},resumeChat:async()=>state,deleteChat:async id=>{window.smoke.deleted.push(id);return state},chooseWorkspace:async()=>state,chooseMuse:async()=>state,connect:async()=>state,stopTurn:async()=>window.smoke.emit({busy:false,stopping:false,pendingQueue:[]}),sendMessage:async value=>{window.smoke.sent.push(value);return{accepted:true}}};
+  let callback;window.smoke={projectActions:[],restores:[],accountActions:[],projectsCreated:[],stopCalls:0,failDraft:false,sent:[],copied:'',deleted:[],created:[],emit:next=>{state={...state,...next};callback?.({type:'state',state});}};
+  window.muse={projectCommand:async action=>{window.smoke.projectActions.push(action);},checkpointCommand:async(action,payload)=>{if(action==='list')return [{id:'cp1',label:'Before request',fileCount:1,createdAt:new Date().toISOString(),manual:false}];if(action==='preview')return {token:'token',checkpoint:{label:'Before request',manual:false},changes:[{path:'app.js',status:'restore original',conflict:true}]};if(action==='restore'){window.smoke.restores.push(payload);return {restored:1};}},chooseProjectParent:async()=> 'C:\\Projects',createProject:async payload=>{window.smoke.projectsCreated.push(payload);return state;},accountCommand:async action=>{window.smoke.accountActions.push(action);window.smoke.emit({account:action==='login'?{status:'pending',message:'Approve the code',userCode:'DEMO-CODE'}:{status:'required',message:'Sign in required'}});},getState:async()=>state,onEvent:cb=>{callback=cb;return()=>{}},copyText:async text=>{window.smoke.copied=text},setOptions:async options=>{state={...state,...options};return state},pickImages:async()=>[{mediaType:'image/png',base64Data:png,name:'image.png'}],newChat:async projectPath=>{window.smoke.created.push(projectPath);return state},resumeChat:async()=>state,deleteChat:async id=>{window.smoke.deleted.push(id);return state},chooseWorkspace:async()=>state,chooseMuse:async()=>state,connect:async()=>state,stopTurn:async()=>{window.smoke.stopCalls++;window.smoke.emit({busy:false,stopping:false,queuePaused:true});},sendMessage:async value=>{window.smoke.sent.push(value);return{accepted:true}},saveDraft:async value=>{if(window.smoke.failDraft)throw new Error('Disk save failed');window.smoke.draft=value;},queueCommand:async action=>{if(action==='clear')window.smoke.emit({pendingQueue:[]});return state;}};
  },{png});
  await page.goto(`http://127.0.0.1:${server.address().port}`);
  assert.equal(await page.title(),'Mora Desktop');
@@ -123,6 +123,8 @@ try{
  assert.equal(await page.locator('.queue-badge').textContent(),'Queued');
  assert.equal(await page.locator('#send-button').isVisible(),true);
  await page.locator('#stop-button').click();
+ assert.equal(await page.locator('.queue-badge').count(),1);
+ await page.getByRole('button',{name:'Clear queue',exact:true}).click();
  await page.waitForFunction(()=>document.querySelectorAll('.queue-badge').length===0);
  await page.evaluate(()=>window.smoke.emit({busy:true,finishing:false}));
  await page.locator('#stop-button').click();
@@ -172,5 +174,57 @@ try{
  await page.evaluate(()=>{window.smoke.restoreClock();window.smoke.emit({busy:false});});
  await mkdir('artifacts',{recursive:true});
  await page.screenshot({path:'artifacts/mora-desktop-tools.png'});
- console.log('PASS deterministic UI: chat, images, activity, lifecycle, hover delete icon, change badge, colored diff panel, safe literal code, close');
+
+ await page.evaluate(({png})=>{
+   window.smoke.emit({busy:false,pendingQueue:[],items:[{itemId:'stable',kind:'userMessage',text:'Keep this row',images:[{mediaType:'image/png',base64Data:png}]},{itemId:'stream',kind:'agentMessage',status:'inProgress',text:'Start'},{itemId:'lazy',kind:'toolCall',status:'completed',visibleOutput:'Large output'.repeat(10000)}]});
+   window.smoke.nodes={user:document.querySelector('.message.user'),image:document.querySelector('.message.user img'),sidebar:document.querySelector('.session-row'),tool:document.querySelector('.tool-card')};
+ },{png});
+ assert.equal(await page.locator('.tool-card pre').count(),0);
+ await page.evaluate(()=>window.smoke.emit({items:[{itemId:'stable',kind:'userMessage',text:'Keep this row',images:[{mediaType:'image/png',base64Data:document.querySelector('.message.user img').src.split(',')[1]}]},{itemId:'stream',kind:'agentMessage',status:'inProgress',text:'# Result\n\n- First\n- Second\n\n| File | Status |\n| --- | --- |\n| app.js | Pass |'},{itemId:'lazy',kind:'toolCall',status:'completed',visibleOutput:'Large output'.repeat(10000)}]}));
+ assert.equal(await page.evaluate(()=>window.smoke.nodes.user===document.querySelector('.message.user') && window.smoke.nodes.image===document.querySelector('.message.user img') && window.smoke.nodes.sidebar===document.querySelector('.session-row') && window.smoke.nodes.tool===document.querySelector('.tool-card')),true);
+ assert.equal(await page.locator('.message-body h1').textContent(),'Result');
+ assert.equal(await page.locator('.message-body li').count(),2);
+ assert.equal(await page.locator('.message-body table td').count(),2);
+ await page.locator('.tool-card summary').click();assert.match(await page.locator('.tool-card pre').textContent(),/Large output/);
+ await page.locator('#prompt').fill('Saved draft');
+ await page.waitForFunction(()=>window.smoke.draft?.text==='Saved draft');
+ await page.evaluate(()=>window.smoke.emit({sessionId:'other-chat',draft:{text:'Another draft',images:[]}}));
+ assert.equal(await page.locator('#prompt').inputValue(),'Another draft');
+ const regressions=[];
+ await page.evaluate(async()=>{window.smoke.emit({sessionId:'slow-chat',loading:true,draft:{text:'',images:[]}});await window.flushMoraDraft();});
+ if(await page.evaluate(()=>window.smoke.draft.sessionId)!=='other-chat')regressions.push('Loading chat must not save the old composer under the new chat');
+ await page.evaluate(()=>window.smoke.emit({loading:false,draft:{text:'Saved after slow history load',images:[]}}));
+ if(await page.locator('#prompt').inputValue()!=='Saved after slow history load')regressions.push('Slow history loading must restore the saved draft');
+ await page.evaluate(()=>{window.smoke.failDraft=true;window.smoke.emit({busy:true});});
+ const stopped=await page.evaluate(()=>window.smoke.stopCalls);
+ await page.locator('#stop-button').click();
+ await page.waitForFunction(count=>window.smoke.stopCalls>count,stopped,{timeout:2000}).catch(()=>regressions.push('Stop must reach the engine when saving the draft fails'));
+ await page.evaluate(()=>{window.smoke.failDraft=false;window.smoke.emit({busy:false,error:''});});
+ await page.locator('#attach-button').click();
+ await page.waitForFunction(()=>window.smoke.draft?.images.length===1,null,{timeout:2000}).catch(()=>regressions.push('Adding an image must autosave without typing'));
+ await page.getByRole('button',{name:'Remove image',exact:true}).click();
+ await page.waitForFunction(()=>window.smoke.draft?.images.length===0,null,{timeout:2000}).catch(()=>regressions.push('Removing an image must autosave without typing'));
+ assert.deepEqual(regressions,[]);
+ await page.evaluate(()=>window.smoke.emit({account:{status:'required',message:'Sign in to Muse'}}));
+ assert.equal(await page.locator('#send-button').isDisabled(),true);
+ await page.locator('#settings-button').click();await page.locator('#sign-in').click();
+ await page.waitForFunction(()=>document.querySelector('#login-code').textContent==='DEMO-CODE');
+ assert.equal(await page.locator('#sign-in').isVisible(),false);
+ await page.locator('#cancel-sign-in').click();
+ await page.waitForFunction(()=>document.querySelector('#login-code').hidden);
+ await page.locator('#create-project').click();
+ await page.getByRole('textbox',{name:'Project name',exact:true}).fill('First app');
+ await page.getByRole('button',{name:'Choose parent folder',exact:true}).click();
+ await page.getByRole('button',{name:'Create project',exact:true}).click();
+ await page.waitForFunction(()=>window.smoke.projectsCreated.length===1);
+ assert.equal(await page.evaluate(()=>window.smoke.projectsCreated[0].name),'First app');
+ await page.evaluate(()=>window.smoke.emit({projectPath:'C:\\Projects\\First app',projectWork:{root:'C:\\Projects\\First app',run:{status:'ready',url:'http://localhost:3000'},tests:{status:'failed',message:'Tests failed',results:[{script:'test',status:'failed',output:'failure'}]}},executionMode:'readonly'}));
+ await page.locator('#run-project').waitFor({state:'hidden'});assert.equal(await page.locator('#fix-tests').isDisabled(),true);
+ await page.locator('#stop-project').click();assert.equal(await page.evaluate(()=>window.smoke.projectActions.at(-1)),'stop');
+ await page.evaluate(()=>window.smoke.emit({projectWork:{root:'C:\\Projects\\First app',run:{status:'stopped'},tests:{status:'not checked'}}}));
+ await page.locator('#checkpoints').click();await page.getByRole('button',{name:'Review restore'}).click();
+ assert.equal(await page.locator('.checkpoint-dialog input[type=checkbox]').first().isChecked(),false);
+ await page.locator('.checkpoint-dialog input[type=checkbox]').first().check();await page.locator('.checkpoint-dialog input[type=checkbox]').last().check();await page.getByRole('button',{name:'Restore selected files'}).click();
+ await page.waitForFunction(()=>window.smoke.restores.length===1);assert.equal(await page.evaluate(()=>window.smoke.restores[0].allowConflicts),true);await page.getByRole('button',{name:'Close',exact:true}).click();
+ console.log('PASS deterministic UI: stable streamed rows, lazy output, safe Markdown/images, durable drafts/attachments, Stop on save failure, queue and changes');
 }finally{await browser.close();await new Promise(resolve=>server.close(resolve));}

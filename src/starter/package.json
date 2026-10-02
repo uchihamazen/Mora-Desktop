@@ -1,0 +1,12 @@
+{
+  "name": "mora-starter",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node server.js",
+    "check": "node --check src/app.js",
+    "build": "node build.js",
+    "test": "node --test tests/*.test.js"
+  },
+  "engines": {"node": ">=24"}
+}

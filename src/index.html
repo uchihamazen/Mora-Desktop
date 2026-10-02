@@ -23,6 +23,7 @@
   <aside class="sidebar">
     <div class="brand"><img class="brand-mark" src="assets/mora-mark.svg" alt="Mora"><div><strong>Mora</strong><span class="brand-caption">DESKTOP</span></div><span class="local-tag">LOCAL</span></div>
     <button id="new-chat" class="new-chat"><svg><use href="#i-plus"/></svg>New conversation<span class="shortcut">Ctrl N</span></button>
+    <button id="create-project" class="project-start">New project</button>
     <nav class="conversation-library" aria-label="Conversations">
       <div class="section-label">GENERAL CHATS</div>
       <div id="general-sessions"></div>
@@ -32,7 +33,7 @@
     <div class="sidebar-bottom">
       <div class="engine-card"><span id="connection-dot" class="connection-dot"></span><div><strong id="engine-label">Connecting to Muse</strong><small id="engine-detail">Your engine, your projects</small></div></div>
       <button id="settings-button" class="settings-button"><svg><use href="#i-settings"/></svg>Engine settings</button>
-      <div id="settings-panel" hidden><p>Uses your installed Muse and existing login.</p><small>Mora Desktop is an independent interface for Muse Code, not affiliated with or endorsed by Meta.</small><button id="choose-muse">Choose Muse executable</button><button id="reconnect">Reconnect</button><small>This Muse version supports Read only and Full access. Per-action approvals are available in the Muse terminal.</small><section id="stitch-settings"><strong>Google Stitch · MCP</strong><p id="stitch-status" role="status">Checking connection…</p><label for="stitch-key">Stitch API key</label><input id="stitch-key" type="password" autocomplete="off" spellcheck="false" placeholder="Paste your Stitch key" maxlength="512"><div class="stitch-buttons"><button id="stitch-connect">Connect</button><button id="stitch-test" disabled>Test</button><button id="stitch-disconnect" disabled>Disconnect</button><button id="stitch-open">Open Stitch</button></div><small>Profile → Stitch settings → API key. Stored in your local Muse settings; available in Desktop and PowerShell on the next request.</small></section></div>
+      <div id="settings-panel" hidden><section id="account-settings"><strong>Muse account</strong><p id="account-status" role="status">Checking sign-in…</p><output id="login-code" hidden></output><button id="sign-in">Sign in to Muse</button><button id="cancel-sign-in" hidden>Cancel sign-in</button><button id="refresh-account">Refresh account</button><button id="install-muse" hidden>Get Muse Code</button></section><p>Uses your installed Muse and existing login.</p><small>Mora Desktop is an independent interface for Muse Code, not affiliated with or endorsed by Meta.</small><button id="choose-muse">Choose Muse executable</button><button id="reconnect">Reconnect</button><small>This Muse version supports Read only and Full access. Per-action approvals are available in the Muse terminal.</small><section id="stitch-settings"><strong>Google Stitch · MCP</strong><p id="stitch-status" role="status">Checking connection…</p><label for="stitch-key">Stitch API key</label><input id="stitch-key" type="password" autocomplete="off" spellcheck="false" placeholder="Paste your Stitch key" maxlength="512"><div class="stitch-buttons"><button id="stitch-connect">Connect</button><button id="stitch-test" disabled>Test</button><button id="stitch-disconnect" disabled>Disconnect</button><button id="stitch-open">Open Stitch</button></div><small>Profile → Stitch settings → API key. Stored in your local Muse settings; available in Desktop and PowerShell on the next request.</small></section></div>
     </div>
   </aside>
   <main>
@@ -41,12 +42,16 @@
       <div class="header-right"><button id="browser-button" class="browser-toggle" title="Open browser and annotate a page">Browser</button><span id="workspace-label" class="header-label">PROJECT WORKSPACE</span><span id="connection-badge" class="connection-badge">Connecting</span></div>
     </header>
     <div id="error-banner" role="alert" hidden><span id="error-text"></span><button id="dismiss-error" aria-label="Dismiss message">×</button></div>
+    <div id="onboarding" class="project-toolbar" hidden><span id="onboarding-status"></span><button id="onboarding-action">Sign in to Muse</button></div>
+    <div id="project-toolbar" class="project-toolbar" hidden><button id="run-project">Run my app</button><button id="restart-project" hidden>Restart</button><button id="stop-project" hidden>Stop app</button><button id="test-project">Test my app</button><button id="stop-tests" hidden>Stop tests</button><button id="fix-tests" hidden>Fix failures</button><button id="checkpoints">Checkpoints</button><button id="project-output" aria-expanded="false">Show results</button><span id="project-work-status" role="status"></span></div>
+    <section id="project-results" class="project-results" aria-label="Run and Test results" hidden></section>
     <div id="scroll-area" class="scroll-area">
       <section id="welcome" class="welcome">
         <img class="welcome-emblem" src="assets/mora-mark.svg" alt="Mora">
         <div class="eyebrow">A LITTLE LESS FRICTION. A LOT MORE BUILDING.</div>
         <h1>What would you like<br>to <span>make happen?</span></h1>
         <p>Bring your ideas, code, and screenshots.<br>Mora brings your next step into focus.</p>
+        <div class="welcome-project-actions"><button id="welcome-project">Create a project</button><button id="open-project">Open a project</button></div>
         <div class="suggestions">
           <button id="explore-suggestion" data-prompt="Explore this project and explain its structure. Do not modify anything."><svg><use href="#i-folder"/></svg><strong>Explore my project</strong><small>Get the lay of the land</small><span>↗</span></button>
           <button id="explain-suggestion" data-prompt="Inspect this project for a concrete bug. Explain what you find before making changes."><svg><use href="#i-terminal"/></svg><strong>Find a bug</strong><small>Make the next fix clearer</small><span>↗</span></button>
@@ -57,11 +62,12 @@
       <div id="working" class="working" hidden><span class="working-dot"></span><span id="working-label">Muse is working on it</span><span id="elapsed"></span></div>
     </div>
     <div class="composer-area">
+      <div id="queue-controls" class="queue-controls" hidden><span id="queue-status"></span><button id="queue-toggle">Pause queue</button><button id="queue-clear">Clear queue</button></div>
       <div class="composer" id="composer">
         <div id="attachments" class="attachments" hidden></div>
         <textarea id="prompt" dir="auto" rows="2" placeholder="Ask Muse to build, fix, or explain…" aria-label="Message Muse"></textarea>
         <div class="composer-toolbar">
-          <div class="composer-left"><button id="attach-button" class="icon-button" title="Attach images" aria-label="Attach images"><svg><use href="#i-plus"/></svg></button><span class="toolbar-divider"></span><select id="model" aria-label="Model"></select><select id="effort" aria-label="Reasoning effort"></select></div>
+          <div class="composer-left"><button id="attach-button" class="icon-button" title="Attach images" aria-label="Attach images"><svg><use href="#i-plus"/></svg></button><span class="toolbar-divider"></span><select id="model" aria-label="Model"></select><select id="speed" aria-label="Work speed"><option value="custom">Custom</option><option value="quick">Quick</option><option value="balanced">Balanced</option><option value="thorough">Thorough</option></select><select id="effort" aria-label="Reasoning effort"></select></div>
           <div class="composer-right"><select id="execution-mode" aria-label="Execution mode" title="Read only inspects files. Full access can change files and run commands."><option value="readonly">Read only</option><option value="full">Full access · YOLO</option></select><button id="send-button" class="send-button" aria-label="Send message" title="Send message"><svg><use href="#i-up"/></svg></button><button id="stop-button" class="stop-button" aria-label="Stop request" title="Stop request" hidden><span></span></button></div>
         </div>
       </div>
@@ -73,6 +79,7 @@
     <form id="browser-address" class="browser-address"><button id="browser-back" type="button" title="Back" aria-label="Back">←</button><button id="browser-forward" type="button" title="Forward" aria-label="Forward">→</button><button id="browser-reload" type="button" title="Reload" aria-label="Reload">↻</button><input id="browser-url" type="text" placeholder="https://… or localhost:3000" aria-label="Browser address"><button type="submit">Go</button></form>
     <div class="browser-tools"><div class="browser-devices" role="group" aria-label="Preview device"><button id="browser-desktop" aria-pressed="true">Desktop</button><button id="browser-mobile" aria-pressed="false">Mobile</button></div><span id="browser-size" class="browser-size">1280px</span><button id="browser-annotate" title="Click a page element to annotate it">Annotate element</button><button id="browser-region" title="Drag a rectangle over the page">Select region</button><button id="browser-cancel">Cancel selection</button></div>
     <p id="browser-error" class="browser-error" role="alert" hidden></p>
+    <div class="browser-compare"><button id="browser-before">Capture before</button><button id="browser-after" disabled>Compare after</button><small>Compare the same page and device.</small></div>
     <div id="browser-viewport" class="browser-viewport"><span>Enter a page address above, including your local project server.</span></div>
     <footer class="browser-annotation"><div id="browser-selection">Choose an element or drag a region.</div><button id="browser-add" disabled>Add to chat</button><small>Attaches a screenshot of your selection and its HTML. Write your request in chat.</small></footer>
   </aside>
