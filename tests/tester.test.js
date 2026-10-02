@@ -101,3 +101,23 @@ test('a source change during execution invalidates the finished report',async()=
   const run=new controller.TesterRun({store,revision:async()=> ++reads===1?'r1':'r2',makeModel:()=>({initialize:async()=>{},decide:async()=>({action:'finish'}),close:async()=>{}}),makeBrowser:()=>({open:async()=>{},snapshot:async()=>({}),close:async()=>{}})});
   await run.start(report);assert.equal(report.status,'stale');
 });
+
+test('interrupted reproduction resumes its original assertion without asking the model to invent a new case',async()=>{
+ const root=await mkdtemp(path.join(tmpdir(),'mora-replay-test-')),store=new api.TesterReports(root),report=await store.create({project:root,url:'http://localhost:3456',request:'Adding changes count to 1',revision:'r1'});
+ const action={action:'assert',check:'text',expected:'1',present:true};report.status='reproducing';report.cases=[{id:'CASE-001',title:'Count',expected:'1',status:'suspected',steps:[{action,result:{passed:false}}]}];await store.save(report);let replays=0;
+ const run=new controller.TesterRun({store,revision:async()=> 'r1',makeModel:()=>({initialize:async()=>{},assessExpected:async()=>({supported:true,basis:'Adding changes count to 1'}),decide:async()=>({action:'finish'}),close:async()=>{}}),makeBrowser:()=>({open:async()=>{},reset:async()=>{},snapshot:async()=>({}),perform:async actual=>{assert.deepEqual(actual,action);replays++;return {passed:false};},close:async()=>{}})});
+ const loaded=await store.load(report.id);await run.start(loaded);assert.equal(replays,1);assert.equal(loaded.issues.length,1);assert.equal(loaded.cases[0].steps[0].action.expected,'1');
+});
+
+test('a reproducible assertion with an unsupported expectation never becomes solver eligible',async()=>{
+ const root=await mkdtemp(path.join(tmpdir(),'mora-ground-test-')),store=new api.TesterReports(root),report=await store.create({project:root,url:'http://localhost:3456',request:'Search existing products',revision:'r1'});
+ report.cases=[{id:'CASE-001',title:'Search pen',expected:'Pen exists',status:'suspected',steps:[{action:{action:'assert',check:'text',expected:'Pen'},result:{passed:false}}]}];
+ const run=new controller.TesterRun({store,revision:async()=> 'r1',makeModel:()=>({initialize:async()=>{},assessExpected:async()=>({supported:false,basis:'No requirement or setup says a Pen exists'}),decide:async()=>({action:'finish'}),close:async()=>{}}),makeBrowser:()=>({open:async()=>{},reset:async()=>{},snapshot:async()=>({}),perform:async()=>({passed:false}),close:async()=>{}})});
+ await run.start(report);assert.equal(report.cases[0].status,'unsupported expectation');assert.equal(report.issues.length,0);assert.match(report.cases[0].grounding.basis,/No requirement/);
+});
+
+test('saved repair results become historical when restored source no longer matches their verified revision',async()=>{
+ assert.equal(typeof api.reportForRevision,'function');const report={status:'completed',revision:'before',cases:[],issues:[{id:'BUG-001',status:'fixed'}],solver:{status:'verified',revision:'after'}};
+ const historical=api.reportForRevision(report,'before');assert.equal(historical.status,'stale');assert.equal(historical.issues[0].status,'fixed');assert.equal(report.status,'completed');
+ assert.equal(api.reportForRevision(report,'after').status,'completed');
+});

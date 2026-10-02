@@ -105,6 +105,20 @@ try {
  const exited=once(app.process(),'exit');await promisify(execFile)('powershell.exe',['-NoProfile','-Command',`(Get-Process -Id ${app.process().pid}).CloseMainWindow()`],{windowsHide:true});await exited;await app.close();app=null;
  await assert.rejects(fetch(url));page=await launch();await untilState(page,s=>s.projectPath!==null);
  assert.ok((await page.evaluate(()=>window.muse.checkpointCommand('list'))).some(item=>item.id===checkpoint.id));assert.equal((await page.evaluate(()=>window.muse.getState())).projectWork.run.status,'stopped');
- const report={version:JSON.parse(await readFile('package.json','utf8')).version,packaged,legacyProfile:legacy,realMuseEdit:send,account:account.status,starter:true,run:true,counterInteraction:true,annotation:true,checks:work.tests.results.map(({script,status,code})=>({script,status,code})),pageLoad:work.tests.preview.status,pageLoadFailure:true,unrelatedDirtyWorkPreserved:true,checkpointRestore:true,restart:true,ownedProcessCleanup:true};
+ let tester;
+ if(process.argv.includes('--tester')){
+  const counter=path.join(root,'src','app.js');await writeFile(counter,(await readFile(counter,'utf8')).replace('return value+1;','return value;'));
+  await page.evaluate(()=>window.muse.setOptions({executionMode:'full'}));await page.evaluate(()=>window.muse.projectCommand('run'));await untilState(page,s=>s.projectWork.run.status==='ready');
+  await page.evaluate(()=>window.muse.testerCommand('start',{request:'Test exactly ONE short case: the Add one button must increase the visible counter from 0 to 1 after one click. Assert this result. Do not retry clicks.'}));
+  await untilState(page,s=>!s.testerActive,240000);const result=(await page.evaluate(()=>window.muse.getState())).tester;
+  assert.equal(result.issues.length,1,JSON.stringify(result));assert.equal(result.issues[0].status,'confirmed');
+  await page.evaluate(id=>window.muse.testerCommand('solve',{id,issues:['BUG-001']}),result.id);await untilState(page,s=>!s.testerActive,480000);
+  const solved=(await page.evaluate(()=>window.muse.getState())).tester;assert.equal(solved.solver.status,'verified',JSON.stringify(solved.solver));assert.equal(solved.issues[0].status,'fixed');
+  await page.locator('#ai-tester').click();await page.screenshot({path:'artifacts/mora-tester-native.png'});await page.keyboard.press('Escape');await page.locator('.tester-dialog').waitFor({state:'detached'});
+  await page.evaluate(()=>window.muse.projectCommand('stop'));const preview=await page.evaluate(id=>window.muse.checkpointCommand('preview',{id}),solved.solver.checkpoint);assert.ok(preview.changes.some(c=>c.path==='src/app.js'));await page.evaluate(p=>window.muse.checkpointCommand('restore',{token:p.token,paths:['src/app.js']}),preview);assert.match(await readFile(counter,'utf8'),/return value;/);assert.equal(await readFile(path.join(root,'dirty.txt'),'utf8'),'later unrelated work');
+  await app.close();app=null;page=await launch();await untilState(page,s=>s.projectPath!==null);const saved=await page.evaluate(()=>window.muse.testerCommand('list'));assert.ok(saved.some(r=>r.id===result.id&&r.status==='stale'&&r.issues[0].status==='fixed'));
+  tester={report:result.id,confirmed:true,nativeRepair:true,originalReplay:true,checks:solved.solver.checks.status,recovery:true,restart:true};console.log('PASS native AI Tester: confirmed failure, native repair, original assertion, configured checks, source restore and saved report after restart');
+ }
+ const report={version:JSON.parse(await readFile('package.json','utf8')).version,packaged,legacyProfile:legacy,realMuseEdit:send,account:account.status,starter:true,run:true,counterInteraction:true,annotation:true,checks:work.tests.results.map(({script,status,code})=>({script,status,code})),pageLoad:work.tests.preview.status,pageLoadFailure:true,unrelatedDirtyWorkPreserved:true,checkpointRestore:true,restart:true,ownedProcessCleanup:true,tester};
  await writeFile('artifacts/journey-report.json',JSON.stringify(report,null,2));console.log('PASS native journey: existing sign-in, create, '+(send?'Muse edit, ':'')+'Run, preview interaction, annotation, Test, safe restore and restart');
 }}finally{await app?.close();}

@@ -23,6 +23,11 @@ export async function projectRevision(root) {
   for(const [name,data] of [...snapshot.files].sort(([a],[b])=>a.localeCompare(b)))hash.update(name).update('\0').update(createHash('sha256').update(data).digest());
   return hash.digest('hex');
 }
+export function reportForRevision(report,revision){
+  const copy=structuredClone(report),expected=report.solver?.revision||report.revision;
+  if(revision!==expected){copy.status='stale';copy.message='Historical results: project source differs from the revision that supports this report. Start a new report for current behavior.';}
+  return copy;
+}
 export class TesterReports {
   constructor(profile){this.directory=path.join(profile,'tester-reports');this.writes=new Map();}
   filename(id){if(!/^[a-f0-9-]{36}$/.test(id))throw Error('Choose a valid tester report.');return path.join(this.directory,`${id}.json`);}

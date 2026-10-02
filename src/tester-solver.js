@@ -2,7 +2,10 @@ import path from 'node:path';
 import {createHash} from 'node:crypto';
 import {projectRevision,confirmCase} from './tester.js';
 
-function protectedFiles(snapshot){return JSON.stringify([...snapshot.files].filter(([name])=>/(^|[/\\])(tests?|__tests__|specs?|docs)([/\\]|$)|(?:test|spec|config)\.[^.]+$|(^|[/\\])(?:package\.json|.*lock.*|readme.*|agents\.md)$/i.test(name)).sort(([a],[b])=>a.localeCompare(b)).map(([name,data])=>[name,createHash('sha256').update(data).digest('hex')]));}
+function protectedFiles(snapshot){
+  let commands='';try{commands=Object.entries(JSON.parse(snapshot.files.get('package.json')?.toString()||'{}').scripts||{}).filter(([name])=>!['dev','start','serve'].includes(name)).map(([,value])=>value).join('\n').replaceAll('\\','/');}catch{}
+  return JSON.stringify([...snapshot.files].filter(([name])=>/(^|[/\\])(tests?|__tests__|__snapshots__|specs?|e2e|cypress|playwright|fixtures?|scripts|docs)([/\\]|$)|(?:test|spec|config|cy)\.[^.]+$|\.(?:snap|ya?ml|toml)$|(^|[/\\])(?:\.[^/\\]+rc(?:\.[^/\\]+)?|package\.json|.*lock.*|readme.*|requirements.*|agents\.md)$/i.test(name)||commands.includes(name.replaceAll('\\','/'))).sort(([a],[b])=>a.localeCompare(b)).map(([name,data])=>[name,createHash('sha256').update(data).digest('hex')]));
+}
 export class TesterSolver {
   constructor(options){Object.assign(this,options);this.onChange??=()=>{};}
   async save(){await this.store.save(this.report);this.onChange(this.report);}
@@ -14,7 +17,7 @@ export class TesterSolver {
   }
   async start(report,ids){
     if(!Array.isArray(ids)||!ids.length||ids.length>5||new Set(ids).size!==ids.length)throw Error('Select one to five confirmed issues.');
-    const selected=ids.map(id=>report.issues.find(issue=>issue.id===id&&issue.status==='confirmed'&&issue.revision===report.revision));
+    const selected=ids.map(id=>report.issues.find(issue=>issue.id===id&&issue.status==='confirmed'&&issue.grounding?.supported===true&&issue.revision===report.revision));
     if(selected.some(issue=>!issue)||report.status==='stale')throw Error('Select confirmed issues from the current report.');
     if(await projectRevision(report.project)!==report.revision)throw Error('Source changed. Start a new report before repairing these findings.');
     if(this.stopped)return;
@@ -45,6 +48,7 @@ export class TesterSolver {
       for(const item of related.slice(0,3)){const steps=await this.replay(item);result.regressions.push({caseId:item.id,steps,status:steps.length===item.steps.length&&!steps.some(s=>s.result?.error)&&steps.filter(s=>s.action.action==='assert').every(s=>s.result.passed===true)?'passed':'failed'});}
       result.coverage=related.length>3?'Only the first three previously passing cases were replayed.':'';
       this.ensure();result.checks=await this.checks();this.ensure();
+      if(protection!==protectedFiles(await this.checkpoints.snapshot())){result.status='unverified';result.message='Tests, configuration or requirements changed during verification. Review or restore the checkpoint.';return;}
       const checksPassed=result.checks?.status==='passed',regressionsPassed=result.regressions.every(r=>r.status==='passed');
       result.status=checksPassed&&regressionsPassed&&result.results.every(r=>r.status==='passed')?'verified':'unverified';
       for(const {issue} of confirmed){const entry=result.results.find(r=>r.issueId===issue.id);issue.status=entry.status==='passed'&&checksPassed&&regressionsPassed?'fixed':'unresolved';}

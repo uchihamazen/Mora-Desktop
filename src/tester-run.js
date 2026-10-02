@@ -19,6 +19,7 @@ export class TesterRun {
       this.model=this.makeModel();await this.model.initialize();if(this.stopped)return;
       this.browser=this.makeBrowser(report.url,path.join(this.store.directory,report.id),()=>{this.stop().catch(()=>{});});
       await this.browser.open();
+      for(const item of report.cases.filter(c=>c.status==='suspected')){if(this.stopped||report.actions>=this.maxActions)break;await this.reproduce(item);}
       let decisions=0;
       while(!this.stopped&&report.actions<this.maxActions&&decisions<this.maxDecisions&&Date.now()-this.started<this.maxMs) {
         report.message=this.current?`Testing: ${this.current.title}`:'Planning the next case';await this.save();
@@ -46,13 +47,13 @@ export class TesterRun {
           this.current=null;
         }else if(decision.action==='finish') {
           if(this.current){Object.assign(this.current,caseOutcome(this.current,'unfinished'));this.current=null;}
-          report.gaps=[String(decision.note||'').slice(0,4000),...report.cases.filter(c=>['not tested','blocked'].includes(c.status)).map(c=>`${c.id}: ${c.title}`)].filter(Boolean);
+          report.gaps=[String(decision.note||'').slice(0,4000),...report.cases.filter(c=>['not tested','blocked','suspected','unsupported expectation'].includes(c.status)).map(c=>`${c.id}: ${c.title} (${c.status})`)].filter(Boolean);
           report.status='completed';report.message='Report saved. Review findings and remaining coverage.';await this.save();break;
         }else if(browserActions.has(decision.action)) {
           if(!this.current)throw Error('Begin a planned case before executing browser actions.');
           const action=Object.fromEntries(['action','target','text','check','expected','present'].filter(k=>decision[k]!==undefined).map(k=>[k,decision[k]]));
           if(action.action==='assert'&&!action.expected&&action.text)action.expected=action.text;
-          const step={id:`ACTION-${++report.actions}`,action,status:'started'};this.current.steps.push(step);await this.save();
+          const step={id:`ACTION-${++report.actions}`,action,status:'started',...(action.action==='assert'?{observation}: {})};this.current.steps.push(step);await this.save();
           try {
             const result=await this.browser.perform(action);
             if(result.target)action.target=result.target;
@@ -85,7 +86,7 @@ export class TesterRun {
   async replay(item) {
     await this.browser.reset();const replay=[];
     for(const original of item.steps){
-      if(this.stopped)break;if(++this.report.actions>this.maxActions)break;
+      if(this.stopped||Date.now()-this.started>=this.maxMs||this.report.actions>=this.maxActions)break;this.report.actions++;
       try{const {snapshot,...result}=await this.browser.perform(original.action);replay.push({action:original.action,result});if(result.error)break;}
       catch(error){replay.push({action:original.action,result:{error:error.message}});break;}
       await this.save();
@@ -95,8 +96,15 @@ export class TesterRun {
     this.report.status='reproducing';this.report.message=`Reproducing: ${item.title}`;await this.save();
     const replay=await this.replay(item);item.replay=replay;
     item.status=this.stopped?'suspected':confirmCase(item,replay,this.report.revision,await this.revision(this.report.project));
+    if(item.status==='confirmed'){
+      item.status='suspected';await this.save();
+      if(!this.stopped&&Date.now()-this.started<this.maxMs){
+        const grounding=await this.model.assessExpected({requirements:this.report.request,item});this.report.decisions=(this.report.decisions||0)+1;
+        if(!this.stopped){item.grounding={supported:grounding?.supported===true,basis:String(grounding?.basis||'No supporting requirement was established.').slice(0,3000)};item.status=item.grounding.supported?'confirmed':'unsupported expectation';}
+      }
+    }
     if(item.status==='confirmed'&&!this.report.issues.some(issue=>issue.caseId===item.id)){
-      this.report.issues.push({id:`BUG-${String(this.report.issues.length+1).padStart(3,'0')}`,caseId:item.id,title:item.title,expected:item.expected,status:'confirmed',revision:this.report.revision});
+      this.report.issues.push({id:`BUG-${String(this.report.issues.length+1).padStart(3,'0')}`,caseId:item.id,title:item.title,expected:item.expected,status:'confirmed',grounding:item.grounding,revision:this.report.revision});
     }
     this.report.status='running';await this.save();
   }

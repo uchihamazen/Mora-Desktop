@@ -16,7 +16,7 @@ import {Checkpoints} from './checkpoints.js';
 import {ProjectRunner} from './project-work.js';
 import { projectPathFor, groupConversations } from './projects.js';
 import { DesktopBrowser } from './browser.js';
-import {TesterReports,parseTesterCommand,projectRevision} from './tester.js';
+import {TesterReports,parseTesterCommand,projectRevision,reportForRevision} from './tester.js';
 import {TesterRun} from './tester-run.js';
 import {TesterBrowser} from './tester-browser.js';
 import {TesterNative} from './tester-native.js';
@@ -33,8 +33,8 @@ let testerReports,testerRun,testerCompletion,testerEpoch=0;
 async function testerCommand(action,payload={}) {
   if(action==='stop'){testerEpoch++;await testerRun?.stop();await testerCompletion;return state.tester;}
   if(!state.projectPath)throw Error('Open a project before using AI Tester.');
-  if(action==='list')return testerReports.list(state.projectPath);
-  if(action==='load') {const saved=await testerReports.load(payload.id);if(saved.project!==path.resolve(state.projectPath))throw Error('This report belongs to another project.');if(state.testerActive)throw Error('Stop testing before opening another report.');state.tester=saved;publish();return saved;}
+  if(action==='list'){const project=state.projectPath,reports=await testerReports.list(project),revision=await projectRevision(project);return reports.map(saved=>reportForRevision(saved,revision));}
+  if(action==='load') {const saved=await testerReports.load(payload.id);if(saved.project!==path.resolve(state.projectPath))throw Error('This report belongs to another project.');const current=reportForRevision(saved,await projectRevision(saved.project));if(state.testerActive||saved.project!==path.resolve(state.projectPath||''))throw Error('Wait for testing to finish in this project.');state.tester=current;publish();return current;}
   if(action==='evidence') {
     const saved=await testerReports.load(payload.id);if(saved.project!==path.resolve(state.projectPath)||typeof payload.name!=='string'||!/^screen-[a-f0-9-]+\.png$/.test(payload.name))throw Error('Choose evidence from this project report.');
     const file=path.join(testerReports.directory,saved.id,payload.name);if((await stat(file)).size>10*1024*1024)throw Error('Evidence image is too large.');return (await readFile(file)).toString('base64');
@@ -87,7 +87,7 @@ async function checkpointCommand(action,payload={}) {
   try {
     if(action==='create')return await store.create(payload.label);
     if(action==='preview')return await store.preview(payload.id);
-    if(action==='restore')return await store.restore(payload);
+    if(action==='restore'){const result=await store.restore(payload);if(state.tester?.project===state.projectPath)state.tester=reportForRevision(state.tester,await projectRevision(state.projectPath));return result;}
     if(action==='delete')return await store.delete(payload.id);
     throw new Error('Unknown checkpoint action.');
   }finally{projectOperation=false;state.projectOperation=false;publish();}
@@ -336,6 +336,8 @@ async function editQueue(action, payload) {
     if(projectOperation || repairInProgress)throw new Error('Wait for project checks or repair before resuming the queue.');
     if(state.connection!=='ready' || state.historyMissing || state.loading || state.stopping) throw new Error('Reconnect and wait for the current request before resuming.');
     state.queuePaused = false; await persistWork();
+    if(state.testerActive)throw Error('Stop AI Tester before resuming queued requests.');
+    if(projectOperation||repairInProgress)throw Error('Wait for project checks or repair before resuming the queue.');
     if(!state.busy && state.pendingQueue.length) {
       const next = state.pendingQueue.shift(); return startDrain(next);
     }
@@ -357,6 +359,7 @@ async function editQueue(action, payload) {
   } finally {queueReservation=0;}
 }
 function startDrain(request) {
+  if(state.testerActive)throw Error('Stop AI Tester before starting a queued request.');
   state.busy = true; state.finishing = false; state.activity = 'Starting Muse'; state.error = ''; state.stopping = false; state.activeTurnId = uuid7(); publish();
   let acceptResolve, acceptReject;
   const accepted = new Promise((resolve, reject) => { acceptResolve = resolve; acceptReject = reject; });

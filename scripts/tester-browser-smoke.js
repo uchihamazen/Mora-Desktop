@@ -24,6 +24,10 @@ try {
   await browser.perform({action:'type',target:'Search',text:''});
   assert.equal((await browser.perform({action:'assert',target:'Search',check:'value',expected:''})).passed,true);
  }
+ await browser.script("document.body.insertAdjacentHTML('beforeend','<button role=checkbox aria-checked=true aria-disabled=true aria-label=Updates>Updates</button>')");
+ assert.equal((await browser.perform({action:'assert',target:'Updates',check:'checked',expected:'true'})).passed,true);
+ assert.equal((await browser.perform({action:'assert',target:'Updates',check:'disabled',expected:'true'})).passed,true);
+ await assert.rejects(browser.perform({action:'click',target:'Updates'}),/disabled/i);
  await browser.perform({action:'click',target:'Save'});assert.equal((await browser.perform({action:'assert',check:'text',expected:'Saved',present:true})).passed,true);
  assert.equal((await browser.perform({action:'assert',check:'text',expected:'Wrong',present:true})).passed,false);
  await browser.perform({action:'click',target:'Next page'});assert.ok((await browser.snapshot()).url.endsWith('/next'));

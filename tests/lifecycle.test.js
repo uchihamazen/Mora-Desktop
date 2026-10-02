@@ -11,7 +11,7 @@ import * as changesApi from '../src/changes.js';
 import { projectPathFor, groupConversations } from '../src/projects.js';
 import {effortForPreset} from '../src/speed.js';
 import {accountState,AccountLogin} from '../src/account.js';
-import {parseTesterCommand} from '../src/tester.js';
+import {parseTesterCommand,reportForRevision,projectRevision} from '../src/tester.js';
 import { mkdtemp, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 
@@ -29,7 +29,7 @@ function harness(overrides = {}) {
   }
   const handlers = {};
   const context = vm.createContext({
-    path, Buffer, setTimeout, clearTimeout, ExecRunner: Runner,accountState,AccountLogin,parseTesterCommand,
+    path, Buffer, setTimeout, clearTimeout, ExecRunner: Runner,accountState,AccountLogin,parseTesterCommand,reportForRevision,projectRevision,
     Checkpoints:class {async create(){return {id:"checkpoint"};}async seal(){}},
     createState, assertIdle, applyEvent, validateImages, projectPathFor, groupConversations, effortForPreset, applyExecRecord: () => {},
     uuid7: () => 'session', app: { getPath: () => 'C:/temp' },
@@ -57,6 +57,14 @@ function harness(overrides = {}) {
   return { ...subject, stop: handlers.stop };
 }
 const tick = () => new Promise(resolve => setImmediate(resolve));
+
+test('late tester reservation blocks a queue resume waiting on persistence',async()=>{
+ let release,entered;const gate=new Promise(r=>release=r),waiting=new Promise(r=>entered=r);let first=true;
+ const h=harness({saveWork:async()=>{if(first){first=false;entered();await gate;}}});
+ h.state.pendingQueue=[{queueId:'q1',text:'Edit files',images:[]}];h.state.queuePaused=true;
+ const pending=h.queueCommand('resume');await waiting;h.state.testerActive=true;release();await assert.rejects(pending,/tester|testing/i);
+ assert.equal(h.runner.spawned,0);assert.equal(h.state.pendingQueue.length,1);assert.equal(h.state.queuePaused,true);
+});
 
 test('concurrent reconnects share discovery and reconcile fallback reasoning effort', async () => {
   let attempts = 0, release;

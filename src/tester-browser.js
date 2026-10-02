@@ -9,7 +9,7 @@ function pageState() {
   const name=el=>(el.getAttribute('aria-label')||el.getAttribute('aria-labelledby')?.split(/\s+/).map(id=>document.getElementById(id)?.textContent||'').join(' ')||el.labels?.[0]?.textContent||el.innerText||el.getAttribute('placeholder')||el.getAttribute('title')||'').trim().slice(0,180);
   const nodes=[...document.querySelectorAll('button,input:not([type=hidden]),textarea,select,a,[role=button],[role=checkbox],[contenteditable=true]')].filter(el=>{const r=el.getBoundingClientRect(),s=getComputedStyle(el);return r.width&&r.height&&s.display!=='none'&&s.visibility!=='hidden';});
   const counts=new Map();
-  const controls=nodes.map((el,index)=>{const label=name(el),tag=el.tagName.toLowerCase(),key=tag+'\0'+label,occurrence=counts.get(key)||0;counts.set(key,occurrence+1);return {ref:`e${index+1}`,target:{name:label,tag,occurrence},name:label,tag,type:el.type||'',value:el.type==='password'?undefined:el.value,checked:el.checked,disabled:!!el.disabled,options:el.tagName==='SELECT'?[...el.options].map(o=>({label:o.label,value:o.value})):undefined};});
+  const controls=nodes.map((el,index)=>{const label=name(el),tag=el.tagName.toLowerCase(),key=tag+'\0'+label,occurrence=counts.get(key)||0;counts.set(key,occurrence+1);const aria=el.getAttribute('aria-checked'),checked=typeof el.checked==='boolean'?el.checked:aria==='mixed'?'mixed':aria==='true';return {ref:`e${index+1}`,target:{name:label,tag,occurrence},name:label,tag,type:el.type||'',value:el.type==='password'?undefined:el.value,checked,disabled:el.matches(':disabled')||!!el.closest('[aria-disabled="true"]'),options:el.tagName==='SELECT'?[...el.options].map(o=>({label:o.label,value:o.value})):undefined};});
   globalThis.__moraTester={nodes,controls};
   return {url:location.href,title:document.title,text:document.body.innerText.slice(0,10000),controls,viewport:{width:innerWidth,height:innerHeight}};
 }
@@ -21,7 +21,7 @@ function findControl(target) {
   if(!indexes.length)throw Error('Control is missing.');
   if(indexes.length!==1)throw Error('Control is ambiguous. Use a fresh element reference.');
   const index=indexes[0],el=state.nodes[index];if(!el?.isConnected)throw Error('Control changed. Take a fresh observation.');
-  return {el,descriptor:state.controls[index].target};
+  return {el,descriptor:state.controls[index].target,control:state.controls[index]};
 }
 export class TesterBrowser {
   constructor(url,directory,{onClose=()=>{}}={}){this.url=testerURL(url);this.origin=new URL(this.url).origin;this.directory=directory;this.onClose=onClose;this.diagnostics=[];this.captureId=0;}
@@ -49,7 +49,7 @@ export class TesterBrowser {
   async reset(){this.ensure();await this.partition.clearStorageData();this.diagnostics=[];await this.navigate(this.url);}
   async resolve(target,prepare=false){
     await this.snapshot();
-    return this.script(`(()=>{const {el,descriptor}=(${findControl.toString()})(${JSON.stringify(target)});${prepare?'el.scrollIntoView({block:"center",inline:"center"});':''}const r=el.getBoundingClientRect();return {target:descriptor,x:r.x+r.width/2,y:r.y+r.height/2,disabled:!!el.disabled,value:el.value,checked:!!el.checked,tag:el.tagName,type:el.type,visible:!!r.width&&!!r.height};})()`);
+    return this.script(`(()=>{const {el,descriptor,control}=(${findControl.toString()})(${JSON.stringify(target)});${prepare?'el.scrollIntoView({block:"center",inline:"center"});':''}const r=el.getBoundingClientRect();return {target:descriptor,x:r.x+r.width/2,y:r.y+r.height/2,disabled:control.disabled,value:el.value,checked:control.checked,tag:el.tagName,type:el.type,visible:!!r.width&&!!r.height};})()`);
   }
   async click(target){
     const web=this.window.webContents;this.window.show();web.focus();

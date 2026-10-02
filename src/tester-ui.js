@@ -6,7 +6,7 @@ export function setupTester(api,onError) {
   function draw(){
     if(!dialog)return;const report=state.tester?.project===state.projectPath?state.tester:null;
     stop.hidden=!state.testerActive;resume.hidden=!report||!['paused','blocked','completed'].includes(report.status)||state.testerActive;
-    resume.disabled=!report?.cases.some(c=>['not tested','blocked'].includes(c.status));
+    resume.disabled=!report?.cases.some(c=>['not tested','blocked','suspected'].includes(c.status));
     solve.disabled=state.testerActive||!selected.size||report?.status==='stale'||state.executionMode!=='full';solve.title=state.executionMode==='full'?'Reproduce and repair selected findings':'Choose Full access in the chat controls to repair files';history.disabled=!!state.testerActive;
     summary.textContent=report?`${report.status} · ${report.actions} browser actions · ${report.message||''}`:'Run your app, then describe what should work. Checks use a separate browser and your Muse account.';
     const next=JSON.stringify(report);if(next===signature)return;signature=next;
@@ -19,6 +19,7 @@ export function setupTester(api,onError) {
     for(const c of report.cases){
       const details=el('details');details.dataset.id=c.id;details.open=opened.has(c.id);details.append(el('summary',`${c.id} · ${c.status} · ${c.title}`),el('p',`Expected: ${c.expected}`));
       if(c.reason||c.note)details.append(el('p',[c.reason,c.note].filter(Boolean).join(' ')));
+      if(c.grounding)details.append(el('p',`Expectation review: ${c.grounding.basis}`));
       const list=el('ol');for(const step of c.steps||[]){const row=el('li'),a=step.action,r=step.result;row.append(el('span',`${a.action}${a.target?' '+(typeof a.target==='string'?a.target:a.target.name):''}${a.action==='assert'?`: ${a.check} = ${a.expected}`:''} — ${r?.error|| (typeof r?.passed==='boolean'?(r.passed?'passed':'failed'):step.status)}`));
         if(r?.screenshot){const view=el('button','View evidence');view.type='button';view.addEventListener('click',async()=>{const data=await command('evidence',{id:report.id,name:r.screenshot.name});if(!data)return;const image=el('img');image.src=`data:image/png;base64,${data}`;image.alt=`Evidence for ${c.id}, ${step.id}`;row.append(image);view.remove();});row.append(view);}list.append(row);}
       details.append(list);if(c.replay)details.append(el('p',`Independent replay: ${c.replay.length} actions, ${c.status}`));body.append(details);
@@ -39,6 +40,7 @@ export function setupTester(api,onError) {
     dialog.append(heading,description,form,controls,summary,body);dialog.addEventListener('close',()=>{dialog.remove();dialog=null;signature='';api.browserCommand?.('occlude',{hidden:false}).catch(()=>{});button.focus();});
     api.browserCommand?.('occlude',{hidden:true}).catch(()=>{});document.body.append(dialog);draw();dialog.showModal();request.focus();
     dialog.refreshStart=()=>{start.disabled=!!state.testerActive||!!state.busy;};dialog.refreshStart();
+    if(state.tester?.project===state.projectPath&&!state.testerActive)command('load',{id:state.tester.id});
   });
   return next=>{if(next.projectPath!==state.projectPath){selected.clear();signature='';dialog?.close();}state=next;button.disabled=!state.projectPath||!!state.loading;dialog?.refreshStart();draw();};
 }

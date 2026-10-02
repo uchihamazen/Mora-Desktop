@@ -139,7 +139,8 @@ a pending native decision can take up to 90 seconds to finish or time out.
 
 Cases distinguish passed recorded assertions, confirmed failures, suspected failures,
 blocked work and untested coverage. A confirmed failure means that the same assertion
-failed again on replay; the expected behavior still needs human review. This is an
+failed again on replay and passed a separate expectation review against requirements
+and observed setup. The report retains that rationale; it still needs human review. This is an
 experimental assistant, not a complete test suite or a release-readiness verdict.
 Browser storage resets between cases. Server data does not reset, so use disposable
 test data. Testing is restricted to the running localhost origin; external resources,
@@ -150,11 +151,13 @@ For repair, choose **Full access**, select confirmed issues, and use **Repair se
 issues**, or send `/tester solver BUG-001` (up to five IDs) or `/tester solver all confirmed`.
 Mora reproduces the original case before allowing edits, saves a source checkpoint,
 runs one native repair, restarts the app and replays unchanged assertions plus up to
-three previously passing cases and configured checks. A changed test, requirement,
-configuration or dependency file prevents a verified result. Missing checks remain
+three previously passing cases and configured checks. A changed recognized test,
+requirement, configuration or dependency file prevents a verified result.
+Common test directories, snapshots and configured check entry files are protected;
+unconventional indirect check inputs may require manual review. Missing checks remain
 unverified. Source edits stay available for review, including after Stop; stop the
 app and use **Checkpoints** to inspect or restore them. Source recovery does not
-reset application data.
+reset application data. Reopened reports whose source no longer matches are marked historical/stale.
 
 Tester requests use an isolated native configuration with skills and workflow
 reminders disabled. Report mode exposes no native file or shell tools. The current
