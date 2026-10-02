@@ -14,7 +14,7 @@ import {accountState,AccountLogin} from './account.js';
 import {createProject} from './project.js';
 import {Checkpoints} from './checkpoints.js';
 import {ProjectRunner} from './project-work.js';
-import { projectPathFor, groupConversations } from './projects.js';
+import { projectPathFor, groupConversations, changeConversation } from './projects.js';
 import { DesktopBrowser } from './browser.js';
 import {TesterReports,parseTesterCommand,projectRevision,reportForRevision} from './tester.js';
 import {TesterRun} from './tester-run.js';
@@ -458,7 +458,7 @@ async function executeTurn(text, validated, hooks) {
       const imagePath = path.join(temp, `${index}.${ext}`); await writeFile(imagePath, Buffer.from(image.base64Data, 'base64')); imagePaths.push(imagePath);
     }
     const session = currentSession();
-    if (session.title === 'New conversation') session.title = (text.trim() || 'Image conversation').slice(0,65);
+    if (!session.customTitle && session.title === 'New conversation') session.title = (text.trim() || 'Image conversation').slice(0,65);
     session.modelId = state.modelId; session.reasoningEffort = state.reasoningEffort;
     await save();
     if (state.stopping) throw new Error('Stopped before execution.');
@@ -624,6 +624,7 @@ else {
   handle('new-chat', newChat);
   handle('resume-chat', resumeChat);
   handle('delete-chat', deleteChat);
+  handle('chat-metadata',async(sessionId,action,title)=>{changeConversation(state,sessionId,action,title);await save();publish();return state;});
   handle('send', sendMessage);
   handle('stop', async () => { state.queuePaused = true; applyEvent(state, 'stop/requested', {}); publish(); try { await persistWork(); } finally { await runner.stop(); } });
   handle('queue', queueCommand);

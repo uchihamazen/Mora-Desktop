@@ -21,6 +21,13 @@
 - Project paths and chat identity persist in the existing conversation index and backup; project entries remain after their last chat is deleted. Full access remains available in project chats.
 - Verify grouping/lifecycle/persistence/date-boundary tests, `scripts/frontend-smoke.js`, and `scripts/projects-smoke.js [EXE] --send` for two real general replies with context and enabled sending after restart; tests use temporary profiles.
 
+## Chat organization and conversation find
+- Search filters chat titles and project names/paths in Active or Archived views; it does not search message history. Pins sort first within their project while preserving the remaining order.
+- Each chat has keyboard-accessible Options for rename, pin, archive and restore. Archiving keeps its session, native history, draft, queue and project; current work must stop before its chat can be archived. Deletion remains separate.
+- Metadata uses the existing backed-up index, accepts older records and ignores malformed organization flags. Restore never creates a new native session; renamed titles stay chosen by the user.
+- Ctrl+F searches visible text in the current conversation, including formatted text and expanded operations; counts, Enter/Shift+Enter, arrows and Escape support navigation. Stream updates refresh safe native highlights; switching chats clears the query. Native page focus keeps its own shortcuts.
+- Verify grouping/persistence tests, frontend smoke and project restart smoke with an isolated profile, including primary-index corruption and draft retention.
+
 ## Missing engine history recovery
 - If a log is genuinely missing, recover available text from its view journal and show a notice; dismissal survives UI refreshes, expires when that error clears, and healthy chats clear stale notices.
 - Recovered chats stay viewable; sending requires restoring the original log from a backup/quarantine or starting a new chat. Only explicitly unused chats with no cached messages can proceed without a log; titles never determine usage.

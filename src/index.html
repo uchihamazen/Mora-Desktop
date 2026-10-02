@@ -25,6 +25,10 @@
     <button id="new-chat" class="new-chat"><svg><use href="#i-plus"/></svg>New conversation<span class="shortcut">Ctrl N</span></button>
     <button id="create-project" class="project-start">New project</button>
     <nav class="conversation-library" aria-label="Conversations">
+      <label class="library-label" for="library-search">Search chats and projects</label>
+      <div class="library-search"><input id="library-search" type="search" placeholder="Title or project path" maxlength="200"><button id="library-clear" aria-label="Clear search" hidden>×</button></div>
+      <div class="library-views"><button id="library-active" aria-pressed="true">Active</button><button id="library-archived" aria-pressed="false">Archived</button></div>
+      <p id="library-status" class="library-status" role="status"></p>
       <div class="section-label">GENERAL CHATS</div>
       <div id="general-sessions"></div>
       <div class="section-label projects-label"><span>PROJECTS</span><button id="add-project" title="Add a project folder" aria-label="Add project"><svg><use href="#i-plus"/></svg></button></div>
@@ -47,6 +51,7 @@
     <div id="project-toolbar" class="project-toolbar" hidden><button id="run-project">Run my app</button><button id="restart-project" hidden>Restart</button><button id="stop-project" hidden>Stop app</button><button id="test-project">Test my app</button><button id="stop-tests" hidden>Stop tests</button><button id="fix-tests" hidden>Fix failures</button><button id="ai-tester">Project tester</button><button id="checkpoints">Checkpoints</button><button id="project-output" aria-expanded="false">Show results</button><span id="project-work-status" role="status"></span></div>
     <section id="project-results" class="project-results" aria-label="Run and Test results" hidden></section>
     <div id="scroll-area" class="scroll-area">
+      <div id="conversation-find" class="conversation-find" role="search" aria-label="Find in conversation" hidden><label for="find-text">Find in visible conversation</label><input id="find-text" type="search" maxlength="200"><output id="find-count" aria-live="polite"></output><button id="find-previous" aria-label="Previous match">↑</button><button id="find-next" aria-label="Next match">↓</button><button id="find-close" aria-label="Close find">×</button></div>
       <section id="welcome" class="welcome">
         <img class="welcome-emblem" src="assets/mora-mark.svg" alt="Mora">
         <div class="eyebrow">A LITTLE LESS FRICTION. A LOT MORE BUILDING.</div>

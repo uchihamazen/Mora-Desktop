@@ -8,7 +8,7 @@ const {chromium}=require('./runtime-packages.cjs').runtimeRequire('playwright');
 const png='iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+ip1sAAAAASUVORK5CYII=';
 const server=createServer(async(req,res)=>{
   const file={'/':'index.html','/style.css':'style.css','/renderer.js':'renderer.js','/markdown.js':'markdown.js','/project-ui.js':'project-ui.js','/work-ui.js':'work-ui.js','/images.js':'images.js','/projects.js':'projects.js','/browser-ui.js':'browser-ui.js','/assets/mora-mark.svg':'assets/mora-mark.svg'}[req.url];
-  if(['/tester-ui.js','/website-ui.js','/website-coverage.js'].includes(req.url)){res.setHeader('Content-Type','application/javascript');res.end(await readFile('src'+req.url));return;}
+  if(['/tester-ui.js','/website-ui.js','/website-coverage.js','/library-ui.js','/find-ui.js'].includes(req.url)){res.setHeader('Content-Type','application/javascript');res.end(await readFile('src'+req.url));return;}
   if(!file){res.writeHead(404).end();return;}
   res.setHeader('Content-Type',file.endsWith('.svg')?'image/svg+xml':file.endsWith('.css')?'text/css':file.endsWith('.js')?'application/javascript':'text/html');
   res.end(await readFile(path.join('src',file)));
@@ -41,6 +41,26 @@ try{
  await page.keyboard.press('Control+b');assert.equal(await page.locator('.sidebar').isVisible(),true);
  await page.locator('#new-chat').focus();await page.keyboard.press('Control+b');assert.equal(await page.locator('#sidebar-toggle').evaluate(e=>e===document.activeElement),true,'Collapsing navigation must not strand focus');
  await page.locator('#sidebar-toggle').click();
+ await page.evaluate(()=>{
+  window.muse.chatMetadata=async(id,action,title)=>{const state=await window.muse.getState();const {changeConversation}=await import('/projects.js');changeConversation(state,id,action,title);window.smoke.emit({sessions:state.sessions});return state;};
+  window.smoke.emit({sessionId:'chat-a',projectPath:null,sessions:[{sessionId:'chat-a',projectPath:null,workspace:'private',title:'Alpha'},{sessionId:'chat-b',projectPath:'C:/Example',workspace:'C:/Example',title:'Build'},{sessionId:'chat-c',projectPath:null,workspace:'private',title:'Old',archived:true}],projects:['C:/Example','D:/Empty'],items:[{itemId:'find-a',kind:'agentMessage',status:'completed',text:'A safe **match** here.\n\nA safe match again.\n\n> A safe **match** quote.\n\n| Header |\n| --- |\n| A safe **match** cell. |\n\n<img src=x onerror=alert(1)>'}]});
+ });
+ await page.locator('#library-search').fill('example');assert.equal(await page.locator('.session-row').count(),1);
+ await page.locator('#library-search').fill('does not exist');assert.match(await page.locator('#general-sessions').textContent(),/No matching/);
+ await page.locator('#library-clear').click();assert.equal(await page.locator('.session-row').count(),2);
+ await page.getByRole('button',{name:'Options for Alpha',exact:true}).click();await page.getByLabel('Chat title',{exact:true}).fill('Renamed');await page.getByRole('button',{name:'Save title',exact:true}).click();await page.locator('.chat-dialog').waitFor({state:'hidden'});
+ await page.getByRole('button',{name:'Options for Renamed',exact:true}).click();await page.getByRole('button',{name:'Pin',exact:true}).click();await page.locator('.chat-dialog').waitFor({state:'hidden'});assert.match(await page.locator('#general-sessions .session-button').textContent(),/★ Renamed/);
+ await page.getByRole('button',{name:'Options for Renamed',exact:true}).click();await page.getByRole('button',{name:'Save title',exact:true}).focus();await page.evaluate(()=>window.smoke.emit({busy:true}));assert.equal(await page.getByRole('button',{name:'Save title',exact:true}).evaluate(el=>el===document.activeElement),true);assert.equal(await page.getByRole('button',{name:'Archive chat',exact:true}).isDisabled(),true);await page.keyboard.press('Escape');
+ await page.evaluate(()=>window.smoke.emit({busy:false}));await page.getByRole('button',{name:'Options for Renamed',exact:true}).click();await page.getByRole('button',{name:'Archive chat',exact:true}).click();await page.locator('.chat-dialog').waitFor({state:'hidden'});assert.equal(await page.locator('#library-archived').getAttribute('aria-pressed'),'true');assert.equal(await page.locator('#general-sessions .session-row').count(),2);
+ await page.getByRole('button',{name:'Options for Renamed',exact:true}).click();await page.getByRole('button',{name:'Restore chat',exact:true}).click();await page.locator('.chat-dialog').waitFor({state:'hidden'});assert.equal(await page.locator('#library-active').getAttribute('aria-pressed'),'true');assert.equal(await page.evaluate(async()=> (await window.muse.getState()).sessionId),'chat-a');
+ await page.locator('#prompt').focus();await page.keyboard.press('Control+f');await page.locator('#find-text').fill('safe match');assert.equal(await page.locator('#find-count').textContent(),'1 of 4');
+ await page.locator('#find-text').press('Enter');assert.equal(await page.locator('#find-count').textContent(),'2 of 4');await page.locator('#find-text').press('Shift+Enter');assert.equal(await page.locator('#find-count').textContent(),'1 of 4');
+ await page.evaluate(()=>window.smoke.emit({items:[{itemId:'find-a',kind:'agentMessage',status:'inProgress',text:'A safe **match** here.\n\nA safe match again.\n\nStreamed safe match.'}]}));await page.waitForFunction(()=>document.querySelector('#find-count').textContent==='1 of 3');
+ assert.equal(await page.locator('.message-body mark').count(),0);assert.equal(await page.evaluate(()=>CSS.highlights.get('conversation-matches').size),3);
+ await page.screenshot({path:'artifacts/chat-library-find.png'});
+ await page.keyboard.press('Escape');assert.equal(await page.evaluate(()=>document.activeElement?.id),'prompt');
+ await page.keyboard.press('Control+f');await page.locator('#find-text').fill('[.*');assert.equal(await page.locator('#find-count').textContent(),'No matches');await page.evaluate(()=>window.smoke.emit({sessionId:'chat-b'}));assert.equal(await page.locator('#find-text').inputValue(),'');await page.keyboard.press('Escape');
+ await page.locator('#library-archived').click();await page.evaluate(()=>window.smoke.emit({sessionId:'new-chat'}));assert.equal(await page.locator('#library-active').getAttribute('aria-pressed'),'true');await page.locator('#library-active').click();await page.evaluate(()=>window.smoke.emit({sessionId:null,sessions:[],projects:[],items:[],busy:false}));
  assert.equal(await page.title(),'Mora Desktop');
  assert.equal(await page.locator('.brand strong').textContent(),'Mora');
  await page.waitForFunction(()=>[...document.querySelectorAll('.brand-mark,.welcome-emblem')].every(img=>img.complete&&img.naturalWidth>0));

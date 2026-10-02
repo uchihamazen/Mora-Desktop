@@ -60,3 +60,12 @@ test('projects and explicit general chat identity survive settings reset and pri
  await writeFile(path.join(directory,'conversations.json'),'broken');
  assert.deepEqual(await loadConversations(directory,{sessions:[],projects:[]}),saved);
 }));
+
+test('chat organization survives restart and corrupt primary index; malformed flags cannot hide legacy chats',()=>fixture(async directory=>{
+ const organized={...chat,customTitle:true,pinned:true,archived:true};
+ await saveConversations(directory,{sessions:[organized],lastSessionId:chat.sessionId});
+ await writeFile(path.join(directory,'conversations.json'),'{');
+ assert.deepEqual((await loadConversations(directory,{})).sessions,[organized]);
+ await writeFile(path.join(directory,'conversations.backup.json'),JSON.stringify({sessions:[{...chat,pinned:'false',archived:'true',customTitle:7}],lastSessionId:null}));
+ assert.deepEqual((await loadConversations(directory,{})).sessions,[{...chat,pinned:false,archived:false,customTitle:false}]);
+}));

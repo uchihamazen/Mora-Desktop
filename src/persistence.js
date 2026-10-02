@@ -11,7 +11,12 @@ export function profilePath(appData, env = process.env) {
 function conversations(value) {
   if (!value || !Array.isArray(value.sessions) || !value.sessions.every(s => s && typeof s.sessionId === 'string' && typeof s.workspace === 'string')) throw new Error('Invalid conversation index.');
   if (value.projects !== undefined && (!Array.isArray(value.projects) || !value.projects.every(p => typeof p === 'string' && path.isAbsolute(p)))) throw new Error('Invalid saved projects.');
-  return { sessions: value.sessions, lastSessionId: typeof value.lastSessionId === 'string' ? value.lastSessionId : null, ...(value.projects === undefined ? {} : {projects:value.projects}) };
+  const sessions=value.sessions.map(session=>{
+    const normalized={...session};
+    for(const key of ['pinned','archived','customTitle','unread'])if(key in normalized)normalized[key]=normalized[key]===true;
+    return normalized;
+  });
+  return { sessions, lastSessionId: typeof value.lastSessionId === 'string' ? value.lastSessionId : null, ...(value.projects === undefined ? {} : {projects:value.projects}) };
 }
 
 export async function loadConversations(directory, legacy) {

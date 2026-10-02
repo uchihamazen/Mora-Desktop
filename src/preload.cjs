@@ -12,6 +12,7 @@ contextBridge.exposeInMainWorld('muse', {
   newChat: (projectPath = null) => ipcRenderer.invoke('muse:new-chat', projectPath),
   resumeChat: id => ipcRenderer.invoke('muse:resume-chat', id),
   deleteChat: id => ipcRenderer.invoke('muse:delete-chat', id),
+  chatMetadata: (id,action,title) => ipcRenderer.invoke('muse:chat-metadata',id,action,title),
   sendMessage: message => ipcRenderer.invoke('muse:send', message),
   stopTurn: () => ipcRenderer.invoke('muse:stop'),
   queueCommand: (action,payload) => ipcRenderer.invoke('muse:queue',action,payload),

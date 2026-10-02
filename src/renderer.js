@@ -1,4 +1,5 @@
-import { groupConversations } from './projects.js';
+import {setupLibrary} from './library-ui.js';
+import {setupConversationFind} from './find-ui.js';
 import { setupBrowser } from './browser-ui.js';
 import {stitchImageParts} from './images.js';
 import {markdownBlocks, inlineParts} from './markdown.js';
@@ -21,11 +22,10 @@ function setSidebar(collapsed) {
 setSidebar(sidebarCollapsed);
 $('sidebar-toggle').addEventListener('click',()=>setSidebar(!sidebarCollapsed));
 document.addEventListener('keydown',event=>{if(event.ctrlKey&&!event.altKey&&!event.shiftKey&&event.key.toLowerCase()==='b'&&!document.querySelector('dialog[open]')){event.preventDefault();setSidebar(!sidebarCollapsed);}});
-const collapsedProjects = new Set();
 const dismissedErrors = new Set();
 let state = { items: [], sessions: [], models: [], busy: false, connection: 'connecting' };
 let attachments = [], sending = false, lastSignature = '', startedAt = 0;
-let sidebarSignature='', draftOwner, draftTimer, draftWrites=Promise.resolve();
+let draftOwner, draftTimer, draftWrites=Promise.resolve();
 let updateProjects,updateProjectWork,updateTester,updateWebsiteTester;
 const messageRows=new Map();
 let stitchConfigured=false,stitchChanging=false;
@@ -187,7 +187,7 @@ function renderMessages() {
   }
   for(const [key,record] of messageRows)if(!seen.has(key)){record.node.remove();messageRows.delete(key);}
   const queue=$('queue-controls');queue.hidden=!(state.pendingQueue || []).length;$('queue-status').textContent=(state.pendingQueue || []).length+' pending · '+(state.queuePaused?'paused':'runs in order');$('queue-toggle').textContent=state.queuePaused?'Resume queue':'Pause queue';$('queue-toggle').disabled=state.loading || state.stopping || state.connection!=='ready' || state.historyMissing || state.workUnavailable;
-  if(nearBottom)requestAnimationFrame(()=>{area.scrollTop=area.scrollHeight;});
+  if(nearBottom && !conversationFind.isOpen())requestAnimationFrame(()=>{area.scrollTop=area.scrollHeight;});
 }
 function renderToolOutput(node) {
   const details=node.querySelector('details'),item=node.currentItem;
@@ -259,53 +259,8 @@ function update(next) {
   fillSelect($('effort'), (Array.isArray(model?.variants) ? model.variants : ['max']).map(value => ({ value, label: value[0].toUpperCase() + value.slice(1) })), state.reasoningEffort);
   $('execution-mode').value = state.executionMode || 'readonly';
   $('speed').value = state.speedPreset || 'custom'; $('speed').disabled = state.busy || state.loading || sending || !model?.variants?.length || state.connection!=='ready';
-  // Preserve a user's toggle even when its native event is still queued during a stream update.
-  for (const details of $('sessions').querySelectorAll('.project-group')) {
-    if (details.open) collapsedProjects.delete(details.dataset.projectPath);
-    else collapsedProjects.add(details.dataset.projectPath);
-  }
-  const nextSidebarSignature=JSON.stringify([state.sessions,state.projects,state.sessionId,!!state.busy,!!state.loading,sending]);
-  if(nextSidebarSignature!==sidebarSignature){sidebarSignature=nextSidebarSignature;
-  $('sessions').replaceChildren(); $('general-sessions').replaceChildren();
-  for (const group of groupConversations(state.sessions || [], state.projects || [])) {
-    let container = $('general-sessions');
-    if (group.projectPath !== null) {
-      const name = group.projectPath.split(/[\\/]/).filter(Boolean).at(-1) || group.projectPath;
-      const details = textNode('details', '', 'project-group'); details.open = !collapsedProjects.has(group.projectPath); details.dataset.projectPath = group.projectPath;
-      const summary = document.createElement('summary'); summary.title = group.projectPath;
-      summary.append(icon('folder'), textNode('span', name, 'project-title'));
-      const add = textNode('button', '', 'project-new-chat'); add.append(icon('plus')); add.setAttribute('aria-label', `New chat in ${name}`); add.title = `New chat in ${group.projectPath}`;
-      add.disabled = state.busy || state.loading || sending;
-      add.addEventListener('click', event => { event.preventDefault(); event.stopPropagation(); action(() => api.newChat(group.projectPath)); });
-      summary.append(add); container = textNode('div', '', 'project-chats'); details.append(summary,container); $('sessions').append(details);
-    }
-    for (const session of group.sessions) {
-    const row = textNode('div', '', `session-row${session.sessionId === state.sessionId ? ' active' : ''}`);
-    row.dataset.sessionId = session.sessionId;
-    const button = textNode('button', '', 'session-button');
-    button.append(icon('chat'), textNode('span', session.title || 'New conversation'));
-    button.title = `${session.title}\n${group.projectPath || 'General chat'}`;
-    button.disabled = state.busy || state.loading || sending;
-    button.addEventListener('click', () => action(() => api.resumeChat(session.sessionId)));
-    const activeBusy = session.sessionId === state.sessionId && state.busy;
-    const del = textNode('button', '', 'session-delete-icon');
-    del.append(icon('x'));
-    del.setAttribute('aria-label', `Delete ${session.title || 'conversation'}`);
-    del.disabled = state.loading || sending || activeBusy;
-    del.title = activeBusy ? 'Stop the request before deleting this chat' : 'Delete this conversation';
-    del.addEventListener('click', event => {
-      event.stopPropagation();
-      if (!del.dataset.confirm) { del.dataset.confirm = '1'; del.classList.add('confirm'); return; }
-      action(() => api.deleteChat(session.sessionId));
-    });
-    row.append(button, del);
-    container.append(row);
-    }
-    if (!group.sessions.length) container.append(textNode('div', group.projectPath === null ? 'Ask anything with New conversation.' : 'Start a chat with +', 'empty-history'));
-  }
-  if (!$('sessions').children.length) $('sessions').append(textNode('div', 'Add a folder to start a project.', 'empty-history'));
-  }
-  renderMessages(); refreshSend();refreshStitch();
+  updateLibrary(state,sending);
+  renderMessages(); conversationFind.update(state.sessionId);refreshSend();refreshStitch();
 }
 function refreshSend() { $('send-button').disabled = sending || state.loading || state.testerActive || state.websiteActive || state.projectOperation || state.projectRepair || state.historyMissing || state.workUnavailable || ['required','pending'].includes(state.account?.status) || state.connection !== 'ready' || (!$('prompt').value.trim() && !attachments.length); }
 function renderAttachments(persist=true) {
@@ -378,6 +333,8 @@ document.addEventListener('keydown', event => { if (event.ctrlKey && event.key.t
 setInterval(() => { if (state.busy && startedAt) { const seconds = Math.floor((Date.now()-startedAt)/1000); $('elapsed').textContent = seconds >= 60 ? `${Math.floor(seconds/60)}m ${seconds%60}s` : `${seconds}s`; } },1000);
 api.onEvent(event => { if (event.type === 'state') update(event.state); });
 setupBrowser(api,capture=>{addImages([capture]);$('prompt').focus();});
+const updateLibrary=setupLibrary(api,action);
+const conversationFind=setupConversationFind();
 updateProjects=setupProjects(api,action);
 updateProjectWork=setupProjectWork(api,action);
 updateTester=setupTester(api,error);

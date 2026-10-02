@@ -4,6 +4,7 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import assert from 'node:assert/strict';
 import {uuid7} from '../src/msp.js';
+import {launchDesktop} from './electron-ui.js';
 const require=createRequire(import.meta.url);
 const {_electron}=require('./runtime-packages.cjs').runtimeRequire('playwright');
 const profile=await mkdtemp(path.join(tmpdir(),'muse-projects-profile-'));
@@ -23,8 +24,11 @@ async function waitState(predicate, timeout=120000) {
  throw new Error('Timed out waiting for project/general chat state.');
 }
 async function launch() {
- app=await _electron.launch({executablePath:packaged||require('electron'),args:packaged?[]:['.'],cwd:process.cwd(),env});
- page=await app.firstWindow();
+ app=await launchDesktop(packaged,env);
+ await app.firstWindow();
+ const rendererDeadline=Date.now()+15000;
+ while(Date.now()<rendererDeadline){page=app.windows().find(window=>/index\.html(?:$|[?#])/.test(window.url()));if(page)break;await new Promise(resolve=>setTimeout(resolve,100));}
+ if(!page)throw new Error('Mora renderer did not open.');
  await waitState(s=>s.connection==='ready'&&!s.loading,45000);
 }
 async function state(){return page.evaluate(()=>window.muse.getState());}
@@ -32,6 +36,23 @@ try {
  await launch();
  assert.equal(await page.locator('.project-group').count(),2);
  assert.equal((await state()).sessions.length,2);
+ await page.locator('#prompt').fill('Keep this draft');
+ await page.evaluate(async id=>{
+  await window.flushMoraDraft();
+  await window.muse.chatMetadata(id,'rename','Organized chat');
+  await window.muse.chatMetadata(id,'pin');
+  await window.muse.chatMetadata(id,'archive');
+ },legacyId);
+ assert.equal((await state()).sessionId,legacyId);
+ await app.close();app=null;
+ await writeFile(path.join(profile,'conversations.json'),'{broken');
+ await launch();
+ const archived=(await state()).sessions.find(s=>s.sessionId===legacyId);
+ assert.equal(archived.title,'Organized chat');assert.equal(archived.pinned,true);assert.equal(archived.archived,true);
+ assert.equal((await state()).draft.text,'Keep this draft');
+ assert.equal(await page.locator('#library-archived').getAttribute('aria-pressed'),'true');
+ await page.evaluate(id=>window.muse.chatMetadata(id,'restore'),legacyId);
+ assert.equal((await state()).sessions.filter(s=>s.sessionId===legacyId).length,1);
  await page.locator('#new-chat').click();
  await waitState(s=>!s.loading&&s.projectPath===null&&s.sessionId);
  const generalId=(await state()).sessionId;
