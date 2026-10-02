@@ -73,6 +73,17 @@ test('execStopTerminatesProcessAndDoesNotReplay', async () => {
   assert.equal(result.stopped, true);
   assert.equal(runner.child, null);
 });
+for (const executionMode of ['readonly', 'full']) test(`native ${executionMode} turns exclude foreign personal context without changing permissions`, async () => {
+  const runner = new api.ExecRunner(), records = [];
+  runner.on('record', record => records.push(record));
+  const result = await runner.run({ executable: process.execPath, prefixArgs: [fixture], workspace: process.cwd(), sessionId: '018f1234-1234-7123-8123-123456789abc', promptFile: fixture, executionMode });
+  assert.equal(result.code, 0);
+  const args = records[0].payload.args;
+  assert.ok(args.includes('--no-foreign-personal-context'));
+  assert.equal(args.includes('--yolo'), executionMode === 'full');
+  assert.equal(args.includes('--disable-write'), executionMode === 'readonly');
+  assert.equal(args.includes('--disable-shell'), executionMode === 'readonly');
+});
 test('nativeHistoryUnderstandsEngineLogWithoutDuplicatingTurns', () => {
   assert.equal(typeof api.historyItems, 'function');
   const records = [

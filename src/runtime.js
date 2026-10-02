@@ -161,7 +161,7 @@ export class ExecRunner extends EventEmitter {
   child = null;
   async run({ executable, workspace, sessionId, promptFile, images = [], executionMode = 'readonly', modelId, reasoningEffort, providerId, museHome, prefixArgs = [] }) {
     if (this.child) throw new Error('A request is already running. Stop it before starting another.');
-    const args = [...prefixArgs, 'exec', '--json', '--session-id', sessionId, '--workspace', workspace, '--prompt-file', promptFile];
+    const args = [...prefixArgs, 'exec', '--json', '--no-foreign-personal-context', '--session-id', sessionId, '--workspace', workspace, '--prompt-file', promptFile];
     if (modelId) args.push('--model', modelId);
     if (reasoningEffort) args.push('--reasoning-effort', reasoningEffort);
     if (providerId) args.push('--provider', providerId);

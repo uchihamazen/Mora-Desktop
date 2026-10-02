@@ -4,7 +4,7 @@
 - Chat, image attachments, saved native Muse conversations, and project selection.
 - Requires the installed and signed-in Muse engine; reconnects share one discovery attempt, reject malformed catalogs and reconcile the selected effort after model fallback.
 - Read only inspects; Full access permits project edits and commands under the user's Windows permissions.
-- Uses Muse 1.4.1's working `exec --json` interface; interactive per-command approvals remain available in the native terminal.
+- Uses Muse 1.4.1's working `exec --json` interface and excludes foreign personal rules/skills on every turn; native workspace instructions and engine settings still apply. Interactive per-command approvals remain available in the native terminal.
 - Verify with the existing frontend and real-engine smoke scripts; these operate on temporary projects where they write files.
 
 ## Conversation retention
