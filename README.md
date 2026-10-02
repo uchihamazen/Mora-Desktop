@@ -45,6 +45,7 @@ Choose your Muse executable, reconnect the engine, and configure your own Google
 | Muse sign-in | Uses the existing engine login or opens native Meta browser sign-in, with cancellation and clear account status. |
 | Run my app | Starts your configured local app, waits for readiness and opens its preview; supports Stop/Restart. |
 | Test my app | Runs configured checks with actual results, plus local page-load checking and one explicit repair/recheck. |
+| AI Tester (experimental) | Tests a running local app with native Spark, retains assertions and screenshots, reproduces findings, and repairs explicitly selected confirmed issues. |
 | Checkpoints | Saves source before changes; previews selective restore, protects newer edits and retains recovery checkpoints. |
 | Projects & general chat | Group conversations under local project folders, or ask general questions without attaching a project. |
 | Persistent conversations | Restore chats across restarts and upgrades; remove a conversation explicitly from the sidebar. |
@@ -124,6 +125,43 @@ security settings. Upgrades and uninstall preserve the local chat profile.
 3. Select **Run my app** to see the local app in the preview. Use browser annotations to describe changes.
 4. Select **Test my app** for configured checks and page loading. Expand **Show results** for outputs. Interactions still need suitable project tests.
 5. Select **Fix failures** for one Muse repair and one recheck, or stop the app and open **Checkpoints → Review restore** to select files to undo.
+
+### AI Tester (experimental)
+
+Run your app, open **AI Tester**, describe the behavior you expect, and select
+**Start report**. `/tester report <requirements>` starts the same workflow.
+Mora supplies your request and the project's README to native Spark, then executes
+bounded browser decisions in a separate visible Chromium window. Reports and
+screenshots remain in your local profile. **Saved reports** restores them after a
+restart; **Resume unfinished cases** is explicit and requires unchanged source and
+the same app address. Each run allows up to 100 browser actions and 15 minutes;
+a pending native decision can take up to 90 seconds to finish or time out.
+
+Cases distinguish passed recorded assertions, confirmed failures, suspected failures,
+blocked work and untested coverage. A confirmed failure means that the same assertion
+failed again on replay; the expected behavior still needs human review. This is an
+experimental assistant, not a complete test suite or a release-readiness verdict.
+Browser storage resets between cases. Server data does not reset, so use disposable
+test data. Testing is restricted to the running localhost origin; external resources,
+popups, downloads, embedded cross-origin apps and non-HTML document navigation are
+blocked. Canvas interactions and drag-and-drop are not supported.
+
+For repair, choose **Full access**, select confirmed issues, and use **Repair selected
+issues**, or send `/tester solver BUG-001` (up to five IDs) or `/tester solver all confirmed`.
+Mora reproduces the original case before allowing edits, saves a source checkpoint,
+runs one native repair, restarts the app and replays unchanged assertions plus up to
+three previously passing cases and configured checks. A changed test, requirement,
+configuration or dependency file prevents a verified result. Missing checks remain
+unverified. Source edits stay available for review, including after Stop; stop the
+app and use **Checkpoints** to inspect or restore them. Source recovery does not
+reset application data.
+
+Tester requests use an isolated native configuration with skills and workflow
+reminders disabled. Report mode exposes no native file or shell tools. The current
+Muse login is temporarily copied into that private runtime and removed on normal
+cleanup; an unexpected process or machine crash can leave temporary runtime files.
+Your global Muse settings are preserved. Requirements, observations and selected
+screenshots go through your existing Muse provider connection.
 
 Run/Test currently support Node projects with package.json scripts and Node/package manager on PATH. Checkpoints exclude secrets, generated files and oversized/linked source; they preserve Git history and unrelated later edits. They are source recovery, rather than whole-project backups.
 

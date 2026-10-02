@@ -159,19 +159,21 @@ export function applyExecRecord(state, record) {
 
 export class ExecRunner extends EventEmitter {
   child = null;
-  async run({ executable, workspace, sessionId, promptFile, images = [], executionMode = 'readonly', modelId, reasoningEffort, providerId, museHome, prefixArgs = [] }) {
+  async run({ executable, workspace, sessionId, promptFile, images = [], executionMode = 'readonly', modelId, reasoningEffort, providerId, museHome, prefixArgs = [], extraArgs = [], environment = {} }) {
     if (this.child) throw new Error('A request is already running. Stop it before starting another.');
-    const args = [...prefixArgs, 'exec', '--json', '--no-foreign-personal-context', '--session-id', sessionId, '--workspace', workspace, '--prompt-file', promptFile];
+    const args = [...prefixArgs, 'exec', '--json', '--no-foreign-personal-context', '--workspace', workspace, '--prompt-file', promptFile];
+    if(sessionId) args.push('--session-id',sessionId);
     if (modelId) args.push('--model', modelId);
     if (reasoningEffort) args.push('--reasoning-effort', reasoningEffort);
     if (providerId) args.push('--provider', providerId);
     if (executionMode === 'full') args.push('--yolo');
     else args.push('--disable-shell', '--disable-write', '--approval-mode', 'on-request');
     for (const image of images) args.push('--image', image);
+    args.push(...extraArgs);
     // Muse 1.4.1's Meta exec future overflows Windows' default Rust thread stack.
     let nativePath, offset = 0;
-    if (museHome) { nativePath = resolveSessionLogPath(sessionId, museHome, new Date()); try { offset = statSync(nativePath).size; } catch {} }
-    const child = spawn(executable, args, { cwd: workspace, windowsHide: true, env: { ...process.env, RUST_MIN_STACK: '33554432' }, stdio: ['ignore', 'pipe', 'pipe'] });
+    if (museHome && sessionId) { nativePath = resolveSessionLogPath(sessionId, museHome, new Date()); try { offset = statSync(nativePath).size; } catch {} }
+    const child = spawn(executable, args, { cwd: workspace, windowsHide: true, env: { ...process.env, ...environment, RUST_MIN_STACK: '33554432' }, stdio: ['ignore', 'pipe', 'pipe'] });
     const tail = nativePath ? new NativeLogTail(nativePath, offset, record => this.emit('history-record', record)) : null;
     this.child = child;
     this.stopped = false;

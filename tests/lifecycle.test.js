@@ -11,6 +11,7 @@ import * as changesApi from '../src/changes.js';
 import { projectPathFor, groupConversations } from '../src/projects.js';
 import {effortForPreset} from '../src/speed.js';
 import {accountState,AccountLogin} from '../src/account.js';
+import {parseTesterCommand} from '../src/tester.js';
 import { mkdtemp, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 
@@ -28,7 +29,7 @@ function harness(overrides = {}) {
   }
   const handlers = {};
   const context = vm.createContext({
-    path, Buffer, setTimeout, clearTimeout, ExecRunner: Runner,accountState,AccountLogin,
+    path, Buffer, setTimeout, clearTimeout, ExecRunner: Runner,accountState,AccountLogin,parseTesterCommand,
     Checkpoints:class {async create(){return {id:"checkpoint"};}async seal(){}},
     createState, assertIdle, applyEvent, validateImages, projectPathFor, groupConversations, effortForPreset, applyExecRecord: () => {},
     uuid7: () => 'session', app: { getPath: () => 'C:/temp' },

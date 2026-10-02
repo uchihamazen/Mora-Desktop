@@ -157,3 +157,17 @@
 - Page load checks the running local app and reported console errors. Interaction coverage remains explicitly not checked by Mora; configured project tests determine their own coverage. A green script result does not establish every app behavior.
 - Fix failures requires Full access, failed checks and an idle engine; sends one bounded repair request, then rechecks once on successful completion. Follow-ups remain paused and failed repairs never loop automatically.
 - Verify real check/build/test results, failure/deadline/cancel/missing-script/page-load fixtures, one-repair orchestration and native journey.
+
+## AI Tester reports (experimental)
+- AI Tester and `/tester report` use native Spark with isolated skills/reminders disabled and no native tools; Mora executes generic actions in a dedicated visible browser, restricted to the running localhost origin. Account reuse is temporary; normal cleanup removes its credential copy without changing global settings.
+- Durable cases, action intents, actual assertions and screenshots distinguish passed checks, suspected/confirmed failures, blocked work and untested coverage. A finding requires replay of the same failed assertion against unchanged source; incorrect expectations still require human review.
+- Reports survive restart through atomic primary/backup saves. Stop cancels native/browser work; Resume is explicit, rechecks source/address and restarts unfinished cases. Runs are bounded to 100 additional browser actions, 150 decisions and 15 minutes plus the pending 90-second decision deadline.
+- Browser sessions clear cookies/storage between cases, leaving server data intact. External resources/popups/downloads and non-HTML document navigation are blocked; canvas/drag-and-drop are unsupported. Use test data. Reports are local but provider requests include requirements, observations and selected images.
+- Verify report/native/controller regressions, real browser input at three sizes, rendered report/history/evidence/keyboard flows and independent native benchmarks. AI discovery is experimental, not exhaustive coverage or release approval.
+
+## AI Tester repair
+- `/tester solver` and issue selection require Full access, one to five confirmed current-report findings, unchanged project source and a running app. Every selected finding is reproduced before any edit; no reproduced issue means no repair request.
+- Save a source checkpoint, make one bounded native repair, restart at the same address, then replay original assertions, up to three previously passing cases and configured checks. Neither missing checks nor altered tests/requirements/configuration/dependencies can produce a verified repair.
+- Retain per-issue reproduction/verification evidence and checkpoint ID. Stop preserves source changes and recovery; unresolved, blocked, stopped and unverified outcomes remain explicit. App data reset is separate from source restore.
+- Existing Checkpoints handles selective source recovery with conflict checks. Regular chat, project operations and queue resume remain locked while testing or repair owns the project.
+- Verify selected/stale/unreproduced findings, unchanged assertions, test-protection failures, checkpoint recovery and live native repair. Findings depend on the stated requirements; review before selecting a repair.

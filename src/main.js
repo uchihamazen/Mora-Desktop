@@ -16,6 +16,11 @@ import {Checkpoints} from './checkpoints.js';
 import {ProjectRunner} from './project-work.js';
 import { projectPathFor, groupConversations } from './projects.js';
 import { DesktopBrowser } from './browser.js';
+import {TesterReports,parseTesterCommand,projectRevision} from './tester.js';
+import {TesterRun} from './tester-run.js';
+import {TesterBrowser} from './tester-browser.js';
+import {TesterNative} from './tester-native.js';
+import {TesterSolver} from './tester-solver.js';
 import {checkStitch,configureStitch,readStitchSettings,stitchStatus} from './stitch.js';
 
 const directory = path.dirname(fileURLToPath(import.meta.url));
@@ -24,6 +29,49 @@ const runner = new ExecRunner();
 const state = { ...createState(), connection: 'connecting', workspace: '', projectPath: null, projects: [], modelId: 'muse-spark-1.3-contributor', reasoningEffort: 'max', executionMode: 'readonly', models: [], sessions: [], sessionId: null, engineVersion: '', transport: 'exec' };
 let preferences = {};
 let projectRunner, desktopBrowser, drainCompletion, projectOperation=false, projectCancelled=false, repairInProgress=false;
+let testerReports,testerRun,testerCompletion,testerEpoch=0;
+async function testerCommand(action,payload={}) {
+  if(action==='stop'){testerEpoch++;await testerRun?.stop();await testerCompletion;return state.tester;}
+  if(!state.projectPath)throw Error('Open a project before using AI Tester.');
+  if(action==='list')return testerReports.list(state.projectPath);
+  if(action==='load') {const saved=await testerReports.load(payload.id);if(saved.project!==path.resolve(state.projectPath))throw Error('This report belongs to another project.');if(state.testerActive)throw Error('Stop testing before opening another report.');state.tester=saved;publish();return saved;}
+  if(action==='evidence') {
+    const saved=await testerReports.load(payload.id);if(saved.project!==path.resolve(state.projectPath)||typeof payload.name!=='string'||!/^screen-[a-f0-9-]+\.png$/.test(payload.name))throw Error('Choose evidence from this project report.');
+    const file=path.join(testerReports.directory,saved.id,payload.name);if((await stat(file)).size>10*1024*1024)throw Error('Evidence image is too large.');return (await readFile(file)).toString('base64');
+  }
+  assertIdle(state);
+  if(projectOperation||repairInProgress||projectRunner.active)throw Error('Wait for the current project checks.');
+  if(state.connection!=='ready')throw Error('Connect to Muse before testing.');
+  if(action==='solve'&&state.executionMode!=='full')throw Error('Choose Full access before repairing project files.');
+  if(!['start','resume','solve'].includes(action))throw Error('Unknown tester command.');
+  if(projectRunner.state.run.status!=='ready'||projectRunner.state.root!==state.projectPath)throw Error('Use Run my app before starting AI Tester.');
+  const epoch=++testerEpoch;state.testerActive=true;state.queuePaused=true;publish();
+  try {
+    let saved;
+    if(action==='resume'||action==='solve') {
+      saved=await testerReports.load(payload.id||state.tester?.id);if(saved.project!==path.resolve(state.projectPath))throw Error('This report belongs to another project.');
+      if(new URL(saved.url).origin!==new URL(projectRunner.state.run.url).origin)throw Error('The app address changed. Start a new report.');
+    }else{
+      if(typeof payload.request!=='string'||payload.request.length>12000)throw Error('Describe what to test in at most 12000 characters.');
+      let brief='';try{brief=(await readFile(path.join(state.projectPath,'README.md'),'utf8')).slice(0,12000);}catch{}
+      saved=await testerReports.create({project:state.projectPath,url:projectRunner.state.run.url,request:[payload.request||'Explore the main user flows and relevant edge cases.',brief].filter(Boolean).join('\n\n'),revision:await projectRevision(state.projectPath)});
+    }
+    state.tester=saved;await persistWork();
+    if(epoch!==testerEpoch||quitting)throw Error('Testing stopped before launch.');
+    const shared={store:testerReports,makeBrowser:(url,directory,onClose)=>new TesterBrowser(url,directory,{onClose}),onChange:value=>{state.tester=value;publish();}};
+    let ids=payload.issues;
+    if(action==='solve'){
+      if(!ids){ids=/^all confirmed(?: issues)?$/i.test(payload.request?.trim()||'')?saved.issues.filter(i=>i.status==='confirmed').map(i=>i.id):payload.request?.match(/BUG-\d{3}/g);}
+      testerRun=new TesterSolver({...shared,checkpoints:checkpointStore(),makeRepair:()=>new TesterNative(executable,{modelId:state.modelId}),checks:()=>projectRunner.test(saved.project),stopChecks:()=>projectRunner.stopTests(),restart:async()=>{
+        await projectRunner.stopRun();if(testerRun.stopped)throw Error('Repair stopped.');await projectRunner.run(saved.project);
+        const deadline=Date.now()+35000;while(projectRunner.state.run.status==='starting'&&!testerRun.stopped&&Date.now()<deadline)await new Promise(resolve=>setTimeout(resolve,100));
+        if(testerRun.stopped||projectRunner.state.run.status!=='ready'||new URL(projectRunner.state.run.url).origin!==new URL(saved.url).origin)throw Error('The app could not restart at the original address. Repair remains unverified.');
+      }});
+    }else testerRun=new TesterRun({...shared,makeModel:()=>new TesterNative(executable,{modelId:state.modelId,reasoningEffort:'minimal'}),maxActions:Math.max(100,(saved.actions||0)+100)});
+    testerCompletion=testerRun.start(saved,ids).catch(report).finally(()=>{state.testerActive=false;publish();});
+    return saved;
+  }catch(error){state.testerActive=false;publish();throw error;}
+}
 const checkpointStores=new Map();
 function checkpointStore() {
   if(!state.projectPath)throw new Error('Open a project before saving checkpoints.');
@@ -45,6 +93,7 @@ async function checkpointCommand(action,payload={}) {
   }finally{projectOperation=false;state.projectOperation=false;publish();}
 }
 async function projectCommand(action) {
+  if(state.testerActive)throw Error('Stop AI Tester before changing the running app.');
   if(action==='stop'){projectCancelled=true;await projectRunner.stopRun();return state.projectWork;}
   if(action==='stop-tests'){projectCancelled=true;await projectRunner.stopTests();return state.projectWork;}
   if(action==='fix')return repairFailures();
@@ -248,6 +297,7 @@ function consume(record) {
 }
 
 async function sendMessage({ text, images = [] } = {},{repair=false}={}) {
+  if(state.testerActive)throw Error('Stop AI Tester before sending another request. Your draft is saved.');
   if(projectOperation || (repairInProgress && !repair))throw new Error('Wait for project checks or repair to finish. Your draft is saved.');
   if(['required','pending'].includes(state.account?.status))throw new Error('Complete Muse sign-in before sending. Your draft is saved.');
   if(state.workUnavailable) throw new Error('Restore the saved work backup before sending.');
@@ -256,6 +306,8 @@ async function sendMessage({ text, images = [] } = {},{repair=false}={}) {
   if (state.connection !== 'ready') throw new Error('Connect to Muse before sending a message.');
   if (typeof text !== 'string' || text.length > 200000) throw new Error('Message is too long.');
   const validated = validateImages(images);
+  const tester=parseTesterCommand(text);
+  if(tester){if(state.busy)throw Error('Wait for the current request before starting AI Tester.');if(validated.length)throw Error('Use a text testing request.');return testerCommand(tester.mode==='report'?'start':'solve',{request:tester.request});}
   if (!text.trim() && !validated.length) throw new Error('Write a message or attach an image.');
   if (state.busy) {
     if (state.pendingQueue.length + queueReservation >= 10) throw new Error('The send queue is full (10 messages). Wait for the current request to finish.');
@@ -280,6 +332,7 @@ async function editQueue(action, payload) {
   queueReservation=action==='clear'?previous.length:action==='remove'?1:0;
   try {
   if(action==='resume') {
+    if(state.testerActive)throw Error('Stop AI Tester before resuming queued requests.');
     if(projectOperation || repairInProgress)throw new Error('Wait for project checks or repair before resuming the queue.');
     if(state.connection!=='ready' || state.historyMissing || state.loading || state.stopping) throw new Error('Reconnect and wait for the current request before resuming.');
     state.queuePaused = false; await persistWork();
@@ -490,7 +543,7 @@ else {
       if(state.busy)state.queuePaused=true;
       if(!state.workUnavailable)await persistWork();
       await saveQueue;
-      await projectRunner.shutdown();await runner.stop();
+      await testerRun?.stop();await testerCompletion;await projectRunner.shutdown();await runner.stop();
       while(projectOperation || repairInProgress || state.busy)await new Promise(resolve=>setTimeout(resolve,30));
       window.destroy();
     }).catch(error=>{closing=false;report(new Error(`Could not save pending work: ${error.message}`));});
@@ -504,6 +557,8 @@ else {
     if(work.run.status==='ready' && openedRunURL!==work.run.url){openedRunURL=work.run.url;browser.command('open').then(()=>browser.navigate(work.run.url)).catch(report);}
   });
   state.projectWork=projectRunner.state;
+  testerReports=new TesterReports(app.getPath('userData'));
+  handle('tester',testerCommand);
   handle('project-work',projectCommand);
   handle('browser', (action, payload) => browser.command(action, payload));
   handle('stitch', stitchCommand);

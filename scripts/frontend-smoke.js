@@ -8,6 +8,7 @@ const {chromium}=require('./runtime-packages.cjs').runtimeRequire('playwright');
 const png='iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+ip1sAAAAASUVORK5CYII=';
 const server=createServer(async(req,res)=>{
   const file={'/':'index.html','/style.css':'style.css','/renderer.js':'renderer.js','/markdown.js':'markdown.js','/project-ui.js':'project-ui.js','/work-ui.js':'work-ui.js','/images.js':'images.js','/projects.js':'projects.js','/browser-ui.js':'browser-ui.js','/assets/mora-mark.svg':'assets/mora-mark.svg'}[req.url];
+  if(req.url==='/tester-ui.js'){res.setHeader('Content-Type','application/javascript');res.end(await readFile('src/tester-ui.js'));return;}
   if(!file){res.writeHead(404).end();return;}
   res.setHeader('Content-Type',file.endsWith('.svg')?'image/svg+xml':file.endsWith('.css')?'text/css':file.endsWith('.js')?'application/javascript':'text/html');
   res.end(await readFile(path.join('src',file)));
@@ -20,6 +21,17 @@ try{
   let state={items:[],sessions:[],models:[{modelId:'muse-test',displayLabel:'Muse test',variants:['minimal','max']}],modelId:'muse-test',reasoningEffort:'max',executionMode:'readonly',workspace:'C:\\Test',connection:'ready',engineVersion:'fixture',busy:false,pendingQueue:[]};
   let callback;window.smoke={projectActions:[],restores:[],accountActions:[],projectsCreated:[],stopCalls:0,failDraft:false,sent:[],copied:'',deleted:[],created:[],emit:next=>{state={...state,...next};callback?.({type:'state',state});}};
   window.muse={projectCommand:async action=>{window.smoke.projectActions.push(action);},checkpointCommand:async(action,payload)=>{if(action==='list')return [{id:'cp1',label:'Before request',fileCount:1,createdAt:new Date().toISOString(),manual:false}];if(action==='preview')return {token:'token',checkpoint:{label:'Before request',manual:false},changes:[{path:'app.js',status:'restore original',conflict:true}]};if(action==='restore'){window.smoke.restores.push(payload);return {restored:1};}},chooseProjectParent:async()=> 'C:\\Projects',createProject:async payload=>{window.smoke.projectsCreated.push(payload);return state;},accountCommand:async action=>{window.smoke.accountActions.push(action);window.smoke.emit({account:action==='login'?{status:'pending',message:'Approve the code',userCode:'DEMO-CODE'}:{status:'required',message:'Sign in required'}});},getState:async()=>state,onEvent:cb=>{callback=cb;return()=>{}},copyText:async text=>{window.smoke.copied=text},setOptions:async options=>{state={...state,...options};return state},pickImages:async()=>[{mediaType:'image/png',base64Data:png,name:'image.png'}],newChat:async projectPath=>{window.smoke.created.push(projectPath);return state},resumeChat:async()=>state,deleteChat:async id=>{window.smoke.deleted.push(id);return state},chooseWorkspace:async()=>state,chooseMuse:async()=>state,connect:async()=>state,stopTurn:async()=>{window.smoke.stopCalls++;window.smoke.emit({busy:false,stopping:false,queuePaused:true});},sendMessage:async value=>{window.smoke.sent.push(value);return{accepted:true}},saveDraft:async value=>{if(window.smoke.failDraft)throw new Error('Disk save failed');window.smoke.draft=value;},queueCommand:async action=>{if(action==='clear')window.smoke.emit({pendingQueue:[]});return state;}};
+  window.smoke.testerCalls=[];
+  window.muse.testerCommand=async(action,payload)=>{
+    window.smoke.testerCalls.push({action,payload});
+    if(action==='list')return state.tester?[state.tester]:[];
+    if(action==='evidence')return png;
+    if(action==='start')window.smoke.emit({testerActive:true,tester:{id:'r1',project:state.projectPath,createdAt:new Date().toISOString(),status:'running',actions:4,message:'Checking cart',cases:[{id:'CASE-001',title:'<b>Cart</b>',expected:'Cart contains item',status:'confirmed',steps:[{id:'ACTION-4',action:{action:'assert',check:'text',expected:'Cart (1)'},result:{passed:false,screenshot:{name:'screen-1.png'}}}]},{id:'CASE-002',title:'Reload',status:'not tested',steps:[]}],issues:[{id:'BUG-001',title:'Cart did not update',status:'confirmed'}],gaps:[]}});
+    if(action==='stop')window.smoke.emit({testerActive:false,tester:{...state.tester,status:'paused'}});
+    if(action==='resume')window.smoke.emit({testerActive:true,tester:{...state.tester,status:'running'}});
+    if(action==='load')window.smoke.emit({tester:state.tester});
+    return state.tester;
+  };
  },{png});
  await page.goto(`http://127.0.0.1:${server.address().port}`);
  assert.equal(await page.title(),'Mora Desktop');
@@ -226,5 +238,15 @@ try{
  assert.equal(await page.locator('.checkpoint-dialog input[type=checkbox]').first().isChecked(),false);
  await page.locator('.checkpoint-dialog input[type=checkbox]').first().check();await page.locator('.checkpoint-dialog input[type=checkbox]').last().check();await page.getByRole('button',{name:'Restore selected files'}).click();
  await page.waitForFunction(()=>window.smoke.restores.length===1);assert.equal(await page.evaluate(()=>window.smoke.restores[0].allowConflicts),true);await page.getByRole('button',{name:'Close',exact:true}).click();
- console.log('PASS deterministic UI: stable streamed rows, lazy output, safe Markdown/images, durable drafts/attachments, Stop on save failure, queue and changes');
+ await page.locator('#ai-tester').click();await page.getByLabel('What should work?').fill('Cart adds one item');await page.getByRole('button',{name:'Start report',exact:true}).click();
+ assert.equal(await page.getByRole('button',{name:'Start report',exact:true}).isDisabled(),true);
+ assert.equal(await page.locator('.tester-report b').count(),0);
+ await page.getByRole('button',{name:'Stop testing',exact:true}).click();
+ await page.locator('.tester-report summary').first().click();await page.getByRole('button',{name:'View evidence',exact:true}).click();await page.locator('.tester-report img').waitFor();
+ await page.locator('.tester-report input[type=checkbox]').check();assert.equal(await page.getByRole('button',{name:'Repair selected issues',exact:true}).isEnabled(),false);await page.evaluate(()=>window.smoke.emit({executionMode:'full'}));assert.equal(await page.getByRole('button',{name:'Repair selected issues',exact:true}).isEnabled(),true);
+ await page.screenshot({path:'artifacts/mora-tester-report.png'});
+ await page.getByRole('button',{name:'Resume unfinished cases',exact:true}).click();assert.equal(await page.evaluate(()=>window.smoke.testerCalls.at(-1).action),'resume');
+ await page.getByRole('button',{name:'Stop testing',exact:true}).click();await page.keyboard.press('Escape');await page.locator('.tester-dialog').waitFor({state:'detached'});
+ await page.locator('#ai-tester').click();await page.getByRole('button',{name:'Saved reports',exact:true}).click();await page.locator('.tester-report button').first().click();assert.equal(await page.locator('.tester-report details').count(),2);await page.keyboard.press('Escape');
+ console.log('PASS deterministic UI: stable streamed rows, lazy output, safe Markdown/images, durable drafts/attachments, Stop on save failure, queue, changes and tester report/start/stop/resume/evidence/history');
 }finally{await browser.close();await new Promise(resolve=>server.close(resolve));}

@@ -73,6 +73,16 @@ test('execStopTerminatesProcessAndDoesNotReplay', async () => {
   assert.equal(result.stopped, true);
   assert.equal(runner.child, null);
 });
+test('isolated native requests receive their own environment and bounded execution options',async()=>{
+  const runner=new api.ExecRunner(),records=[];runner.on('record',r=>records.push(r));
+  await runner.run({executable:process.execPath,prefixArgs:[fixture],workspace:process.cwd(),sessionId:'018f1234-1234-7123-8123-123456789abc',promptFile:fixture,environment:{MORA_TEST_MARKER:'isolated'},extraArgs:['--max-model-steps','4']});
+  assert.equal(records[0].payload.marker,'isolated');assert.ok(records[0].payload.args.includes('--max-model-steps'));assert.equal(process.env.MORA_TEST_MARKER,undefined);
+});
+test('ephemeral native requests omit session identity when retained logs are disabled',async()=>{
+  const runner=new api.ExecRunner(),records=[];runner.on('record',r=>records.push(r));
+  await runner.run({executable:process.execPath,prefixArgs:[fixture],workspace:process.cwd(),promptFile:fixture,extraArgs:['--no-session-log']});
+  assert.equal(records[0].payload.args.includes('--session-id'),false);
+});
 for (const executionMode of ['readonly', 'full']) test(`native ${executionMode} turns exclude foreign personal context without changing permissions`, async () => {
   const runner = new api.ExecRunner(), records = [];
   runner.on('record', record => records.push(record));

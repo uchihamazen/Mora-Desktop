@@ -26,10 +26,10 @@ export function setupProjectWork(api,action) {
   return state=>{
     current=state;const work=state.projectWork?.root===state.projectPath?state.projectWork:null,run=work?.run || {status:'stopped'},tests=work?.tests || {status:'not checked'};
     $('project-toolbar').hidden=!state.projectPath || !api.projectCommand;
-    const busy=state.busy || state.loading || state.projectOperation || state.projectRepair;
+    const busy=state.testerActive || state.busy || state.loading || state.projectOperation || state.projectRepair;
     $('run-project').hidden=['starting','ready','stopping'].includes(run.status);$('run-project').disabled=busy;
     $('restart-project').hidden=!['starting','ready','stopping'].includes(run.status);$('restart-project').disabled=busy;
-    $('stop-project').hidden=!['starting','ready','stopping'].includes(run.status);$('stop-project').disabled=run.status==='stopping';
+    $('stop-project').hidden=!['starting','ready','stopping'].includes(run.status);$('stop-project').disabled=state.testerActive || run.status==='stopping';
     $('test-project').disabled=busy;$('stop-tests').hidden=tests.status!=='running' && !state.projectOperation;
     $('fix-tests').hidden=tests.status!=='failed';$('fix-tests').disabled=busy || state.executionMode!=='full' || state.connection!=='ready';$('fix-tests').title=state.executionMode==='full'?'Ask Muse to repair, then test once':'Choose Full access to repair project files';
     $('checkpoints').disabled=busy || ['starting','ready','stopping'].includes(run.status);
