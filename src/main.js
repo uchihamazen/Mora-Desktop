@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog, clipboard, nativeImage, shell, safeStorage } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, clipboard, nativeImage, shell, safeStorage, screen, Notification } from 'electron';
 import { readFile, writeFile, mkdir, rename, stat, mkdtemp, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -15,7 +15,7 @@ import {createProject} from './project.js';
 import {Checkpoints} from './checkpoints.js';
 import {ProjectRunner} from './project-work.js';
 import { projectPathFor, groupConversations, changeConversation } from './projects.js';
-import { DesktopBrowser } from './browser.js';
+import {BrowserWorkspace} from './browser-workspace.js';
 import {TesterReports,parseTesterCommand,projectRevision,reportForRevision} from './tester.js';
 import {TesterRun} from './tester-run.js';
 import {TesterBrowser} from './tester-browser.js';
@@ -26,6 +26,7 @@ import {WebsiteRun,websiteDecisionSchema} from './website-run.js';
 import {buildWebsiteExport,evidenceName} from './website-report.js';
 import {TesterSolver} from './tester-solver.js';
 import {checkStitch,configureStitch,readStitchSettings,stitchStatus} from './stitch.js';
+import {restoreWindowBounds,CompletionNotices} from './desktop-workspace.js';
 
 const directory = path.dirname(fileURLToPath(import.meta.url));
 let window, prefsPath, museHome, executable, connectionAttempt, quitting = false;
@@ -95,7 +96,7 @@ async function testerCommand(action,payload={}) {
     }
     state.tester=saved;await persistWork();
     if(epoch!==testerEpoch||quitting)throw Error('Testing stopped before launch.');
-    const shared={store:testerReports,makeBrowser:(url,directory,onClose)=>new TesterBrowser(url,directory,{onClose}),onChange:value=>{state.tester=value;publish();}};
+    const shared={store:testerReports,makeBrowser:(url,directory,onClose)=>new TesterBrowser(url,directory,{onClose}),onChange:value=>{reportNotice('Project tester',value);state.tester=value;publish();}};
     let ids=payload.issues;
     if(action==='solve'){
       if(!ids){ids=/^all confirmed(?: issues)?$/i.test(payload.request?.trim()||'')?saved.issues.filter(i=>i.status==='confirmed').map(i=>i.id):payload.request?.match(/BUG-\d{3}/g);}
@@ -181,6 +182,9 @@ async function stitchCommand(action,payload={}) {
   }finally{stitchChanging=false;}
 }
 let updateTimer, saveQueue = Promise.resolve();
+let completionNotices;
+function reportNotice(kind,value){completionNotices?.report(state,kind,value);}
+function markCurrentRead(){const chat=currentSession();if(chat?.unread){chat.unread=false;save().catch(report);publish();}}
 let queueOperation = Promise.resolve(), queueReservation = 0;
 function publish() {
   if (!updateTimer) updateTimer = setTimeout(() => { updateTimer = null; if (window && !window.isDestroyed()) window.webContents.send('muse:event', { type: 'state', state }); }, 30);
@@ -270,6 +274,7 @@ async function newChat(projectPath = state.projectPath) {
   if(!state.workUnavailable) await persistWork();
   state.projectPath = projectPath; state.workspace = workspace;
   state.sessionId = uuid7(); Object.assign(state, createState());
+  desktopBrowser?.selectSession(state.sessionId);
   state.loading = true;
   state.sessions.unshift({ sessionId: state.sessionId, title: 'New conversation', hasMessages: false, projectPath, workspace: state.workspace, modelId: state.modelId, reasoningEffort: state.reasoningEffort, createdAt: new Date().toISOString() });
   state.projects = groupConversations(state.sessions, state.projects).slice(1).map(group => group.projectPath);
@@ -286,6 +291,7 @@ async function resumeChat(sessionId) {
   try {
   if(!state.workUnavailable) await persistWork();
   Object.assign(state, createState(), { loading: true, sessionId, projectPath: projectPathFor(session), workspace: session.workspace, modelId: session.modelId || state.modelId, reasoningEffort: session.reasoningEffort || state.reasoningEffort });
+  if(desktopBrowser && desktopBrowser.sessionId!==sessionId)desktopBrowser.selectSession(sessionId,session.browser);
   publish();
   let nativeHistoryMissing = false;
   try { state.items = await readHistory(sessionId, museHome); await attachChangeSummaries(state.items, sessionId); }
@@ -300,6 +306,7 @@ async function resumeChat(sessionId) {
     }
   }
   await restoreWork(sessionId);
+  session.unread=false;
   if(nativeHistoryMissing && state.activeRequest?.phase==='admitted'){state.historyMissing=true;state.error='The original engine log is missing for an accepted request. Restore it from a backup or start a new chat.';}
   reconcileModel();
   await save(); return state;
@@ -312,7 +319,7 @@ async function deleteChat(sessionId) {
   if (state.loading) throw new Error('A conversation is loading. Wait before deleting.');
   if (state.busy && sessionId === state.sessionId) throw new Error('A request is running. Stop it before deleting this chat.');
   state.sessions.splice(index, 1);
-  if (state.sessionId === sessionId) Object.assign(state, createState(), { sessionId: null });
+  if (state.sessionId === sessionId){Object.assign(state, createState(), { sessionId: null });desktopBrowser?.selectSession(null);}
   await save();
   await deleteChangeSummaries(app.getPath('userData'), sessionId).catch(report);
   await deleteWork(app.getPath('userData'),sessionId).catch(report);
@@ -429,7 +436,7 @@ function startDrain(request) {
         if (next) publish();
       }
     } finally {
-      state.busy = false; state.finishing = false; state.activity = ''; state.activeTurnId = null; state.outputStream = null; state.stopping = false; publish();
+      state.busy = false; state.finishing = false; state.activity = ''; state.activeTurnId = null; state.outputStream = null; state.stopping = false;completionNotices?.complete(state,state.lastOutcome); publish();
     }
   })();
   drainCompletion=drain;
@@ -548,6 +555,7 @@ function handle(name, fn) {
 
 // Set before the instance lock: packaged/source launches share history; tests do not.
 app.setPath('userData', profilePath(app.getPath('appData')));
+if(process.platform==='win32')app.setAppUserModelId('local.muse.desktop');
 if (!app.requestSingleInstanceLock()) app.quit();
 else {
   app.on('second-instance', () => { if (window) { if (window.isMinimized()) window.restore(); window.show(); window.focus(); } });
@@ -563,6 +571,7 @@ else {
   state.sessions = library.sessions;
   state.projects = groupConversations(state.sessions, library.projects).slice(1).map(group => group.projectPath);
   preferences.lastSessionId = library.lastSessionId;
+  state.notifyCompletions=preferences.notifyCompletions!==false;
   await saveConversations(app.getPath('userData'), {...library, projects:state.projects});
   museHome = preferences.museHome || path.join(app.getPath('home'), '.local', 'share', 'muse');
   try { if (!state.workspace || !(await stat(state.workspace)).isDirectory()) throw new Error('Missing project'); }
@@ -572,7 +581,17 @@ else {
     state.workspace = path.join(app.getPath('userData'), 'general-chat');
     await mkdir(state.workspace, {recursive:true});
   }
-  window = new BrowserWindow({ width: 1230, height: 850, minWidth: 860, minHeight: 620, title: 'Mora Desktop', icon: path.join(directory, 'assets/mora-mark.ico'), backgroundColor: '#101114', autoHideMenuBar: true, show: false, webPreferences: { preload: path.join(directory, 'preload.cjs'), nodeIntegration: false, contextIsolation: true, sandbox: true } });
+  const primary=screen.getPrimaryDisplay().workArea,areas=[primary,...screen.getAllDisplays().map(display=>display.workArea)];
+  const geometry=restoreWindowBounds(preferences.windowBounds,areas);
+  window = new BrowserWindow({ ...geometry,minWidth:Math.min(860,geometry.width),minHeight:Math.min(620,geometry.height), title: 'Mora Desktop', icon: path.join(directory, 'assets/mora-mark.ico'), backgroundColor: '#101114', autoHideMenuBar: true, show: false, webPreferences: { preload: path.join(directory, 'preload.cjs'), nodeIntegration: false, contextIsolation: true, sandbox: true } });
+  if(geometry.maximized)window.maximize();
+  let boundsTimer;const captureBounds=()=>{preferences.windowBounds={...window.getNormalBounds(),maximized:window.isMaximized()};};
+  for(const name of ['move','resize','maximize','unmaximize'])window.on(name,()=>{clearTimeout(boundsTimer);boundsTimer=setTimeout(()=>{if(!window.isDestroyed()){captureBounds();save().catch(report);}},400);});
+  completionNotices=new CompletionNotices({foreground:()=>window.isVisible() && !window.isMinimized() && window.isFocused(),save:()=>{save().catch(report);publish();},notify:notice=>{
+    if(!Notification.isSupported())return;const notification=new Notification({title:notice.title,body:notice.body,silent:true});
+    notification.on('click',()=>{if(window.isMinimized())window.restore();window.show();window.focus();if(state.sessionId===notice.sessionId)markCurrentRead();else resumeChat(notice.sessionId).catch(report);});try{notification.show();}catch{}
+  }});completionNotices.enabled=state.notifyCompletions;
+  window.on('focus',markCurrentRead);
   window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   window.webContents.on('will-navigate', event => event.preventDefault());
   window.webContents.session.setPermissionRequestHandler((_wc, _permission, callback) => callback(false));
@@ -581,6 +600,7 @@ else {
   window.on('close', event => {
     event.preventDefault();if(closing)return;closing=true;projectCancelled=true;
     window.webContents.executeJavaScript('window.flushMoraDraft?.()').then(async()=>{
+      clearTimeout(boundsTimer);captureBounds();await save();
       if(state.busy)state.queuePaused=true;
       if(!state.workUnavailable)await persistWork();
       await saveQueue;
@@ -589,7 +609,9 @@ else {
       window.destroy();
     }).catch(error=>{closing=false;report(new Error(`Could not save pending work: ${error.message}`));});
   });
-  const browser = new DesktopBrowser(window);
+  let browserSaveTimer,browserSignature='';
+  const browser = new BrowserWorkspace(window,(sessionId,snapshot)=>{const session=state.sessions.find(item=>item.sessionId===sessionId);if(!session)return;const signature=JSON.stringify([sessionId,snapshot]);if(signature===browserSignature)return;browserSignature=signature;session.browser=snapshot;clearTimeout(browserSaveTimer);browserSaveTimer=setTimeout(()=>save().catch(report),400);});
+  window.on('closed',()=>clearTimeout(browserSaveTimer));
   desktopBrowser=browser;
   let openedRunURL;
   projectRunner=new ProjectRunner(work=>{
@@ -600,7 +622,7 @@ else {
   state.projectWork=projectRunner.state;
   testerReports=new TesterReports(app.getPath('userData'));
   websiteReports=new WebsiteReports(app.getPath('userData'),{crypto:safeStorage});
-  websiteRun=new WebsiteRun({store:websiteReports,makeBrowser:(evidenceDirectory,onClose)=>new WebsiteBrowser({directory:evidenceDirectory,executablePath:app.isPackaged?path.join(process.resourcesPath,'website-browser','chrome.exe'):undefined,onClose}),makeModel:()=>createWebsiteObserver(executable,{modelId:state.modelId,reasoningEffort:'minimal',schema:websiteDecisionSchema}),onChange:value=>{state.website=value;state.websiteActive=value.status==='opening'||!!(websiteRun.browser&&!websiteRun.browser.closed);publish();}});
+  websiteRun=new WebsiteRun({store:websiteReports,makeBrowser:(evidenceDirectory,onClose)=>new WebsiteBrowser({directory:evidenceDirectory,executablePath:app.isPackaged?path.join(process.resourcesPath,'website-browser','chrome.exe'):undefined,onClose}),makeModel:()=>createWebsiteObserver(executable,{modelId:state.modelId,reasoningEffort:'minimal',schema:websiteDecisionSchema}),onChange:value=>{reportNotice('Website tester',value);state.website=value;state.websiteActive=value.status==='opening'||!!(websiteRun.browser&&!websiteRun.browser.closed);publish();}});
   handle('website-tester',websiteCommand);
   handle('tester',testerCommand);
   handle('project-work',projectCommand);
@@ -625,6 +647,7 @@ else {
   handle('resume-chat', resumeChat);
   handle('delete-chat', deleteChat);
   handle('chat-metadata',async(sessionId,action,title)=>{changeConversation(state,sessionId,action,title);await save();publish();return state;});
+  handle('notification-options',async enabled=>{if(typeof enabled!=='boolean')throw new Error('Choose whether to show completion notices.');preferences.notifyCompletions=enabled;state.notifyCompletions=enabled;completionNotices.enabled=enabled;await save();publish();return state;});
   handle('send', sendMessage);
   handle('stop', async () => { state.queuePaused = true; applyEvent(state, 'stop/requested', {}); publish(); try { await persistWork(); } finally { await runner.stop(); } });
   handle('queue', queueCommand);
@@ -650,11 +673,12 @@ else {
   handle('copy-text', text => { if (typeof text !== 'string' || text.length > 1000000) throw new Error('Invalid text.'); clipboard.writeText(text); });
   handle('open-link', url => { const target = new URL(url); if(!['http:','https:'].includes(target.protocol) || target.username || target.password) throw new Error('Use an HTTP or HTTPS link.'); return shell.openExternal(target.href); });
   await restoreWork('new');
+  // Restore chat ownership before the renderer can open a native browser view.
+  if (preferences.lastSessionId && state.sessions.some(s => s.sessionId === preferences.lastSessionId)) await resumeChat(preferences.lastSessionId).catch(report);
   await window.loadFile(path.join(directory, 'index.html'));
   // Loading saved work can postpone the first paint of a hidden native view.
   if(!window.isVisible()) window.show();
-  if (preferences.lastSessionId && state.sessions.some(s => s.sessionId === preferences.lastSessionId)) await resumeChat(preferences.lastSessionId).catch(report);
-  else publish();
+  publish();
   await connect();
   app.on('before-quit', event => { if (!quitting && runner.child) { event.preventDefault(); quitting = true; runner.stop().finally(() => app.quit()); } });
   app.on('window-all-closed', () => {Promise.allSettled([login.cancel(),projectRunner.shutdown(),runner.stop()]).then(()=>app.quit());});

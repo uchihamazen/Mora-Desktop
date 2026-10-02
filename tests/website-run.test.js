@@ -127,6 +127,18 @@ test('repeated discovery cannot starve queued deeper cases',async()=>{
  await run.start(undefined,{mode:'site',maxActions:100,accessibility:false});await run.completion;assert.equal(run.report.cases[0].status,'passed');
 });
 
+test('a newly reached page is planned before another queued normal case navigates away',async()=>{
+ const {run,browser}=await setup([]);let url='https://site.example/',planned=[];
+ browser.observe=async()=>({id:'o',url,roleId:browser.scope.roleId,visibleText:'Ready',controls:[]});
+ run.makeModel=()=>({initialize:async()=>{},close:async()=>{},decide:async prompt=>{const current=JSON.parse(prompt.split('Current rendered observation: ')[1]).url;planned.push(current);return {action:'finish'};}});
+ const handle=run.handleDecision.bind(run);let seeded=false;
+ run.handleDecision=async(decision,observation,epoch)=>{if(!seeded){seeded=true;run.report.cases.push({id:'settings',family:'normal',status:'queued'},{id:'tasks',family:'normal',status:'queued'});}return handle(decision,observation,epoch);};
+ run.executeCase=async record=>{url=`https://site.example/${record.id}`;record.status='passed';};
+ await run.start(undefined,{mode:'site',accessibility:false});await run.completion;
+ assert.ok(planned.includes('https://site.example/settings'),'Settings rules must get their own planning opportunity');
+ assert.ok(planned.includes('https://site.example/tasks'));
+});
+
 test('malformed generated plans get one grounded repair before becoming user questions',async()=>{
  const invalid={...plannedCase(),steps:[{action:'click',target:'Save'}]};
  const {run}=await setup([{action:'plan',cases:[invalid]},{action:'plan',cases:[plannedCase()]},{action:'finish'}]);

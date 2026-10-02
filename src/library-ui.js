@@ -56,7 +56,7 @@ export function setupLibrary(api,action) {
       for(const session of group.sessions) {
         const text=session.title || 'New conversation',row=node('div','',`session-row${session.sessionId===state.sessionId?' active':''}`);row.dataset.sessionId=session.sessionId;
         const button=node('button','','session-button');button.append(icon('chat'),node('span',`${session.pinned?'★ ':''}${session.unread?'● ':''}${text}`));button.title=`${text}\n${group.projectPath || 'General chat'}`;if(session.sessionId===state.sessionId)button.setAttribute('aria-current','true');
-        button.disabled=state.busy || state.loading || sending;button.addEventListener('click',()=>action(()=>api.resumeChat(session.sessionId)));
+        button.setAttribute('aria-label',`${session.unread?'Unread · ':''}${session.pinned?'Pinned · ':''}${text}`);button.disabled=state.busy || state.loading || sending;button.addEventListener('click',()=>action(()=>api.resumeChat(session.sessionId)));
         const menu=node('button','…','session-options');menu.setAttribute('aria-label',`Options for ${text}`);menu.setAttribute('aria-haspopup','dialog');menu.disabled=state.loading || sending;menu.addEventListener('click',()=>options(session,menu));
         const del=node('button','','session-delete-icon');del.append(icon('x'));del.setAttribute('aria-label',`Delete ${text}`);del.disabled=state.loading || sending || (session.sessionId===state.sessionId && state.busy);del.title=del.disabled?'Stop the request before deleting this chat':'Delete this conversation';
         del.addEventListener('click',()=>{if(!del.dataset.confirm){del.dataset.confirm='1';del.classList.add('confirm');return;}action(()=>api.deleteChat(session.sessionId));});row.append(button,menu,del);container.append(row);

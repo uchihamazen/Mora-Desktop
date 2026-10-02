@@ -90,12 +90,12 @@ export class WebsiteRun {
       while(true) {
         this.budget(epoch);let observation=await this.observe(epoch),stateId=stateFingerprint(observation),planId=planningKey(observation);
         await this.scan(observation,epoch);this.budget(epoch);this.seedConstraints(observation);
-        const queuedNormal=nextWebsiteCase(this.report.cases,{normalOnly:true});
-        if(queuedNormal){await this.executeCase(queuedNormal,epoch);idle=0;continue;}
         if(!this.planned.has(planId)) {
           this.planned.set(planId,structuredClone(observation));const decision=await this.decide(this.prompt(observation),epoch);const progress=await this.handleDecision(decision,observation,epoch);
           if(progress){idle=0;continue;}
         }
+        const queuedNormal=nextWebsiteCase(this.report.cases,{normalOnly:true});
+        if(queuedNormal){await this.executeCase(queuedNormal,epoch);idle=0;continue;}
         const broad=this.report.options.mode!=='workflow';
         const next=nextWebsiteCase(this.report.cases,{normalOnly:broad&&this.phase==='breadth'});
         if(next){await this.executeCase(next,epoch);idle=0;continue;}

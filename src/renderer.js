@@ -1,5 +1,6 @@
 import {setupLibrary} from './library-ui.js';
 import {setupConversationFind} from './find-ui.js';
+import {setupQuickActions} from './quick-actions.js';
 import { setupBrowser } from './browser-ui.js';
 import {stitchImageParts} from './images.js';
 import {markdownBlocks, inlineParts} from './markdown.js';
@@ -21,7 +22,6 @@ function setSidebar(collapsed) {
 }
 setSidebar(sidebarCollapsed);
 $('sidebar-toggle').addEventListener('click',()=>setSidebar(!sidebarCollapsed));
-document.addEventListener('keydown',event=>{if(event.ctrlKey&&!event.altKey&&!event.shiftKey&&event.key.toLowerCase()==='b'&&!document.querySelector('dialog[open]')){event.preventDefault();setSidebar(!sidebarCollapsed);}});
 const dismissedErrors = new Set();
 let state = { items: [], sessions: [], models: [], busy: false, connection: 'connecting' };
 let attachments = [], sending = false, lastSignature = '', startedAt = 0;
@@ -259,7 +259,8 @@ function update(next) {
   fillSelect($('effort'), (Array.isArray(model?.variants) ? model.variants : ['max']).map(value => ({ value, label: value[0].toUpperCase() + value.slice(1) })), state.reasoningEffort);
   $('execution-mode').value = state.executionMode || 'readonly';
   $('speed').value = state.speedPreset || 'custom'; $('speed').disabled = state.busy || state.loading || sending || !model?.variants?.length || state.connection!=='ready';
-  updateLibrary(state,sending);
+  $('notify-completions').checked=state.notifyCompletions!==false;
+  updateLibrary(state,sending);updateQuickActions();
   renderMessages(); conversationFind.update(state.sessionId);refreshSend();refreshStitch();
 }
 function refreshSend() { $('send-button').disabled = sending || state.loading || state.testerActive || state.websiteActive || state.projectOperation || state.projectRepair || state.historyMissing || state.workUnavailable || ['required','pending'].includes(state.account?.status) || state.connection !== 'ready' || (!$('prompt').value.trim() && !attachments.length); }
@@ -329,12 +330,13 @@ if(api.stitchCommand){
 $('choose-muse').addEventListener('click', () => action(() => api.chooseMuse())); $('reconnect').addEventListener('click', () => action(() => api.connect()));
 $('dismiss-error').addEventListener('click', () => { dismissedErrors.add(errorKey($('error-text').textContent)); $('error-banner').hidden = true; });
 document.querySelectorAll('[data-prompt]').forEach(button => button.addEventListener('click', () => { $('prompt').value = button.dataset.prompt; $('prompt').dispatchEvent(new Event('input')); $('prompt').focus(); }));
-document.addEventListener('keydown', event => { if (event.ctrlKey && event.key.toLowerCase() === 'n') { event.preventDefault(); if (!state.busy && !state.loading) action(() => api.newChat(null)); } });
 setInterval(() => { if (state.busy && startedAt) { const seconds = Math.floor((Date.now()-startedAt)/1000); $('elapsed').textContent = seconds >= 60 ? `${Math.floor(seconds/60)}m ${seconds%60}s` : `${seconds}s`; } },1000);
 api.onEvent(event => { if (event.type === 'state') update(event.state); });
 setupBrowser(api,capture=>{addImages([capture]);$('prompt').focus();});
 const updateLibrary=setupLibrary(api,action);
 const conversationFind=setupConversationFind();
+const updateQuickActions=setupQuickActions(api,{find:conversationFind,sidebar:setSidebar});
+$('notify-completions').addEventListener('change',()=>action(()=>api.notificationOptions($('notify-completions').checked),{flush:false}));
 updateProjects=setupProjects(api,action);
 updateProjectWork=setupProjectWork(api,action);
 updateTester=setupTester(api,error);

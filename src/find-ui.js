@@ -30,7 +30,7 @@ export function setupConversationFind() {
   function move(delta){if(matches.length){current=(current+delta+matches.length)%matches.length;showMatch(true);}}
   input.addEventListener('input',()=>{current=0;refresh(true);});input.addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();move(event.shiftKey?-1:1);}});
   $('find-next').addEventListener('click',()=>move(1));$('find-previous').addEventListener('click',()=>move(-1));$('find-close').addEventListener('click',close);
-  document.addEventListener('keydown',event=>{if(event.ctrlKey && !event.altKey && !event.shiftKey && event.key.toLowerCase()==='f' && !document.querySelector('dialog[open]')){event.preventDefault();open();}else if(event.key==='Escape' && !panel.hidden && !document.querySelector('dialog[open]')){event.preventDefault();close();}});
+  document.addEventListener('keydown',event=>{if(event.key==='Escape' && !panel.hidden && !document.querySelector('dialog[open]')){event.preventDefault();close();}});
   new MutationObserver(()=>refresh()).observe($('messages'),{subtree:true,childList:true,characterData:true,attributes:true,attributeFilter:['open','hidden']});
   return {open,update:id=>{if(sessionId!==id){sessionId=id;current=0;input.value='';}refresh();},isOpen:()=>!panel.hidden};
 }

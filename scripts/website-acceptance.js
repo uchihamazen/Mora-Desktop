@@ -9,7 +9,7 @@ import {createWebsiteObserver} from '../src/tester-native.js';
 import {discoverMuse} from '../src/msp.js';
 import {startAcceptanceFixture,acceptanceOracles,scoreAcceptance} from '../tests/fixtures/website-tester/acceptance.js';
 
-const root=path.resolve('artifacts/website-acceptance',new Date().toISOString().replace(/[:.]/g,'-'));await mkdir(root,{recursive:true});
+const root=path.resolve(process.env.MORA_WEBSITE_ACCEPTANCE_OUTPUT || 'artifacts/website-acceptance',new Date().toISOString().replace(/[:.]/g,'-'));await mkdir(root,{recursive:true});
 const executablePath=path.resolve('artifacts/website-browser/chrome.exe'),modelId='muse-spark-1.3-contributor',reasoningEffort='minimal';
 const options={mode:'site',maxActions:120,maxDecisions:30,maxMs:240000,accessibility:true,replay:true};
 const request='Discover and test this team shop and its settings, task forms and navigation. Use the visible rules. Cover normal flows first, then applicable empty, invalid, boundary, Arabic, persistence, ownership and rapid-input cases. Record verified outcomes, reproduce failures, and report anything not tested.';

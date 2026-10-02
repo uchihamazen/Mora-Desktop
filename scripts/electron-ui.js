@@ -12,7 +12,7 @@ export async function launchDesktop(packaged,env) {
   while(!target && !launchError && Date.now()<deadline){try{target=(await(await fetch(`http://127.0.0.1:${port}/json/list`)).json()).find(t=>t.url.endsWith('/index.html'));}catch{}if(!target)await new Promise(resolve=>setTimeout(resolve,100));}
   if(target) {
     const socket=new WebSocket(target.webSocketDebuggerUrl);await once(socket,'open');
-    try{await new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(Error('Browser initialization timed out')),10000);socket.addEventListener('message',event=>{const message=JSON.parse(event.data);if(message.id===1){clearTimeout(timer);message.result?.exceptionDetails?reject(Error('Browser initialization failed')):resolve();}});socket.send(JSON.stringify({id:1,method:'Runtime.evaluate',params:{expression:"window.muse.browserCommand('open').then(()=>window.muse.browserCommand('close'))",awaitPromise:true}}));});}catch(error){bootstrapError=error;}finally{socket.close();}
+    try{await new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(Error('Browser initialization timed out')),10000);socket.addEventListener('message',event=>{const message=JSON.parse(event.data);if(message.id===1){clearTimeout(timer);message.result?.exceptionDetails?reject(Error('Browser initialization failed')):resolve();}});socket.send(JSON.stringify({id:1,method:'Runtime.evaluate',params:{expression:"window.muse.browserCommand('state').then(state=>state.tabs?undefined:window.muse.browserCommand('open').then(()=>window.muse.browserCommand('close')))",awaitPromise:true}}));});}catch(error){bootstrapError=error;}finally{socket.close();}
   }
   const app=await launching;
   if(launchError || bootstrapError){await app?.close();throw launchError || bootstrapError;}

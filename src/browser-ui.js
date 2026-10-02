@@ -55,6 +55,10 @@ export function setupBrowser(api,addCapture) {
     $('browser-button').setAttribute('aria-pressed',String(state.open));
     if(document.activeElement!==$('browser-url'))$('browser-url').value=state.url || '';
     $('browser-title').textContent=state.loading ? 'Loading…' : state.title || 'Open a page to annotate its design';
+    const tabSignature=JSON.stringify([state.tabs,state.activeTabId]);
+    if($('browser-tabs').dataset.signature!==tabSignature){const focused=document.activeElement?.dataset.tabId,focusedAction=document.activeElement?.dataset.tabAction;$('browser-tabs').dataset.signature=tabSignature;$('browser-tabs').replaceChildren();for(const tab of state.tabs || []){const row=document.createElement('span'),button=document.createElement('button'),close=document.createElement('button');button.textContent=tab.title || tab.url || 'New tab';button.title=tab.url || 'New tab';button.dataset.tabId=tab.id;button.setAttribute('aria-pressed',String(tab.id===state.activeTabId));button.addEventListener('click',()=>command('tab-select',{id:tab.id}));close.textContent='×';close.dataset.tabId=tab.id;close.dataset.tabAction='close';close.setAttribute('aria-label',`Close tab ${tab.title || tab.url || 'New tab'}`);close.addEventListener('click',()=>command('tab-close',{id:tab.id}));row.append(button,close);$('browser-tabs').append(row);}if(focused && document.hasFocus())([...$('browser-tabs').querySelectorAll('button')].find(button=>button.dataset.tabId===focused && button.dataset.tabAction===focusedAction) || [...$('browser-tabs').querySelectorAll('button')].find(button=>button.dataset.tabId===state.activeTabId && !button.dataset.tabAction) || $('browser-new-tab')).focus({preventScroll:true});}
+    $('browser-new-tab').disabled=(state.tabs || []).length>=8;
+    const history=$('browser-history'),entries=state.history?.entries || [],historySignature=JSON.stringify(entries);if(history.dataset.signature!==historySignature){history.dataset.signature=historySignature;history.replaceChildren();const placeholder=document.createElement('option');placeholder.value='';placeholder.textContent='Choose a visited page';history.append(placeholder);entries.forEach((entry,index)=>{const option=document.createElement('option');option.value=String(index);option.textContent=entry.title || entry.url;option.title=entry.url;history.append(option);});}history.value='';history.disabled=state.loading || !entries.length;
     $('browser-back').disabled=!state.canBack;$('browser-forward').disabled=!state.canForward;
     $('browser-reload').disabled=!state.url;
     for(const id of ['browser-annotate','browser-region'])$(id).disabled=state.loading || !/^https?:/.test(state.url || '');
@@ -72,6 +76,8 @@ export function setupBrowser(api,addCapture) {
   }
   $('browser-button').addEventListener('click',()=>command(state.open ? 'close' : 'open'));
   $('browser-close').addEventListener('click',()=>command('close'));
+  $('browser-new-tab').addEventListener('click',()=>command('tab-new'));
+  $('browser-history').addEventListener('change',()=>{if($('browser-history').value!=='')command('history-go',{index:Number($('browser-history').value)});});
   $('browser-expand').addEventListener('click',()=>expand(!expanded));
   for(const mode of ['desktop','mobile'])$(`browser-${mode}`).addEventListener('click',()=>command('device',{mode}));
   $('browser-address').addEventListener('submit',event=>{event.preventDefault();command('navigate',{url:$('browser-url').value});});

@@ -2,9 +2,10 @@ import {WebContentsView} from 'electron';
 import {browserURL,clipRectangle,annotationContext,selectOnPage} from './annotations.js';
 
 export class DesktopBrowser {
-  constructor(window) {
+  constructor(window,{partition='persist:muse-browser',onChange,history}={}) {
     this.window=window;this.state={open:false,url:'',title:'',loading:false,error:'',selection:null,annotating:false,deviceMode:'desktop',deviceReady:false};this.epoch=0;
-    this.view=new WebContentsView({webPreferences:{partition:'persist:muse-browser',nodeIntegration:false,contextIsolation:true,sandbox:true,webSecurity:true}});
+    this.onChange=onChange;this.history=history;
+    this.view=new WebContentsView({webPreferences:{partition,nodeIntegration:false,contextIsolation:true,sandbox:true,webSecurity:true}});
     window.contentView.addChildView(this.view);this.view.setVisible(false);
     const web=this.view.webContents;
     web.session.setPermissionRequestHandler((_web,_permission,callback)=>callback(false));
@@ -32,10 +33,11 @@ export class DesktopBrowser {
     web.on('page-title-updated',()=>this.publish());
     web.on('did-fail-load',(_event,code,description,_url,isMainFrame)=>{if(isMainFrame && code!==-3){this.state.error=description;this.publish();}});
     web.on('render-process-gone',()=>{this.pageReady=false;this.clearSelection();this.state.error='Page stopped responding. Reload to try again.';this.publish();});
-    window.on('closed',()=>{clearInterval(this.timer);if(!web.isDestroyed())web.close();});
+    this.onWindowClosed=()=>this.dispose();window.on('closed',this.onWindowClosed);
   }
-  async initialize(){this.ready ??= this.view.webContents.loadURL('about:blank');await this.ready;}
-  updateVisibility(){this.view.setVisible(!!(this.state.open&&!this.occluded&&this.pageReady&&!this.state.loading));}
+  dispose(){this.disposed=true;clearInterval(this.timer);this.window.removeListener('closed',this.onWindowClosed);if(!this.window.isDestroyed()){this.view.setVisible(false);this.window.contentView.removeChildView(this.view);}if(!this.view.webContents.isDestroyed())this.view.webContents.close();}
+  async initialize(){if(!this.ready){const history=this.history;this.history=null;this.ready=history?.entries?.length?this.view.webContents.navigationHistory.restore(history).catch(error=>{this.state.error=`Could not reopen the page: ${error.message}`;this.publish();}):this.view.webContents.loadURL('about:blank');}await this.ready;}
+  updateVisibility(){if(!this.disposed)this.view.setVisible(!!(this.state.open&&!this.occluded&&this.pageReady&&!this.state.loading));}
   async checkPage(url) {
     const target=browserURL(url),parsed=new URL(target);
     if(!['localhost','127.0.0.1','[::1]'].includes(parsed.hostname))return {status:'not checked',message:'Run a local app before checking page loading.'};
@@ -52,10 +54,10 @@ export class DesktopBrowser {
     finally{clearTimeout(timer);web.off('console-message',receive);}
   }
   publish() {
-    if(this.window.isDestroyed() || this.view.webContents.isDestroyed())return;
+    if(this.disposed || this.window.isDestroyed() || this.view.webContents.isDestroyed())return;
     const web=this.view.webContents;
-    Object.assign(this.state,{deviceReady:!!this.pageReady,url:web.getURL()==='about:blank' ? '' : web.getURL(),title:web.getTitle(),canBack:web.navigationHistory.canGoBack(),canForward:web.navigationHistory.canGoForward()});
-    this.window.webContents.send('muse:event',{type:'browser',state:this.state});
+    Object.assign(this.state,{deviceReady:!!this.pageReady,url:web.getURL()==='about:blank' ? '' : web.getURL(),title:web.getURL()==='about:blank'?'':web.getTitle(),canBack:web.navigationHistory.canGoBack(),canForward:web.navigationHistory.canGoForward()});
+    if(this.onChange)this.onChange(this.state);else this.window.webContents.send('muse:event',{type:'browser',state:this.state});
   }
   script(code) {return this.view.webContents.executeJavaScriptInIsolatedWorld(117,[{code}]);}
   viewport() {
@@ -73,6 +75,7 @@ export class DesktopBrowser {
     if(!this.pageReady)return;
     await this.ready;
     const web=this.view.webContents;
+    if(this.disposed || web.isDestroyed())return;
     if(!web.debugger.isAttached())web.debugger.attach('1.3');
     await web.debugger.sendCommand('Emulation.setDeviceMetricsOverride',{width,height,deviceScaleFactor:1,mobile:false,scale});
   }

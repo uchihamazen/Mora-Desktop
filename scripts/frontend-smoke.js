@@ -8,7 +8,7 @@ const {chromium}=require('./runtime-packages.cjs').runtimeRequire('playwright');
 const png='iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+ip1sAAAAASUVORK5CYII=';
 const server=createServer(async(req,res)=>{
   const file={'/':'index.html','/style.css':'style.css','/renderer.js':'renderer.js','/markdown.js':'markdown.js','/project-ui.js':'project-ui.js','/work-ui.js':'work-ui.js','/images.js':'images.js','/projects.js':'projects.js','/browser-ui.js':'browser-ui.js','/assets/mora-mark.svg':'assets/mora-mark.svg'}[req.url];
-  if(['/tester-ui.js','/website-ui.js','/website-coverage.js','/library-ui.js','/find-ui.js'].includes(req.url)){res.setHeader('Content-Type','application/javascript');res.end(await readFile('src'+req.url));return;}
+  if(['/tester-ui.js','/website-ui.js','/website-coverage.js','/library-ui.js','/find-ui.js','/quick-actions.js'].includes(req.url)){res.setHeader('Content-Type','application/javascript');res.end(await readFile('src'+req.url));return;}
   if(!file){res.writeHead(404).end();return;}
   res.setHeader('Content-Type',file.endsWith('.svg')?'image/svg+xml':file.endsWith('.css')?'text/css':file.endsWith('.js')?'application/javascript':'text/html');
   res.end(await readFile(path.join('src',file)));
@@ -62,6 +62,10 @@ try{
  await page.keyboard.press('Control+f');await page.locator('#find-text').fill('[.*');assert.equal(await page.locator('#find-count').textContent(),'No matches');await page.evaluate(()=>window.smoke.emit({sessionId:'chat-b'}));assert.equal(await page.locator('#find-text').inputValue(),'');await page.keyboard.press('Escape');
  await page.locator('#library-archived').click();await page.evaluate(()=>window.smoke.emit({sessionId:'new-chat'}));assert.equal(await page.locator('#library-active').getAttribute('aria-pressed'),'true');await page.locator('#library-active').click();await page.evaluate(()=>window.smoke.emit({sessionId:null,sessions:[],projects:[],items:[],busy:false}));
  assert.equal(await page.title(),'Mora Desktop');
+ await page.keyboard.press('Control+k');await page.getByRole('dialog',{name:'Quick actions and shortcuts'}).waitFor();
+ await page.getByLabel('Search quick actions',{exact:true}).fill('find');await page.getByRole('button',{name:'Find in current conversation',exact:false}).click();assert.equal(await page.locator('#conversation-find').isVisible(),true);await page.keyboard.press('Escape');
+ await page.locator('#sidebar-toggle').click();await page.keyboard.press('Control+Shift+f');assert.equal(await page.locator('.sidebar').isVisible(),true);assert.equal(await page.locator('#library-search').evaluate(el=>el===document.activeElement),true);
+ await page.evaluate(()=>window.smoke.emit({busy:true}));await page.keyboard.press('Control+k');await page.getByLabel('Search quick actions',{exact:true}).fill('new conversation');assert.equal(await page.getByRole('button',{name:/New conversation.*Ctrl\+N/}).isDisabled(),true);await page.keyboard.press('Escape');await page.evaluate(()=>window.smoke.emit({busy:false}));
  assert.equal(await page.locator('.brand strong').textContent(),'Mora');
  await page.waitForFunction(()=>[...document.querySelectorAll('.brand-mark,.welcome-emblem')].every(img=>img.complete&&img.naturalWidth>0));
  await page.evaluate(()=>window.smoke.emit({sessionId:'missing-history',error:'The original engine log is missing.',historyMissing:true}));
