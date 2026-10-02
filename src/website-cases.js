@@ -6,6 +6,19 @@ export const caseFamilies=['normal','input','boundary','transition','combination
 const digest=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex').slice(0,24);
 const htmlNumber=value=>typeof value==='string'&&/^-?(?:\d+(?:\.\d+)?|\.\d+)(?:[eE][+-]?\d+)?$/.test(value)&&Number.isFinite(Number(value))?Number(value):null;
 function findControls(target,observation){return observation.controls.filter(c=>c.id===target||(c.key||controlKey(c))===target||c.name===target);}
+function observedCheck(check,observation){
+  const matches=findControls(check.target,observation);if(matches.length!==1||matches[0].sensitive||matches[0].inert)return false;
+  const control=matches[0];
+  if(check.check==='value')return control.value===check.expected;
+  if(check.check==='checked')return [true,false,'true','false'].includes(control.checked)&&[true,'true'].includes(control.checked)===check.expected;
+  if(check.check==='textValue')return typeof control.text==='string'&&control.text===check.expected;
+  return false;
+}
+export function matchesCaseStart(record,observation){
+  if(record.start.url!==observation.url||record.start.roleId!==observation.roleId)return false;
+  if(record.precondition&&!observation.visibleText.includes(record.precondition))return false;
+  return record.start.conditionId&&record.startChecks?.length?record.startChecks.every(check=>observedCheck(check,observation)):stateFingerprint(observation)===record.start.stateId;
+}
 export function resolveWebsiteStep(planned,observation) {
   if(planned.guard&&!observation.visibleText.includes(planned.guard))throw Error('The step precondition is no longer visible.');
   const step={...planned,observationId:observation.id};delete step.guard;delete step.delayMs;
@@ -29,13 +42,15 @@ export function validateWebsiteCase(candidate,{observation,scope,request,stateId
       validateWebsiteStep({...item,observationId:observation.id});
       return item;
     };
-    const steps=candidate.steps.map(convert),reset=(candidate.reset||[]).map(convert);
+    const steps=candidate.steps.map(convert),reset=(candidate.reset||[]).map(convert),startChecks=(candidate.startChecks||[]).map(convert);
+    if(startChecks.length>6||startChecks.some(check=>check.action!=='assert'||!observedCheck(check,observation)))throw Error('Starting conditions need at most six assertions of observed field values, checked states or exact control text.');
     if(reset.length>4||reset.some(s=>s.action==='assert'))throw Error('Reset needs at most four explicit setup actions.');
     if(!steps.some(s=>s.action==='assert'))throw Error('A case needs an outcome assertion; interactions alone are not a passing test.');
     const firstControl=findControls(candidate.feature||'',observation)[0],featureId=firstControl?(firstControl.key||controlKey(firstControl)):String(candidate.feature||'page').slice(0,180);
     const grounding={supported:true,kind:constraintRule?'constraint':source,quote:redactText(quote),...(constraintRule?{rule:constraintRule}:{})};
-    const result={id,title,featureId,family:candidate.family,start:{stateId,url:observation.url,roleId:observation.roleId},precondition:String(candidate.precondition||'').slice(0,500),steps,reset,grounding,status:'queued',executions:[]};
-    result.fingerprint=digest([result.start.url,result.start.roleId,featureId,steps,grounding]);return result;
+    const result={id,title,featureId,family:candidate.family,start:{stateId,url:observation.url,roleId:observation.roleId,...(startChecks.length?{conditionId:digest([observation.url,observation.roleId,startChecks])}:{})},startChecks,precondition:String(candidate.precondition||'').slice(0,500),steps,reset,grounding,status:'queued',executions:[]};
+    result.targets=observation.controls.filter(c=>[...steps,...startChecks].some(s=>s.target===(c.key||controlKey(c)))).map(c=>({key:c.key||controlKey(c),name:redactText(c.name),tag:c.tag,role:c.role||''}));
+    result.fingerprint=digest([result.start.url,result.start.roleId,featureId,steps,grounding,startChecks]);return result;
   }catch(error){return {id,title,family:candidate?.family||'normal',status:'needs clarification',reason:error.message,executions:[],fingerprint:digest([title,error.message])};}
 }
 export function addWebsiteCases(report,candidates,context) {

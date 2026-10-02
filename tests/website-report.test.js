@@ -26,6 +26,11 @@ test('export embeds only supplied valid PNG evidence and keeps unresolved work',
  const html=api.buildWebsiteExport(r,{format:'html',evidence:{[name]:'iVBORw0KGgo='}});assert.ok(html.includes('data:image/png;base64,iVBORw0KGgo='));assert.ok(html.includes('Interrupted replay'));
  assert.throws(()=>api.buildWebsiteExport(r,{format:'html',evidence:{[name]:'\" onerror=alert(1)'}}),/evidence/i);
 });
+test('exports retain the verified starting checklist and reset recipe used for reproduction',()=>{
+ const r=report();r.cases[0].start={url:'https://example.com',roleId:'guest',conditionId:'conditions'};r.cases[0].startChecks=[{action:'assert',target:'Search',check:'value',expected:''}];r.cases[0].reset=[{action:'click',target:'Reset'}];r.cases[0].executions[0].startConditionId='conditions';
+ const exported=JSON.parse(api.buildWebsiteExport(r,{format:'json'}));assert.equal(exported.cases[0].startChecks[0].check,'value');assert.equal(exported.cases[0].reset[0].target,'Reset');assert.equal(exported.cases[0].executions[0].startConditionId,'conditions');
+ assert.match(api.buildWebsiteExport(r),/Required starting conditions/);
+});
 test('restart recovers pending case/replay uncertainty from a valid backup',async()=>{
  const store=new WebsiteReports(await mkdtemp(path.join(tmpdir(),'website-report-'))),r=await store.create({url:'https://example.com'});
  r.status='awaiting permission';r.pending={id:'expired'};r.steps=[{id:'s1',caseId:'c1',action:{action:'click'},status:'pending'}];r.cases=[{id:'c1',status:'running',executions:[{replay:true,steps:[{action:{action:'assert'},status:'pending'}]}]}];await store.save(r);await writeFile(store.filename(r.id),'broken');

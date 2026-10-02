@@ -4,6 +4,7 @@ import {mkdtemp} from 'node:fs/promises';
 import path from 'node:path';
 import {tmpdir} from 'node:os';
 import {WebsiteReports} from '../src/website-tester.js';
+import {observeState} from '../src/website-discovery.js';
 const api=await import('../src/website-run.js').catch(()=>({}));
 async function setup(decisions){
  const store=new WebsiteReports(await mkdtemp(path.join(tmpdir(),'website-run-'))),performed=[];
@@ -120,10 +121,44 @@ test('stopping a recording cancels teaching instead of leaving an active recorde
  const {run,browser}=await setup([]);browser.beginTeaching=async()=>{};browser.stopTeaching=async()=>{};await run.beginTeaching('record');await run.stop();assert.equal(run.report.teaching.status,'cancelled');
 });
 
-test('finishing bounded discovery identifies queued cases as not tested',async()=>{
+test('repeated discovery cannot starve queued deeper cases',async()=>{
  const {run}=await setup([]);let passes=0;const original=run.observe.bind(run);run.observe=async epoch=>{const observation=await original(epoch);if(++passes===1)run.report.cases.push({id:'leftover',status:'queued',family:'boundary'});return observation;};
- // Force the discovery repetition guard without depending on any model output.
- run.atomic=async()=>({result:{status:'ok'}});await run.start(undefined,{mode:'site',maxActions:100,accessibility:false});await run.completion;assert.equal(run.report.cases[0].status,'not tested');
+ run.atomic=async()=>({result:{status:'ok'}});run.executeCase=async record=>{record.status='passed';};
+ await run.start(undefined,{mode:'site',maxActions:100,accessibility:false});await run.completion;assert.equal(run.report.cases[0].status,'passed');
+});
+
+test('malformed generated plans get one grounded repair before becoming user questions',async()=>{
+ const invalid={...plannedCase(),steps:[{action:'click',target:'Save'}]};
+ const {run}=await setup([{action:'plan',cases:[invalid]},{action:'plan',cases:[plannedCase()]},{action:'finish'}]);
+ run.onChange=report=>{if(report.pending&&run.pending)setImmediate(()=>run.approve(report.pending.id,true));};
+ await run.start();await run.completion;assert.ok(run.report.cases.some(c=>c.status==='passed'));assert.ok(run.report.cases.some(c=>c.status==='replanned'));
+});
+test('discovery never reuses an old unique control when the current matches are ambiguous',async()=>{
+ const {run,browser,performed}=await setup([]);const original=await browser.observe();observeState(run.report.discovery,original);
+ browser.observe=async()=>browser.observation={...original,id:'new',controls:[original.controls[0],{...original.controls[0],id:'e2'}]};
+ run.onChange=report=>{if(report.pending&&run.pending)setImmediate(()=>run.approve(report.pending.id,true));};
+ await run.start(undefined,{mode:'site',accessibility:false,maxActions:20});await run.completion;
+ assert.equal(performed.some(step=>step.action==='click'),false);
+});
+
+test('expectation review includes original semantic targets so a wrong element is not confirmed',async()=>{
+ const {run,browser}=await setup([]);let calls=0,reviewed=false;
+ browser.perform=async step=>({status:step.action==='assert'?'failed':'ok',actual:'unexpected result'});
+ run.makeModel=()=>({initialize:async()=>{},close:async()=>{},decide:async(prompt)=>{
+  if(calls++===0)return {action:'plan',cases:[plannedCase()]};
+  if(prompt.startsWith('Review only')){reviewed=true;assert.match(prompt,/"targets":\[/);assert.match(prompt,/"name":"Save"/);return {action:'review',supported:false,note:'Wrong result element'};}
+  return {action:'finish'};
+ }});
+ run.onChange=report=>{if(report.pending&&run.pending)setImmediate(()=>run.approve(report.pending.id,true));};
+ await run.start();await run.completion;assert.equal(reviewed,true);assert.equal(run.report.status,'done',run.report.message);assert.equal(run.report.findings.length,0);
+});
+test('replay proves unchanged explicit starting conditions while preserving different full observations',async()=>{
+ const plan={...plannedCase(),startChecks:[{action:'assert',target:'Save',check:'textValue',expected:'Save'}]};
+ const {run,browser}=await setup([{action:'plan',cases:[plan]},{action:'review',supported:true},{action:'finish'}]);let notices=0;
+ const observe=browser.observe.bind(browser);browser.observe=async()=>{const o=await observe();o.controls[0].text='Save';o.visibleText='Ready notice '+notices++;return o;};
+ browser.perform=async step=>({status:step.action==='assert'?'failed':'ok',actual:false});
+ run.onChange=report=>{if(report.pending&&run.pending)setImmediate(()=>run.approve(report.pending.id,true));};
+ await run.start();await run.completion;assert.equal(run.report.status,'done');const record=run.report.cases[0];assert.equal(record.status,'reproduced finding');assert.notEqual(record.executions[0].startStateId,record.executions[1].startStateId);assert.equal(record.executions[0].startConditionId,record.executions[1].startConditionId);
 });
 
 test('Stop during recorder shutdown prevents a late Start from launching a model',async()=>{

@@ -7,6 +7,28 @@ const observation={id:'o',url:'https://site.example/',roleId:'guest',visibleText
 const context={observation,scope:normalizeWebsiteScope({url:observation.url}),request:'Search for tea must show Tea.',stateId:'state'};
 const candidate=()=>({title:'Search for tea',feature:'Search',family:'normal',basisSource:'user',basisQuote:context.request,precondition:'Search',steps:[{action:'type',target:'Search',value:'tea'},{action:'assert',check:'text',expected:'Tea',basis:context.request}],reset:[]});
 
+test('explicit starting checks tolerate unrelated text but reject changed data, roles and URLs',()=>{
+ const record=api.validateWebsiteCase({...candidate(),startChecks:[{action:'assert',target:'Search',check:'value',expected:''}]},context);
+ assert.equal(record.status,'queued');assert.ok(record.start.conditionId);
+ assert.equal(api.matchesCaseStart(record,{...observation,visibleText:'Search returns matching results. Unrelated notice'}),true);
+ assert.equal(api.matchesCaseStart(record,{...observation,controls:[{...observation.controls[0],value:'old'},observation.controls[1]]}),false);
+ assert.equal(api.matchesCaseStart(record,{...observation,roleId:'admin'}),false);
+ assert.equal(api.matchesCaseStart(record,{...observation,url:'https://site.example/other'}),false);
+ assert.equal(api.matchesCaseStart(record,{...observation,controls:[]}),false);
+});
+test('starting checks must be observed and cannot contain actions or unsupported expectations',()=>{
+ for(const check of [{action:'click',target:'Submit'},{action:'assert',target:'Search',check:'value',expected:'invented'},{action:'assert',check:'text',expected:'Search'}]){
+  assert.equal(api.validateWebsiteCase({...candidate(),startChecks:[check]},context).status,'needs clarification');
+ }
+});
+test('an unknown or mixed checked state cannot prove an unchecked starting condition',()=>{
+ for(const checked of [undefined,null,'mixed']){
+  const obs={...observation,controls:[{...observation.controls[0],checked}]};
+  const record=api.validateWebsiteCase({...candidate(),startChecks:[{action:'assert',target:'Search',check:'checked',expected:false}]},{...context,observation:obs});
+  assert.equal(record.status,'needs clarification');
+ }
+});
+
 test('cases require grounded expectations and an actual assertion, not clicks',()=>{
  const valid=api.validateWebsiteCase(candidate(),context);assert.equal(valid.status,'queued');assert.equal(valid.steps[0].target,controlKey(observation.controls[0]));
  assert.equal(api.validateWebsiteCase({...candidate(),steps:[{action:'click',target:'Submit'}]},context).status,'needs clarification');

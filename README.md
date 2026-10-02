@@ -134,14 +134,17 @@ if needed, choose a workflow, page or website scope, then select **Start checkin
 Mora uses the existing native model connection and a dedicated Playwright browser.
 Review each exact short case with **Allow this case**, or **Allow once** for a discovery
 action. Decline, take over or update the testing focus at any time. Set operation/time
-limits in **Website scope and limits**. Clicks are recorded separately from assertions.
+limits in **Setup**, using Quick, Standard or Intensive budgets or custom values.
+Use **Tests** and **Findings** to filter results, **Explore** to focus on discovered
+controls, and **Evidence** to inspect actions and masked screenshots. Run controls
+remain visible while you browse results. Clicks are recorded separately from assertions.
 The saved map records observed pages, controls, states and transitions, with normal
 workflows before grounded boundary, input, transition and timing variations. Locally
 executed sequences avoid a model round trip between rapid inputs.
 
 Cases cite supplied requirements, visible rules or exposed input constraints. Unsupported
 expectations need clarification; automation failures are blocked. A failed assertion is
-an observed failure until the unchanged case fails again from its known starting state
+an observed failure until the unchanged case fails again from verified starting conditions
 with fresh **Allow replay** permission. Confidence and severity are separate. Optional
 axe accessibility scans include violations and checks needing manual review; they do
 not establish complete accessibility conformance.
@@ -155,7 +158,7 @@ Page text is sent to the connected provider. Password/contact fields and common 
 are filtered, but arbitrary personal content is not guaranteed to be recognized; avoid
 sensitive pages. Screenshots stay local with input fields masked.
 
-**Saved reports** preserves checks and evidence across restarts. **Stop and close browser**
+**Reports** preserves checks and evidence across restarts. **Stop and close browser**
 cancels work and closes only the owned browser. Take over preserves the current page
 unless an action is already pending in the browser: then Mora closes it to cancel the
 action and records an uncertain outcome. Reopen the site before continuing in that case.
