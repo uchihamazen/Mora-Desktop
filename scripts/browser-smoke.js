@@ -1,5 +1,7 @@
 import {createRequire} from 'node:module';
 import {createServer} from 'node:http';
+import {createServer as reservePort} from 'node:net';
+import {once} from 'node:events';
 import {mkdtemp,writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
@@ -9,7 +11,7 @@ const {_electron}=require('./runtime-packages.cjs').runtimeRequire('playwright')
 const packaged=process.argv.slice(2).find(argument=>!argument.startsWith('--'));
 const realSend=process.argv.includes('--send');
 const server=createServer(async(req,res)=>{
-  if(req.url==='/slow')await new Promise(resolve=>setTimeout(resolve,500));
+  if(req.url==='/slow'||req.url==='/slow-resize')await new Promise(resolve=>setTimeout(resolve,req.url==='/slow-resize'?1600:500));
   res.setHeader('Content-Type','text/html');
   res.end(`<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1"><script>window.bootWidth=innerWidth</script><title>Design fixture</title><style>body{background:#eef2fa;padding:40px;font:18px Arial}#card{background:white;border-radius:16px;padding:30px;color:#184da0}h1{font-size:30px}a{display:block;margin:20px 0}@media(max-width:600px){#card{color:rgb(0,128,0)}body{padding:12px}}</style><section id="card"><h1>Design heading</h1><a id="link" href="/next">Change this design</a><input value="private-form-value"><button onclick="alert('must not execute')">Action</button><script>window.pageFlag='page-script'</script></section><p>${req.url}</p>`);
 });
@@ -17,9 +19,23 @@ await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
 const url=`http://127.0.0.1:${server.address().port}`;
 const env={...process.env};delete env.ELECTRON_RUN_AS_NODE;
 env.MUSE_DESKTOP_TEST_USER_DATA=await mkdtemp(path.join(tmpdir(),'muse-browser-profile-'));
-const app=await _electron.launch({executablePath:packaged || require('electron'),args:packaged ? [] : ['.'],cwd:process.cwd(),env});
+const reservation=reservePort();reservation.listen(0,'127.0.0.1');await once(reservation,'listening');const port=reservation.address().port;await new Promise(resolve=>reservation.close(resolve));
+let launchError;const launching=_electron.launch({executablePath:packaged || require('electron'),args:[...(packaged ? [] : ['.']),`--remote-debugging-port=${port}`],cwd:process.cwd(),env,timeout:40000}).catch(error=>{launchError=error;});
+// Initialize the hidden native view before Playwright waits for every page.
+// A newly constructed, unloaded WebContentsView can otherwise stall attachment.
+const until=Date.now()+35000;let target,bootstrapError;
+while(!target&&!launchError&&Date.now()<until){try{target=(await(await fetch(`http://127.0.0.1:${port}/json/list`)).json()).find(t=>t.url.endsWith('/index.html'));}catch{}if(!target)await new Promise(resolve=>setTimeout(resolve,100));}
+if(target){
+ const socket=new WebSocket(target.webSocketDebuggerUrl);await once(socket,'open');
+ try {await new Promise((resolve,reject)=>{
+  const timer=setTimeout(()=>reject(Error('Browser initialization timed out')),10000);
+  socket.addEventListener('message',event=>{const message=JSON.parse(event.data);if(message.id===1){clearTimeout(timer);message.result?.exceptionDetails?reject(Error('Browser initialization failed')):resolve();}});
+  socket.send(JSON.stringify({id:1,method:'Runtime.evaluate',params:{expression:"window.muse.browserCommand('open').then(()=>window.muse.browserCommand('close'))",awaitPromise:true}}));
+ });}catch(error){bootstrapError=error;}finally{socket.close();}
+}
+const app=await launching;if(launchError||bootstrapError){await app?.close();await new Promise(resolve=>server.close(resolve));throw launchError||bootstrapError;}
 try {
-  const page=await app.firstWindow();
+  const page=app.context().pages().find(candidate=>candidate.url().endsWith('/index.html'));assert.ok(page,'Mora main window is available');
   await page.locator('#browser-button').waitFor({timeout:10000});
   await page.locator('#browser-button').click();
   assert.equal(await page.locator('#browser-note').count(),0,'Annotation note must be removed; users write in the main chat');
@@ -37,6 +53,29 @@ try {
   await web.locator('#card').waitFor();
   const startup=await web.evaluate(()=>({bootWidth:window.bootWidth,width:innerWidth}));
   assert.ok(startup.bootWidth>=1279,`Desktop layout must apply before page scripts: ${JSON.stringify(startup)}`);
+  assert.equal(await page.locator('#browser-resizer').count(),1,'The preview needs a draggable divider');
+  const panelWidth=()=>page.locator('#browser-panel').evaluate(e=>e.getBoundingClientRect().width);
+  await page.locator('#sidebar-toggle').click();
+  const initialWidth=await panelWidth(),divider=await page.locator('#browser-resizer').boundingBox();
+  const nativeView=()=>app.evaluate(({BrowserWindow})=>{const window=BrowserWindow.getAllWindows()[0],view=window.contentView.children.find(child=>child.webContents&&child.webContents!==window.webContents);return{visible:view.getVisible(),bounds:view.getBounds()};});
+  await page.mouse.move(divider.x+divider.width/2,divider.y+divider.height/2);await page.mouse.down();await page.mouse.move(divider.x-110,divider.y+divider.height/2,{steps:8});assert.equal((await nativeView()).visible,false,'Native preview cannot steal pointer during resize');await page.mouse.up();
+  assert.ok(await panelWidth()>initialWidth+90,'Dragging left expands the browser');
+  await page.waitForTimeout(120);assert.equal((await nativeView()).visible,true,'Preview returns after resize');
+  const viewport=await page.locator('#browser-viewport').boundingBox(),native=(await nativeView()).bounds;assert.ok(Math.abs(viewport.x-native.x)<=1&&Math.abs(viewport.width-native.width)<=1,'Native browser follows the divider');
+  await page.evaluate(url=>{window.slowNavigation=window.muse.browserCommand('navigate',{url});},url+'/slow-resize');await page.waitForFunction(async()=>(await window.muse.browserCommand('state')).loading);
+  const loadingDivider=await page.locator('#browser-resizer').boundingBox();await page.mouse.move(loadingDivider.x+3,loadingDivider.y+100);await page.mouse.down();await page.mouse.move(loadingDivider.x+70,loadingDivider.y+100,{steps:4});await page.mouse.up();
+  assert.equal((await nativeView()).visible,false,'Finishing a resize cannot reveal the oversized loading surface');await page.evaluate(()=>window.slowNavigation);await page.waitForFunction(async()=>!(await window.muse.browserCommand('state')).loading);await page.waitForTimeout(100);assert.equal((await nativeView()).visible,true);
+  await page.evaluate(url=>window.muse.browserCommand('navigate',{url}),url);await web.locator('#card').waitFor();
+  const savedWidth=await panelWidth();await page.reload();await page.locator('#browser-panel').waitFor();
+  assert.ok(Math.abs(await panelWidth()-savedWidth)<2,'Preview width survives reload');assert.equal(await page.locator('.sidebar').isVisible(),false);
+  await page.locator('#browser-resizer').focus();await page.keyboard.press('ArrowRight');assert.ok(await panelWidth()<savedWidth,'Arrow keys resize the preview');
+  const beforeCancel=await panelWidth(),cancelDivider=await page.locator('#browser-resizer').boundingBox();
+  await page.mouse.move(cancelDivider.x+3,cancelDivider.y+100);await page.mouse.down();await page.mouse.move(cancelDivider.x+90,cancelDivider.y+100,{steps:6});await page.keyboard.press('Escape');await page.mouse.up();assert.ok(Math.abs(await panelWidth()-beforeCancel)<2,'Escape cancels a resize');
+  await page.locator('#browser-expand').click();assert.equal(await page.locator('#browser-resizer').isVisible(),false);await page.locator('#browser-expand').click();assert.ok(Math.abs(await panelWidth()-beforeCancel)<2,'Back to chat restores the split width');
+  await page.locator('#browser-resizer').focus();await page.keyboard.press('End');assert.ok(await page.locator('main').evaluate(e=>e.getBoundingClientRect().width)>=399,'Resizing leaves usable chat space');await page.keyboard.press('Home');assert.equal(await panelWidth(),390);
+  await page.keyboard.press('ArrowLeft');await page.screenshot({path:'artifacts/workspace-resized.png'});
+  await page.locator('#browser-resizer').dblclick();await page.locator('#sidebar-toggle').click();
+  await page.waitForTimeout(150);
   // Device emulation scales the native surface; Playwright locator clicks use
   // unscaled DOM coordinates. Send pointer input at the displayed position.
   async function point(x,y){const width=await app.evaluate(({BrowserWindow})=>{const window=BrowserWindow.getAllWindows()[0];return window.contentView.children.find(child=>child.webContents && child.webContents!==window.webContents).getBounds().width;});const scale=width/await web.evaluate(()=>innerWidth);return{x:x*scale,y:y*scale};}

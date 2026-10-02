@@ -9,6 +9,18 @@ import {setupWebsiteTester} from './website-ui.js';
 
 const $ = id => document.getElementById(id);
 const api = window.muse;
+let sidebarCollapsed=false;
+try {sidebarCollapsed=localStorage.getItem('mora.sidebarCollapsed')==='true';}catch{}
+function setSidebar(collapsed) {
+  const sidebar=$('navigation-sidebar'),toggle=$('sidebar-toggle'),restoreFocus=collapsed&&sidebar.contains(document.activeElement);
+  sidebarCollapsed=collapsed;sidebar.hidden=collapsed;document.body.classList.toggle('sidebar-collapsed',collapsed);
+  toggle.setAttribute('aria-expanded',String(!collapsed));toggle.setAttribute('aria-label',collapsed?'Show navigation':'Hide navigation');toggle.title=(collapsed?'Show':'Hide')+' navigation (Ctrl+B)';
+  if(restoreFocus)toggle.focus();
+  try {localStorage.setItem('mora.sidebarCollapsed',String(collapsed));}catch{}
+}
+setSidebar(sidebarCollapsed);
+$('sidebar-toggle').addEventListener('click',()=>setSidebar(!sidebarCollapsed));
+document.addEventListener('keydown',event=>{if(event.ctrlKey&&!event.altKey&&!event.shiftKey&&event.key.toLowerCase()==='b'&&!document.querySelector('dialog[open]')){event.preventDefault();setSidebar(!sidebarCollapsed);}});
 const collapsedProjects = new Set();
 const dismissedErrors = new Set();
 let state = { items: [], sessions: [], models: [], busy: false, connection: 'connecting' };
@@ -370,5 +382,5 @@ updateProjects=setupProjects(api,action);
 updateProjectWork=setupProjectWork(api,action);
 updateTester=setupTester(api,error);
 updateWebsiteTester=setupWebsiteTester(api,error);
-$('onboarding-action').addEventListener('click',()=>{$('settings-panel').hidden=false;if(state.account?.status==='pending')return;action(()=>api.accountCommand(state.account?.status==='missing'?'install':state.account?.status==='required'?'login':'refresh'));});
+$('onboarding-action').addEventListener('click',()=>{setSidebar(false);$('settings-panel').hidden=false;if(state.account?.status==='pending')return;action(()=>api.accountCommand(state.account?.status==='missing'?'install':state.account?.status==='required'?'login':'refresh'));});
 update(await api.getState()); $('prompt').focus();

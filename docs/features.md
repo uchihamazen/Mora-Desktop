@@ -84,11 +84,16 @@
 - Verify with the change/lifecycle tests, frontend smoke, and `scripts/changes-smoke.js` (real Muse edit and saved review); the panel is read-only, without accept/revert controls.
 
 ## Browser and design annotations
-- A light Chromium panel opens HTTP/HTTPS pages and local development servers; Desktop fits a minimum 1280px CSS viewport and Mobile centers a 390px viewport. Expand fills the app window; Back to chat restores the split view. Cookies use the same persistent browser partition in both modes.
+- A Chromium panel opens HTTP/HTTPS pages and local servers; Desktop fits a minimum 1280px CSS viewport and Mobile centers a 390px viewport. Drag its left divider or use arrow keys to resize; double-click resets and Escape cancels dragging. Width is remembered and bounded to keep chat usable. Expand fills the window; Back to chat restores the split; cookies share one persistent partition.
 - Annotate selects an element or region; Add to chat creates a numbered screenshot card with source URL and an editable change note. Multiple cards use the existing image flow; removing a card removes its bounded HTML/URL/styles context. Expanded view returns to chat.
 - Navigation, Escape, scrolling, resizing or device switching clears selection; capture rejects a changed page. Device changes wait until the page loads or recovers. App/page zoom use their own coordinates; file/image review temporarily hides the native browser view.
 - Web pages run sandboxed without Node or the Muse bridge; native permissions, downloads and non-web schemes are denied. HTML omits scripts, event handlers and form values, with a 24,000-character cap; frames are selected as outer elements, without inspecting frame contents.
 - Capture before / Compare after shows timestamped screenshots of the same page, device, viewport and scroll position; changed sources require a new baseline. This compares appearance without verifying functionality. Verify browser tests and `scripts/browser-smoke.js [EXE]`; Mobile previews responsive width without phone hardware emulation.
+
+## Workspace layout
+- The navigation button beside the project selector shows or hides the left sidebar; Ctrl+B works while the Mora interface has focus. The choice persists locally, and hiding a focused sidebar returns focus to the toggle.
+- Narrow chat panes wrap their header and composer controls. Browser resizing temporarily hides the native page during dragging so it cannot steal pointer events; cancellation restores the previous split.
+- Verify frontend and browser smoke checks for persistence, keyboard access, divider bounds, Escape cancellation, native-view alignment and expansion/restoration.
 
 ## Google Stitch MCP
 - Engine settings connects/tests/disconnects Stitch's native MCP server; Muse discovers its design tools on the next request in Desktop and PowerShell, with ordinary annotations sent through the existing image/text flow.

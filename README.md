@@ -229,6 +229,7 @@ Run/Test currently support Node projects with package.json scripts and Node/pack
 ### Chat and projects
 
 - **Enter** sends; **Shift+Enter** inserts a line; **Ctrl+N** starts a general chat.
+- The navigation button beside the project name, or **Ctrl+B** while Mora has focus, hides or shows the sidebar and remembers your choice.
 - Use **+** or **Ctrl+V** to attach images. Limits: 20 images, 10 MiB per image,
   and 20 MiB total per message.
 - Choose a model and reasoning effort from the engine-provided choices.
@@ -242,7 +243,7 @@ Run/Test currently support Node projects with package.json scripts and Node/pack
 ### Browser annotations
 
 1. Open **Browser** and enter an HTTP/HTTPS URL or local address such as `localhost:3000`.
-2. Choose **Desktop** or **Mobile**, and **Expand** for more room.
+2. Choose **Desktop** or **Mobile**. Drag the browser's left divider to resize it; its width is remembered. Arrow keys also adjust the focused divider, double-click resets it, and Escape cancels a drag. **Expand** fills the window; **Back to chat** restores the split.
 3. Use **Annotate element** to click an element, or **Select region** to drag an area.
 4. Click **Add to chat**. Muse receives a cropped screenshot of the visible selection
    with bounded HTML, URL and computed styles.

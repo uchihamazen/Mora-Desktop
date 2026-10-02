@@ -27,7 +27,7 @@ export class DesktopBrowser {
     });
     web.on('did-finish-load',()=>{this.pageReady=true;});
     web.on('did-start-loading',()=>{this.state.loading=true;this.publish();});
-    web.on('did-stop-loading',()=>{this.state.loading=false;this.layout().catch(()=>{}).finally(()=>{if(!web.isDestroyed())this.view.setVisible(this.state.open && !this.occluded);});this.publish();});
+    web.on('did-stop-loading',()=>{this.state.loading=false;this.layout().catch(()=>{}).finally(()=>{if(!web.isDestroyed())this.updateVisibility();});this.publish();});
     web.on('did-navigate',()=>this.publish());web.on('did-navigate-in-page',(_event,_url,isMainFrame)=>{if(isMainFrame)this.cancel().catch(()=>{});this.publish();});
     web.on('page-title-updated',()=>this.publish());
     web.on('did-fail-load',(_event,code,description,_url,isMainFrame)=>{if(isMainFrame && code!==-3){this.state.error=description;this.publish();}});
@@ -35,6 +35,7 @@ export class DesktopBrowser {
     window.on('closed',()=>{clearInterval(this.timer);if(!web.isDestroyed())web.close();});
   }
   async initialize(){this.ready ??= this.view.webContents.loadURL('about:blank');await this.ready;}
+  updateVisibility(){this.view.setVisible(!!(this.state.open&&!this.occluded&&this.pageReady&&!this.state.loading));}
   async checkPage(url) {
     const target=browserURL(url),parsed=new URL(target);
     if(!['localhost','127.0.0.1','[::1]'].includes(parsed.hostname))return {status:'not checked',message:'Run a local app before checking page loading.'};
@@ -138,8 +139,8 @@ export class DesktopBrowser {
   async command(action,payload={}) {
     switch(action) {
       case 'state':return this.state;
-      case 'open':await this.initialize();this.state.open=true;this.window.setMinimumSize(1080,620);{const [w,h]=this.window.getSize();if(w<1080)this.window.setSize(1080,h);}this.view.setVisible(!this.occluded);this.publish();break;
-      case 'occlude':this.occluded=payload.hidden===true;this.view.setVisible(this.state.open && !this.occluded);break;
+      case 'open':await this.initialize();this.state.open=true;this.window.setMinimumSize(1080,620);{const [w,h]=this.window.getSize();if(w<1080)this.window.setSize(1080,h);}this.updateVisibility();this.publish();break;
+      case 'occlude':this.occluded=payload.hidden===true;this.updateVisibility();break;
       case 'close':await this.cancel();this.state.open=false;this.view.setVisible(false);this.window.setMinimumSize(860,620);this.publish();break;
       case 'bounds':{
         const [w,h]=this.window.getContentSize(),zoom=this.window.webContents.getZoomFactor(),rect={};

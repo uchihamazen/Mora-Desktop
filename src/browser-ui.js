@@ -2,7 +2,41 @@ export function setupBrowser(api,addCapture) {
   const $=id=>document.getElementById(id);
   if(!api.browserCommand){$('browser-button').disabled=true;return;}
   let state={open:false},capturing=false,resizeFrame,expanded=false;
-  function expand(value){expanded=value;document.body.classList.toggle('browser-expanded',expanded);$('browser-expand').textContent=expanded ? 'Back to chat' : 'Expand';$('browser-expand').setAttribute('aria-label',expanded ? 'Back to chat' : 'Expand browser');$('browser-expand').setAttribute('aria-pressed',String(expanded));bounds();}
+  const divider=$('browser-resizer');let preferredWidth=null,drag=null;
+  try {const saved=Number(localStorage.getItem('mora.browserWidth'));if(Number.isFinite(saved)&&saved>=390)preferredWidth=saved;}catch{}
+  function fitWidth(){
+    divider.hidden=!state.open||expanded;if(!state.open||expanded)return;
+    const available=document.documentElement.clientWidth-$('navigation-sidebar').getBoundingClientRect().width-8,max=Math.max(390,available-400);
+    const width=Math.round(Math.max(390,Math.min(max,preferredWidth??Math.min(innerWidth*.44,680))));
+    $('browser-panel').style.setProperty('--browser-width',width+'px');divider.setAttribute('aria-valuemax',String(Math.floor(max)));divider.setAttribute('aria-valuenow',String(width));divider.setAttribute('aria-valuetext',width+' pixels');
+    return width;
+  }
+  function saveWidth(){try{if(preferredWidth===null)localStorage.removeItem('mora.browserWidth');else localStorage.setItem('mora.browserWidth',String(preferredWidth));}catch{}}
+  function finishResize(commit){
+    if(!drag)return;const previous=drag;drag=null;
+    if(!commit)preferredWidth=previous.preferred;else preferredWidth=fitWidth();
+    if(divider.hasPointerCapture(previous.id))divider.releasePointerCapture(previous.id);
+    document.body.classList.remove('browser-resizing');fitWidth();bounds();if(commit)saveWidth();
+    api.browserCommand('occlude',{hidden:!!document.querySelector('dialog[open], .changes-panel')}).catch(showError);
+  }
+  divider.addEventListener('pointerdown',event=>{
+    if(event.button!==0||drag||!state.open||expanded)return;event.preventDefault();divider.focus({preventScroll:true});
+    drag={id:event.pointerId,x:event.clientX,width:fitWidth(),preferred:preferredWidth};divider.setPointerCapture(event.pointerId);document.body.classList.add('browser-resizing');
+    // Native web contents sit above the DOM; hide them briefly so dragging across
+    // the preview cannot steal the pointer from the divider.
+    api.browserCommand('occlude',{hidden:true}).catch(showError);
+  });
+  divider.addEventListener('pointermove',event=>{if(drag?.id!==event.pointerId)return;preferredWidth=drag.width+drag.x-event.clientX;preferredWidth=fitWidth();bounds();});
+  divider.addEventListener('pointerup',()=>finishResize(true));
+  for(const event of ['pointercancel','lostpointercapture'])divider.addEventListener(event,()=>finishResize(false));
+  window.addEventListener('blur',()=>finishResize(false));
+  document.addEventListener('keydown',event=>{if(drag&&event.key==='Escape'){event.preventDefault();finishResize(false);}});
+  divider.addEventListener('keydown',event=>{
+    if(drag||!['ArrowLeft','ArrowRight','Home','End'].includes(event.key))return;event.preventDefault();
+    const width=fitWidth();preferredWidth=event.key==='Home'?390:event.key==='End'?Number(divider.getAttribute('aria-valuemax')):width+(event.key==='ArrowLeft'?1:-1)*(event.shiftKey?80:20);preferredWidth=fitWidth();saveWidth();bounds();
+  });
+  divider.addEventListener('dblclick',()=>{preferredWidth=null;saveWidth();fitWidth();bounds();});
+  function expand(value){finishResize(false);expanded=value;document.body.classList.toggle('browser-expanded',expanded);$('browser-expand').textContent=expanded ? 'Back to chat' : 'Expand';$('browser-expand').setAttribute('aria-label',expanded ? 'Back to chat' : 'Expand browser');$('browser-expand').setAttribute('aria-pressed',String(expanded));fitWidth();bounds();}
   function bounds() {
     cancelAnimationFrame(resizeFrame);
     resizeFrame=requestAnimationFrame(()=>{
@@ -14,6 +48,7 @@ export function setupBrowser(api,addCapture) {
   function showError(error){$('browser-error').textContent=error.message || String(error);$('browser-error').hidden=false;}
   function update(next) {
     state=next;$('browser-panel').hidden=!state.open;document.body.classList.toggle('browser-open',state.open);
+    if(!state.open)finishResize(false);fitWidth();
     if(!state.open && expanded)expand(false);
     for(const mode of ['desktop','mobile']){const button=$(`browser-${mode}`);button.setAttribute('aria-pressed',String((state.deviceMode || 'desktop')===mode));button.disabled=state.loading || state.deviceReady===false;}
     $('browser-size').textContent=state.deviceMode==='mobile' ? '390px' : '1280px+';
@@ -64,6 +99,7 @@ export function setupBrowser(api,addCapture) {
     catch(error){showError(error);}finally{capturing=false;$('browser-add').disabled=!state.selection;}
   });
   new ResizeObserver(bounds).observe($('browser-viewport'));
+  const layoutObserver=new ResizeObserver(()=>{fitWidth();bounds();});layoutObserver.observe(document.body);layoutObserver.observe($('navigation-sidebar'));
   window.addEventListener('resize',bounds);
   api.onEvent(event=>{if(event.type==='browser')update(event.state);});
   api.browserCommand('state').then(update).catch(showError);
