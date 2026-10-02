@@ -50,7 +50,7 @@ async function launch() {
       const timer=setTimeout(()=>reject(new Error('Preview initialization timed out.')),10000);
       socket.addEventListener('message',event=>{
         const message=JSON.parse(event.data);if(message.id!==1)return;clearTimeout(timer);
-        if(message.error || message.result.exceptionDetails)reject(new Error('Preview initialization failed.'));else resolve();
+        if(message.error || message.result.exceptionDetails)reject(new Error('Preview initialization failed: '+JSON.stringify(message.error||message.result.exceptionDetails)));else resolve();
       });
       socket.send(JSON.stringify({id:1,method:'Runtime.evaluate',params:{expression:"window.muse.browserCommand('open').then(()=>window.muse.browserCommand('close'))",awaitPromise:true}}));
     });

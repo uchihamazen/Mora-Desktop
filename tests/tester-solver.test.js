@@ -32,3 +32,7 @@ for(const name of ['cypress/e2e/cart.cy.ts','scripts/check.js','.mocharc.json','
  await writeFile(path.join(f.root,'package.json'),JSON.stringify({scripts:{test:'node custom-validation.js'}}));f.report.revision=await projectRevision(f.root);f.report.issues[0].revision=f.report.revision;
  f.options.checks=async()=>{await writeFile(file,'weakened');return {status:'passed'};};await new TesterSolver(f.options).start(f.report,['BUG-001']);assert.notEqual(f.report.solver.status,'verified');assert.notEqual(f.report.issues[0].status,'fixed');
 });
+for(const flag of ['--check','-c'])test(`a node ${flag} input remains repairable source while its checks stay fixed`,async()=>{
+ const f=await fixture();const config=JSON.stringify({scripts:{check:`node ${flag} app.js`,test:'node --test app.test.js'}});await writeFile(path.join(f.root,'package.json'),config);f.report.revision=await projectRevision(f.root);f.report.issues[0].revision=f.report.revision;
+ await new TesterSolver(f.options).start(f.report,['BUG-001']);assert.equal(f.report.solver.status,'verified');assert.equal(await readFile(path.join(f.root,'package.json'),'utf8'),config);assert.equal(await readFile(path.join(f.root,'app.test.js'),'utf8'),'unchanged assertion');
+});

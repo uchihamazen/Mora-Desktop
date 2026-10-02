@@ -7,6 +7,11 @@ export class TesterRun {
     Object.assign(this,{store,makeModel,makeBrowser,revision,onChange,maxActions,maxDecisions,maxMs});
   }
   async save(){await this.store.save(this.report);this.onChange(this.report);}
+  async finish(note=''){
+    const report=this.report;
+    report.gaps=[String(note).slice(0,4000),...report.cases.filter(c=>['not tested','blocked','suspected','unsupported expectation'].includes(c.status)).map(c=>`${c.id}: ${c.title} (${c.status})`)].filter(Boolean);
+    report.status='completed';report.message='Report saved. Review findings and remaining coverage.';await this.save();
+  }
   async start(report) {
     if(this.active)throw Error('Stop the current tester first.');
     if(await this.revision(report.project)!==report.revision)throw Error('Project source changed. Start a new report for the current revision.');
@@ -22,6 +27,7 @@ export class TesterRun {
       for(const item of report.cases.filter(c=>c.status==='suspected')){if(this.stopped||report.actions>=this.maxActions)break;await this.reproduce(item);}
       let decisions=0;
       while(!this.stopped&&report.actions<this.maxActions&&decisions<this.maxDecisions&&Date.now()-this.started<this.maxMs) {
+        if(!this.current&&report.cases.length&&report.cases.every(c=>['passed','confirmed','not reproduced','unsupported expectation'].includes(c.status))){await this.finish();break;}
         report.message=this.current?`Testing: ${this.current.title}`:'Planning the next case';await this.save();
         const observation=await this.browser.snapshot();
         const repeated=this.current?.steps.some(step=>step.action.action!=='assert'&&this.current.steps.filter(other=>JSON.stringify(other.action)===JSON.stringify(step.action)).length>=3);
@@ -47,8 +53,7 @@ export class TesterRun {
           this.current=null;
         }else if(decision.action==='finish') {
           if(this.current){Object.assign(this.current,caseOutcome(this.current,'unfinished'));this.current=null;}
-          report.gaps=[String(decision.note||'').slice(0,4000),...report.cases.filter(c=>['not tested','blocked','suspected','unsupported expectation'].includes(c.status)).map(c=>`${c.id}: ${c.title} (${c.status})`)].filter(Boolean);
-          report.status='completed';report.message='Report saved. Review findings and remaining coverage.';await this.save();break;
+          await this.finish(decision.note||'');break;
         }else if(browserActions.has(decision.action)) {
           if(!this.current)throw Error('Begin a planned case before executing browser actions.');
           const action=Object.fromEntries(['action','target','text','check','expected','present'].filter(k=>decision[k]!==undefined).map(k=>[k,decision[k]]));

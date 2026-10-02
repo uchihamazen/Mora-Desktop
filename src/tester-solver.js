@@ -3,7 +3,9 @@ import {createHash} from 'node:crypto';
 import {projectRevision,confirmCase} from './tester.js';
 
 function protectedFiles(snapshot){
-  let commands='';try{commands=Object.entries(JSON.parse(snapshot.files.get('package.json')?.toString()||'{}').scripts||{}).filter(([name])=>!['dev','start','serve'].includes(name)).map(([,value])=>value).join('\n').replaceAll('\\','/');}catch{}
+  // Node's syntax-check input is application source, not an executed check script.
+  const syntaxOnly=/^\s*node(?:\.exe)?\s+(?:--check|-c)\s+(?:"[^"\r\n]+"|'[^'\r\n]+'|[^\s;&|<>]+)\s*$/i;
+  let commands='';try{commands=Object.entries(JSON.parse(snapshot.files.get('package.json')?.toString()||'{}').scripts||{}).filter(([name,command])=>!['dev','start','serve'].includes(name)&&!syntaxOnly.test(command)).map(([,value])=>value).join('\n').replaceAll('\\','/');}catch{}
   return JSON.stringify([...snapshot.files].filter(([name])=>/(^|[/\\])(tests?|__tests__|__snapshots__|specs?|e2e|cypress|playwright|fixtures?|scripts|docs)([/\\]|$)|(?:test|spec|config|cy)\.[^.]+$|\.(?:snap|ya?ml|toml)$|(^|[/\\])(?:\.[^/\\]+rc(?:\.[^/\\]+)?|package\.json|.*lock.*|readme.*|requirements.*|agents\.md)$/i.test(name)||commands.includes(name.replaceAll('\\','/'))).sort(([a],[b])=>a.localeCompare(b)).map(([name,data])=>[name,createHash('sha256').update(data).digest('hex')]));
 }
 export class TesterSolver {

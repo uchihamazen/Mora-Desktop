@@ -121,3 +121,11 @@ test('saved repair results become historical when restored source no longer matc
  const historical=api.reportForRevision(report,'before');assert.equal(historical.status,'stale');assert.equal(historical.issues[0].status,'fixed');assert.equal(report.status,'completed');
  assert.equal(api.reportForRevision(report,'after').status,'completed');
 });
+
+for(const passed of [true,false])test(`a fully ${passed?'passed':'confirmed'} plan finishes without another model decision`,async()=>{
+ const root=await mkdtemp(path.join(tmpdir(),'mora-finish-test-')),store=new api.TesterReports(root),report=await store.create({project:root,url:'http://localhost:3456',request:'Counter must show 1',revision:'r1'});
+ const decisions=[{action:'plan',cases:[{title:'Counter',expected:'Shows 1'}]},{action:'begin',caseId:'CASE-001'},{action:'assert',check:'text',expected:'1'},...(passed?[{action:'finish_case',caseId:'CASE-001',text:'passed'}]:[])];
+ const expectedCalls=decisions.length;let calls=0;
+ const run=new controller.TesterRun({store,maxDecisions:8,revision:async()=> 'r1',makeModel:()=>({initialize:async()=>{},decide:async()=>{calls++;return decisions.shift()||{action:'begin',caseId:'CASE-001'};},assessExpected:async()=>({supported:true,basis:'User requires 1'}),close:async()=>{}}),makeBrowser:()=>({open:async()=>{},reset:async()=>{},snapshot:async()=>({}),perform:async()=>({passed}),close:async()=>{}})});
+ await run.start(report);assert.equal(report.status,'completed');assert.equal(calls,expectedCalls);assert.equal(report.cases[0].status,passed?'passed':'confirmed');assert.equal(report.issues.length,passed?0:1);
+});

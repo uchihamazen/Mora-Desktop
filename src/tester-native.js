@@ -4,6 +4,7 @@ import {promisify} from 'node:util';
 import {tmpdir,homedir} from 'node:os';
 import path from 'node:path';
 import {ExecRunner} from './runtime.js';
+import {uuid7} from './msp.js';
 
 const exec=promisify(execFile);
 export const decisionSchema={type:'object',additionalProperties:false,properties:{
@@ -69,7 +70,9 @@ export class TesterNative {
     if(this.stopped)throw Error('Repair stopped.');
     const timer=setTimeout(()=>{timedOut=true;this.stop().catch(()=>{});},6*60*1000);
     try{
-      const result=await this.runner.run({executable:this.executable,workspace:project,promptFile,modelId:this.modelId,reasoningEffort:'high',executionMode:'full',environment:this.environment,extraArgs:['--preset','mora-observer','--provider','meta','--disable-web-tools','--no-session-log','--max-model-steps','32']});
+      // Muse 1.4.1 on Windows overflows its editing runtime without a session journal.
+      // Each repair keeps a fresh journal inside this isolated temporary runtime.
+      const result=await this.runner.run({executable:this.executable,workspace:project,sessionId:uuid7(),promptFile,modelId:this.modelId,reasoningEffort:'high',executionMode:'full',environment:this.environment,extraArgs:['--preset','mora-observer','--provider','meta','--disable-web-tools','--max-model-steps','32']});
       if(timedOut||result.stopped||this.stopped)throw Error(timedOut?'Repair time limit reached. Review source changes or restore the checkpoint.':'Repair stopped.');
       if(result.code!==0||result.error||result.terminal?.terminal!=='completed')throw Error('Native repair did not complete. Review changes and the checkpoint.');
     }finally{clearTimeout(timer);}
