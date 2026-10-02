@@ -12,7 +12,7 @@ const supplied=process.argv.slice(2).find(arg=>!arg.startsWith('--')),executable
 const packaged=!!supplied,send=process.argv.includes('--send'),missing=process.argv.includes('--missing-engine'),legacy=process.argv.includes('--legacy-profile');
 const base=path.resolve('artifacts/build-temp');await mkdir(base,{recursive:true});
 const profile=await mkdtemp(path.join(base,'journey-profile-')),parent=await mkdtemp(path.join(base,'journey-project-'));
-const env={...process.env,MUSE_DESKTOP_TEST_USER_DATA:profile};delete env.ELECTRON_RUN_AS_NODE;
+const env={...process.env,TEMP:base,TMP:base,MUSE_DESKTOP_TEST_USER_DATA:profile};delete env.ELECTRON_RUN_AS_NODE;
 if(legacy){const workspace=path.join(parent,'Earlier project'),sessionId=uuid7();await mkdir(workspace);await writeFile(path.join(profile,'preferences.json'),JSON.stringify({workspace,projectPath:workspace,lastSessionId:sessionId,executionMode:'readonly',sessions:[{sessionId,title:'Saved earlier chat',workspace,hasMessages:false,createdAt:new Date().toISOString()}]}));}
 if(missing)await writeFile(path.join(profile,'preferences.json'),JSON.stringify({executable:path.join(parent,'absent-muse.exe'),projectPath:null}));
 let app,cdp,debugEndpoint;
