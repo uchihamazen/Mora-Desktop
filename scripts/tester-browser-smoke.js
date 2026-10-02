@@ -30,6 +30,11 @@ try {
  await browser.perform({action:'press',text:'ArrowUp'});assert.equal((await browser.perform({action:'assert',target:'Size',check:'value',expected:'Medium'})).passed,true);
  assert.equal((await browser.perform({action:'assert',target:'Updates',check:'checked',expected:'true'})).passed,true);
  assert.equal((await browser.perform({action:'assert',target:'Updates',check:'disabled',expected:'true'})).passed,true);
+ await assert.rejects(browser.perform({action:'assert',target:'Updates',check:'checked',expected:'',present:false}),/expected.*true.*false/i);
+ await assert.rejects(browser.perform({action:'assert',target:'Updates',check:'disabled',expected:'disabled'}),/expected.*true.*false/i);
+ await assert.rejects(browser.perform({action:'assert',target:'Updates',check:'visible',expected:''}),/expected.*true.*false/i);
+ await browser.script("document.querySelector('[aria-label=Updates]').setAttribute('aria-checked','false')");
+ assert.equal((await browser.perform({action:'assert',target:'Updates',check:'checked',expected:'false'})).passed,true);
  await assert.rejects(browser.perform({action:'click',target:'Updates'}),/disabled/i);
  await browser.perform({action:'click',target:'Save'});assert.equal((await browser.perform({action:'assert',check:'text',expected:'Saved',present:true})).passed,true);
  assert.equal((await browser.perform({action:'assert',check:'text',expected:'Wrong',present:true})).passed,false);

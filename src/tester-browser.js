@@ -93,9 +93,11 @@ export class TesterBrowser {
     await pause(150);return {ok:true,...(target?{target}:{}),snapshot:await this.snapshot()};
   }
   async assert(action){
+    const expected=String(action.expected??action.text??'');
+    if(['checked','disabled','visible'].includes(action.check)&&!['true','false',...(action.check==='checked'?['mixed']:[])].includes(expected))throw Error('Expected state must be true or false (checked also allows mixed).');
     let actual,target,passed=false;const deadline=Date.now()+1800;
     do {
-      const state=await this.snapshot(),expected=String(action.expected??action.text??'');
+      const state=await this.snapshot();
       if(action.check==='url'){actual=state.url;passed=actual===new URL(expected,this.url).href;}
       else if(action.check==='count'){actual=state.controls.filter(c=>c.name===action.target).length;passed=actual===Number(expected);}
       else if(['value','checked','disabled','visible'].includes(action.check)){

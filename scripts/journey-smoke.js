@@ -12,11 +12,13 @@ const supplied=process.argv.slice(2).find(arg=>!arg.startsWith('--')),executable
 const packaged=!!supplied,send=process.argv.includes('--send'),missing=process.argv.includes('--missing-engine'),legacy=process.argv.includes('--legacy-profile');
 const base=path.resolve('artifacts/build-temp');await mkdir(base,{recursive:true});
 const profile=await mkdtemp(path.join(base,'journey-profile-')),parent=await mkdtemp(path.join(base,'journey-project-'));
-const env={...process.env,TEMP:base,TMP:base,MUSE_DESKTOP_TEST_USER_DATA:profile};delete env.ELECTRON_RUN_AS_NODE;
+const appPortReservation=createServer();appPortReservation.listen(0,'127.0.0.1');await once(appPortReservation,'listening');
+const appPort=appPortReservation.address().port;await new Promise(resolve=>appPortReservation.close(resolve));
+const env={...process.env,TEMP:base,TMP:base,PORT:String(appPort),MUSE_DESKTOP_TEST_USER_DATA:profile};delete env.ELECTRON_RUN_AS_NODE;
 if(legacy){const workspace=path.join(parent,'Earlier project'),sessionId=uuid7();await mkdir(workspace);await writeFile(path.join(profile,'preferences.json'),JSON.stringify({workspace,projectPath:workspace,lastSessionId:sessionId,executionMode:'readonly',sessions:[{sessionId,title:'Saved earlier chat',workspace,hasMessages:false,createdAt:new Date().toISOString()}]}));}
 if(missing)await writeFile(path.join(profile,'preferences.json'),JSON.stringify({executable:path.join(parent,'absent-muse.exe'),projectPath:null}));
 let app,cdp,debugEndpoint;
-async function untilState(page,predicate,timeout=45000){const deadline=Date.now()+timeout;while(Date.now()<deadline){const state=await page.evaluate(()=>window.muse.getState());if(predicate(state))return state;await new Promise(resolve=>setTimeout(resolve,100));}throw Error('Desktop state did not settle in time.');}
+async function untilState(page,predicate,timeout=45000){const deadline=Date.now()+timeout;while(Date.now()<deadline){const state=await page.evaluate(()=>window.muse.getState());if(predicate(state))return state;await new Promise(resolve=>setTimeout(resolve,100));}const state=await page.evaluate(()=>window.muse.getState());throw Error('Desktop state did not settle in time: '+JSON.stringify({connection:state.connection,error:state.error,run:state.projectWork?.run,tester:state.tester?.status,repair:state.tester?.solver?.status}));}
 async function launch() {
   const reservation=createServer();reservation.listen(0,'127.0.0.1');await once(reservation,'listening');
   const port=reservation.address().port;await new Promise(resolve=>reservation.close(resolve));
@@ -107,6 +109,7 @@ try {
  assert.ok((await page.evaluate(()=>window.muse.checkpointCommand('list'))).some(item=>item.id===checkpoint.id));assert.equal((await page.evaluate(()=>window.muse.getState())).projectWork.run.status,'stopped');
  let tester;
  if(process.argv.includes('--tester')){
+  await untilState(page,s=>s.connection==='ready',90000);
   const counter=path.join(root,'src','app.js');await writeFile(counter,(await readFile(counter,'utf8')).replace('return value+1;','return value;'));
   await page.evaluate(()=>window.muse.setOptions({executionMode:'full'}));await page.evaluate(()=>window.muse.projectCommand('run'));await untilState(page,s=>s.projectWork.run.status==='ready');
   await page.evaluate(()=>window.muse.testerCommand('start',{request:'Test exactly ONE short case: the Add one button must increase the visible counter from 0 to 1 after one click. Assert this result. Do not retry clicks.'}));
