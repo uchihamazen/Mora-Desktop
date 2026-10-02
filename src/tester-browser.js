@@ -79,11 +79,11 @@ export class TesterBrowser {
       web.sendInputEvent({type:'keyDown',keyCode:'Backspace'});web.sendInputEvent({type:'keyUp',keyCode:'Backspace'});if(action.text)await web.insertText(action.text);
     }else if(action.action==='press'){
       if(!['Tab','Enter','Escape','Backspace','Delete','ArrowDown','ArrowUp','ArrowLeft','ArrowRight','Space'].includes(action.text))throw Error('Unsupported browser key.');
-      web.focus();web.sendInputEvent({type:'keyDown',keyCode:action.text});web.sendInputEvent({type:'keyUp',keyCode:action.text});
+      const keyCode=action.text.replace(/^Arrow/,'');web.focus();web.sendInputEvent({type:'keyDown',keyCode});web.sendInputEvent({type:'keyUp',keyCode});
     }else if(action.action==='select'){
-      target=await this.click(action.target);const option=await this.script(`(()=>{const {el}=(${findControl.toString()})(${JSON.stringify(target)});if(el.tagName!=='SELECT')throw Error('Choose a select control.');return [...el.options].findIndex(o=>o.value===${JSON.stringify(action.text)}||o.label===${JSON.stringify(action.text)});})()`);
+      target=await this.click(action.target);const option=await this.script(`(()=>{const {el}=(${findControl.toString()})(${JSON.stringify(target)});if(el.tagName!=='SELECT')throw Error('Choose a select control.');return [...el.options].filter(o=>!o.disabled&&!o.closest('optgroup[disabled]')).findIndex(o=>o.value===${JSON.stringify(action.text)}||o.label===${JSON.stringify(action.text)});})()`);
       if(option<0)throw Error('Option was not found.');web.sendInputEvent({type:'keyDown',keyCode:'Home'});web.sendInputEvent({type:'keyUp',keyCode:'Home'});
-      for(let i=0;i<option;i++){web.sendInputEvent({type:'keyDown',keyCode:'ArrowDown'});web.sendInputEvent({type:'keyUp',keyCode:'ArrowDown'});}
+      for(let i=0;i<option;i++){web.sendInputEvent({type:'keyDown',keyCode:'Down'});web.sendInputEvent({type:'keyUp',keyCode:'Down'});}
       web.sendInputEvent({type:'keyDown',keyCode:'Enter'});web.sendInputEvent({type:'keyUp',keyCode:'Enter'});
     }else if(action.action==='scroll'){
       const delta=Number(action.text);if(!Number.isFinite(delta)||Math.abs(delta)>2000)throw Error('Scroll is limited to 2000 pixels.');web.sendInputEvent({type:'mouseWheel',x:100,y:100,deltaY:delta,deltaX:0});

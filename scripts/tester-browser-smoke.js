@@ -25,6 +25,9 @@ try {
   assert.equal((await browser.perform({action:'assert',target:'Search',check:'value',expected:''})).passed,true);
  }
  await browser.script("document.body.insertAdjacentHTML('beforeend','<button role=checkbox aria-checked=true aria-disabled=true aria-label=Updates>Updates</button>')");
+ await browser.script("document.body.insertAdjacentHTML('beforeend','<select aria-label=Size><option>Small</option><option disabled>Unavailable</option><option selected>Medium</option><option>Large</option></select>')");
+ await browser.perform({action:'select',target:'Size',text:'Large'});assert.equal((await browser.perform({action:'assert',target:'Size',check:'value',expected:'Large'})).passed,true);
+ await browser.perform({action:'press',text:'ArrowUp'});assert.equal((await browser.perform({action:'assert',target:'Size',check:'value',expected:'Medium'})).passed,true);
  assert.equal((await browser.perform({action:'assert',target:'Updates',check:'checked',expected:'true'})).passed,true);
  assert.equal((await browser.perform({action:'assert',target:'Updates',check:'disabled',expected:'true'})).passed,true);
  await assert.rejects(browser.perform({action:'click',target:'Updates'}),/disabled/i);
