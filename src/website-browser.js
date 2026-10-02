@@ -1,17 +1,32 @@
 import {chromium} from 'playwright';
+import AxeBuilder from '@axe-core/playwright';
 import {randomUUID} from 'node:crypto';
 import {mkdir} from 'node:fs/promises';
 import path from 'node:path';
 import {authorizeStep,allowedNavigation,allowedResource,redactObservation,redactText} from './website-policy.js';
+import {controlKey} from './website-discovery.js';
+import {summarizeAccessibility} from './website-findings.js';
 
-const selector='button,input:not([type=hidden]),textarea,select,a[href],[role=button],[role=checkbox],[role=tab],[contenteditable=true]';
+const selector='button,input:not([type=hidden]),textarea,select,a[href],[role=button],[role=checkbox],[role=tab],[contenteditable=true],output,[role=status]';
+function blockedByModal(element){const doc=element.ownerDocument,modal=[...doc.querySelectorAll('dialog:modal,[role=dialog][aria-modal=true]')].filter(e=>e.getClientRects().length&&getComputedStyle(e).visibility!=='hidden').at(-1);return !!element.closest('[inert]')||!!modal&&!modal.contains(element);}
+async function blockedFrame(frame){
+  for(let child=frame;child?.parentFrame();child=child.parentFrame()){
+    const element=await child.frameElement();try{if(await element.evaluate(blockedByModal))return true;}finally{await element.dispose();}
+  }
+  return false;
+}
 function describe(element) {
   const labels=element.labels?[...element.labels].map(e=>{const copy=e.cloneNode(true);for(const field of copy.querySelectorAll('input,select,textarea,button'))field.remove();return copy.textContent;}).join(' '):'';
   const labelled=(element.getAttribute('aria-labelledby')||'').split(/\s+/).map(id=>element.ownerDocument.getElementById(id)?.innerText||'').join(' ');
   const name=(element.getAttribute('aria-label')||labelled||labels||element.innerText||element.getAttribute('placeholder')||element.getAttribute('title')||element.name||element.tagName).trim().slice(0,180);
   const type=element.getAttribute('type')||'',tag=element.tagName.toLowerCase();
   const sensitive=type==='password'||type==='email'||type==='tel'||/password|secret|token|card|address|email|phone|otp|one.time|verification|credit/i.test([name,element.name,element.autocomplete].join(' '));
-  return {name,tag,type,role:element.getAttribute('role')||'',value:sensitive?'[redacted]':String(element.value??'').slice(0,1000),sensitive,href:element.href||'',formAction:element.form?.action||'',disabled:!!element.disabled||element.getAttribute('aria-disabled')==='true',checked:element.checked??element.getAttribute('aria-checked'),options:tag==='select'?[...element.options].slice(0,40).map(o=>({label:o.label,value:o.value,disabled:o.disabled})):undefined};
+  return {name,tag,type,role:element.getAttribute('role')||'',value:sensitive?'[redacted]':String(element.value??'').slice(0,1000),sensitive,href:element.href||'',formAction:element.form?.action||'',disabled:!!element.disabled||element.getAttribute('aria-disabled')==='true',checked:element.checked??element.getAttribute('aria-checked'),expanded:element.getAttribute('aria-expanded'),selected:element.getAttribute('aria-selected'),constraints:{willValidate:element.willValidate??false,valueAttribute:type==='number'?element.getAttribute('value')??'':'',required:!!element.required,min:element.getAttribute('min')??'',max:element.getAttribute('max')??'',step:element.getAttribute('step')??'',maxLength:element.maxLength>=0?element.maxLength:null,pattern:element.getAttribute('pattern')??''},options:tag==='select'?[...element.options].slice(0,40).map(o=>({label:o.label,value:o.value,disabled:o.disabled})):undefined};
+}
+function describeState(){
+  const visible=e=>!!(e.getClientRects().length)&&getComputedStyle(e).visibility!=='hidden';
+  const name=e=>e.getAttribute('aria-label')||e.getAttribute('role')||e.tagName.toLowerCase();
+  return {dialogs:[...document.querySelectorAll('dialog[open],[role=dialog]')].filter(visible).map(name).slice(0,10),regions:[...document.querySelectorAll('output,[role=status],[aria-live],table,ul,ol')].filter(visible).slice(0,30).map(e=>({name:name(e),text:e.innerText.slice(0,500)})),unsupported:[...document.querySelectorAll('canvas,[draggable=true],input[type=file]')].filter(visible).map(e=>`${e.tagName.toLowerCase()} interaction is not supported.`)};
 }
 export class WebsiteBrowser {
   constructor({directory,executablePath,headless=false,onClose=()=>{}}) {Object.assign(this,{directory,executablePath,headless,onClose});this.closed=false;this.manual=true;this.blocked=new Set();this.handles=new Map();}
@@ -37,7 +52,7 @@ export class WebsiteBrowser {
       }catch{await route.abort().catch(()=>{});}
     });
     this.context.on('page',page=>{
-      this.page=page;
+      if(!this.scanning)this.page=page;
       page.on('dialog',dialog=>dialog.dismiss().catch(()=>{}));
       page.on('download',download=>download.cancel().catch(()=>{}));
       page.on('close',()=>{if(this.page===page){this.page=this.context.pages().at(-1);if(!this.page&&!this.closed)this.onClose();}});
@@ -52,18 +67,22 @@ export class WebsiteBrowser {
     await this.page.waitForLoadState('domcontentloaded').catch(()=>{});
     if(!allowedNavigation(this.scope,this.page.url()))throw Error('The current browser page is outside the selected scope. Return to an allowed page.');
     for(const handle of this.handles.values())await handle.element.dispose().catch(()=>{});this.handles.clear();
-    const id=randomUUID(),controls=[],text=[];
+    const id=randomUUID(),controls=[],text=[],dialogs=[],regions=[],unsupported=[];
     for(const frame of this.page.frames()) {
       if(!allowedNavigation(this.scope,frame.url()))continue;
+      const frameInert=await blockedFrame(frame);
       text.push(await frame.locator('body').innerText({timeout:2500}).catch(()=>''));
+      const state=await frame.evaluate(describeState).catch(()=>({dialogs:[],regions:[],unsupported:['A frame could not be observed.']}));dialogs.push(...state.dialogs);regions.push(...state.regions);unsupported.push(...state.unsupported);
       const elements=await frame.locator(selector).elementHandles();
       for(const element of elements) {
         if(controls.length>=150||!await element.isVisible().catch(()=>false)){await element.dispose();continue;}
         const info=await element.evaluate(describe).catch(()=>null);if(!info){await element.dispose();continue;}
-        const ref=`e${controls.length+1}`;controls.push({id:ref,...info});this.handles.set(ref,{element,signature:JSON.stringify(info)});
+        info.inert=frameInert||await element.evaluate(blockedByModal);
+        const ref=`e${controls.length+1}`,control={id:ref,...info,frameUrl:frame.url()};control.key=controlKey(control);controls.push(control);this.handles.set(ref,{element,signature:JSON.stringify(info)});
       }
     }
-    this.observation={id,url:this.page.url(),title:await this.page.title(),roleId:this.scope.roleId,controls,visibleText:text.join('\n').slice(0,16000),blockedOrigins:[...this.blocked],pageState:'observed'};
+    if(controls.length>=150)unsupported.push('The observation control limit was reached.');
+    this.observation={id,url:this.page.url(),title:await this.page.title(),roleId:this.scope.roleId,controls,visibleText:text.join('\n').slice(0,16000),dialogs,regions,unsupported,blockedOrigins:[...this.blocked],pageState:'observed'};
     return redactObservation(this.observation);
   }
   async perform(step) {
@@ -75,7 +94,7 @@ export class WebsiteBrowser {
     const target=this.handles.get(step.target);
     this.inFlight=true;
     try {
-      if(target&&(JSON.stringify(await target.element.evaluate(describe))!==target.signature))return {status:'blocked',reason:'The control changed after observation. Observe it again.'};
+      if(target){const current=await target.element.evaluate(describe),previous=JSON.parse(target.signature);current.inert=await blockedFrame(await target.element.ownerFrame())||await target.element.evaluate(blockedByModal);if(current.inert&&['click','type','select'].includes(step.action))return {status:'blocked',reason:'The control is inactive behind a modal or inert container.'};const changed=step.action==='assert'?current.sensitive||['name','tag','type','role'].some(key=>current[key]!==previous[key]):JSON.stringify(current)!==target.signature;if(changed)return {status:'blocked',reason:'The control changed after observation. Observe it again.'};}
       if(permission.fingerprint)this.policy.grants=this.policy.grants.filter(value=>value!==permission.fingerprint);
       if(step.action==='assert')return await this.check(step,target);
       if(step.action==='screenshot')return {status:'ok',screenshot:await this.capture()};
@@ -94,19 +113,32 @@ export class WebsiteBrowser {
     const deadline=Date.now()+4000;let actual;
     do {
       if(this.closed||this.manual)throw Error('Website check was stopped.');
-      if(['value','visible','checked','disabled'].includes(step.check)&&!target)throw Error('This check needs a current observed control.');
-      if(step.check==='text')actual=(await this.page.locator('body').innerText()).includes(step.expected);
+      if(['value','textValue','visible','checked','disabled','validity'].includes(step.check)&&!target)throw Error('This check needs a current observed control.');
+      if(step.check==='text')actual=(await (target?.element||this.page.locator('body')).innerText()).includes(step.expected);
       if(step.check==='url')actual=this.page.url();
       if(step.check==='value')actual=await target.element.inputValue();
+      if(step.check==='textValue')actual=await target.element.innerText();
       if(step.check==='visible')actual=!!target&&await target.element.isVisible();
       if(step.check==='checked')actual=await target.element.isChecked();
       if(step.check==='disabled')actual=await target.element.isDisabled();
+      if(step.check==='validity')actual=await target.element.evaluate(e=>e.validity?e.validity.valid:null);
       if(step.check==='count')actual=await this.page.getByText(String(step.value),{exact:true}).count();
       const expected=step.check==='text'?true:step.expected;
-      if(actual===expected)return {status:'passed',actual:redactText(actual),screenshot:await this.capture()};
+      if(actual===expected)return {status:'passed',actual:typeof actual==='string'?redactText(actual):actual,screenshot:await this.capture()};
       await new Promise(resolve=>setTimeout(resolve,100));
     }while(Date.now()<deadline);
-    return {status:'failed',actual:redactText(actual),screenshot:await this.capture()};
+    return {status:'failed',actual:typeof actual==='string'?redactText(actual):actual,screenshot:await this.capture()};
+  }
+  async accessibility() {
+    if(this.closed||this.manual||!allowedNavigation(this.scope,this.page.url()))return {status:'blocked',reason:'Observe an allowed website before accessibility checks.'};
+    const page=this.page;this.inFlight=true;this.scanning=true;let timedOut=false;
+    const timer=setTimeout(()=>{timedOut=true;this.close().catch(()=>{});},20000);
+    try {
+      const scan=await new AxeBuilder({page}).withTags(['wcag2a','wcag2aa','wcag21a','wcag21aa','wcag22aa']).analyze();
+      if(this.closed||this.manual)throw Error('Accessibility scan was interrupted.');
+      this.page=page;return {status:'completed',...summarizeAccessibility(scan),screenshot:await this.capture()};
+    }catch(error){return {status:'blocked',reason:timedOut?'Accessibility scan timed out. The owned browser was closed.':redactText(error.message).slice(0,500)};}
+    finally{clearTimeout(timer);this.scanning=false;this.inFlight=false;if(!page.isClosed())this.page=page;}
   }
   async capture() {
     const name=`screen-${randomUUID()}.png`,mask=[];

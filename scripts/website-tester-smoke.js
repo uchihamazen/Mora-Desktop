@@ -13,7 +13,7 @@ const server=createServer((req,res)=>{
  if(req.url==='/redirect'){res.writeHead(302,{Location:external});return res.end();}
  if(req.url==='/change'){mutations++;return res.end('Changed');}
  res.setHeader('Content-Type','text/html');
- if(req.url==='/frame')return res.end('<button onclick="this.textContent=\'Frame done\'">Frame action</button>');
+ if(req.url==='/frame')return res.end('<label>Frame search<input></label><button onclick="this.textContent=\'Frame done\'">Frame action</button>');
  res.end(`<title>Website fixture</title><label>Search<input id="q"></label><label>Password<input type="password" value="never-show"></label><label>Size<select><option>Small</option><option>Large</option></select></label><button onclick="document.querySelector('output').textContent='Saved'">Save</button><output>Waiting</output><a href="/change">Delete account</a><a href="/redirect">Redirect</a><button onclick="window.open('/frame')">Open popup</button><iframe title="Nested" src="/frame"></iframe><script>setTimeout(()=>{let b=document.createElement('button');b.textContent='Delayed';document.body.append(b)},150)</script>`);
 });await new Promise(r=>server.listen(0,'127.0.0.1',r));
 const url=`http://127.0.0.1:${server.address().port}`,scope=normalizeWebsiteScope({url});
@@ -37,6 +37,12 @@ try {
  await action('click','Redirect');assert.equal(externalHits,0,'out-of-scope redirect must never reach target');
  await browser.page.goto(url);obs=await browser.observe();const old={action:'click',target:obs.controls.find(c=>c.name==='Save').id,observationId:obs.id};await browser.observe();assert.equal((await browser.perform(old)).status,'blocked');
  const image=await browser.capture();assert.match(image.name,/^screen-/);
+ await browser.page.setContent('<p>Search ready is the completion message.</p><output aria-label="Search status">Searching</output>');
+ assert.equal((await action('assert','Search status',undefined,'text','Search ready')).status,'failed','Instructions outside the target cannot satisfy a readiness check');
+ await browser.page.setContent('<label>Background search<input></label><iframe src="/frame"></iframe><dialog><button>Cancel</button></dialog><script>document.querySelector("dialog").showModal()</script>');
+ assert.equal((await action('type','Background search','Tea')).status,'blocked','A modal prevents background input even when fill reports success');
+ await browser.page.frameLocator('iframe').getByLabel('Frame search').waitFor();
+ assert.equal((await action('type','Frame search','Tea')).status,'blocked','A parent modal also prevents input in background frames');
  await browser.page.setContent('<button disabled onclick="window.mutated=true">Waiting save</button>');
  obs=await browser.observe();const waiting={action:'click',target:obs.controls[0].id,observationId:obs.id};browser.grant(stepFingerprint(waiting,browser.observation,browser.policy.version));
  const pending=browser.perform(waiting);await new Promise(r=>setTimeout(r,100));await browser.takeOver();

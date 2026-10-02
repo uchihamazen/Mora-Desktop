@@ -28,7 +28,7 @@ export class WebsiteReports {
   async load(id) {
     const file=this.filename(id);
     for(const filename of [file,file.replace('.json','.backup.json')])try{if((await stat(filename)).size>4*1024*1024)continue;const report=JSON.parse(await readFile(filename,'utf8'));if(report.id!==id||!this.valid(report))continue;
-      if(['running','awaiting permission','opening','manual'].includes(report.status)){report.status='paused';report.message='Interrupted session. Review uncertain actions before starting a fresh check.';for(const step of report.steps)if(step.status==='pending')step.status='uncertain';delete report.pending;}
+      if(['running','awaiting permission','opening','manual'].includes(report.status)){report.status='paused';report.message='Interrupted session. Review uncertain actions before starting a fresh check.';for(const step of report.steps)if(step.status==='pending')step.status='uncertain';for(const c of report.cases||[]){if(['running','queued'].includes(c.status)){c.status='not tested';c.reason='Interrupted before the case finished. Start a fresh check.';}for(const execution of c.executions||[])for(const step of execution.steps||[])if(step.status==='pending')step.status='uncertain';}delete report.pending;}
       return report;
     }catch{}
     throw Error('Website report and backup could not be read. Files were preserved.');

@@ -35,19 +35,19 @@ let projectRunner, desktopBrowser, drainCompletion, projectOperation=false, proj
 let testerReports,testerRun,testerCompletion,testerEpoch=0;
 let websiteReports,websiteRun,websiteCommandBusy=false;
 async function websiteCommand(action,payload={}) {
-  if(!['open','start','stop','takeover','approve','list','load','evidence','save-login','forget-login'].includes(action))throw Error('This website action is unavailable. Website testing cannot repair source.');
+  if(!['open','start','steer','stop','takeover','approve','list','load','evidence','save-login','forget-login'].includes(action))throw Error('This website action is unavailable. Website testing cannot repair source.');
   if(action==='stop'){await websiteRun?.stop();return state.website;}
   if(action==='takeover'){await websiteRun?.pause();return state.website;}
   if(action==='approve'){await websiteRun?.approve(payload.id,payload.allow);return state.website;}
   if(action==='list')return websiteReports.list();
-  if(action==='evidence'){const saved=await websiteReports.load(payload.id);if(!saved.steps.some(s=>s.result?.screenshot?.name===payload.name))throw Error('Choose evidence recorded in this report.');return websiteReports.evidence(payload.id,payload.name);}
+  if(action==='evidence'){const saved=await websiteReports.load(payload.id);if(!saved.steps.some(s=>s.result?.screenshot?.name===payload.name)&&!saved.accessibility?.some(s=>s.screenshot?.name===payload.name))throw Error('Choose evidence recorded in this report.');return websiteReports.evidence(payload.id,payload.name);}
   if(websiteCommandBusy)throw Error('Wait for the current website operation.');
   if(state.busy||state.testerActive||projectOperation||repairInProgress)throw Error('Wait for the current request or project operation.');
   websiteCommandBusy=true;
   try {
     if(action==='load'){if(state.websiteActive)throw Error('Close the website browser before opening a saved report.');state.website=await websiteReports.load(payload.id);publish();return state.website;}
     if(action==='open')return await websiteRun.open(payload);
-    if(action==='start'){if(state.connection!=='ready')throw Error('Connect to Muse before starting website checks.');state.queuePaused=true;return await websiteRun.start(payload.request);}
+    if(action==='start'||action==='steer'){if(state.connection!=='ready')throw Error('Connect to Muse before starting website checks.');state.queuePaused=true;return action==='steer'?await websiteRun.steer(payload.request):await websiteRun.start(payload.request,payload.options);}
     if(action==='save-login')return await websiteRun.saveLogin();
     if(action==='forget-login'){if(!state.website)throw Error('Choose a website session first.');await websiteReports.forgetLogin(state.website.scope);return state.website;}
   }finally{websiteCommandBusy=false;}

@@ -27,7 +27,7 @@ export function redactText(value) {
   return String(value??'').replace(/\bBearer\s+[\w.\-+/=]+/gi,'Bearer [redacted]').replace(/\b[\w.+-]+@[\w.-]+\.[a-z]{2,}\b/gi,'[redacted email]').replace(/(?:\+?\d[\d ()-]{8,}\d)/g,'[redacted number]').replace(/([?&](?:token|key|api_key|access_token|code|secret|password|session|auth)[^=&#]*=)[^&#\s]*/gi,'$1[redacted]');
 }
 export function redactObservation(observation) {
-  return {...observation,url:redactText(observation.url),title:redactText(observation.title),visibleText:redactText(observation.visibleText),controls:(observation.controls||[]).map(c=>({...c,name:redactText(c.name),value:c.sensitive?'[redacted]':redactText(c.value),href:c.href?redactText(c.href):undefined,formAction:c.formAction?redactText(c.formAction):undefined,options:c.sensitive?undefined:redactValue(c.options)}))};
+  return {...observation,url:redactText(observation.url),title:redactText(observation.title),visibleText:redactText(observation.visibleText),dialogs:redactValue(observation.dialogs),regions:redactValue(observation.regions),unsupported:redactValue(observation.unsupported),controls:(observation.controls||[]).map(c=>({...c,name:redactText(c.name),value:c.sensitive?'[redacted]':redactText(c.value),href:c.href?redactText(c.href):undefined,frameUrl:redactText(c.frameUrl),formAction:c.formAction?redactText(c.formAction):undefined,options:c.sensitive?undefined:redactValue(c.options)}))};
 }
 export function redactValue(value){if(typeof value==='string')return redactText(value);if(Array.isArray(value))return value.map(redactValue);if(value&&typeof value==='object')return Object.fromEntries(Object.entries(value).map(([k,v])=>[k,redactValue(v)]));return value;}
 export function validateWebsiteStep(step) {
@@ -38,10 +38,10 @@ export function validateWebsiteStep(step) {
   if(step.action==='press'&&!['Tab','Shift+Tab','Enter','Space','Escape','Backspace','ArrowDown','ArrowUp','ArrowLeft','ArrowRight'].includes(step.value))throw Error('Unsupported browser key.');
   if(step.action==='assert') {
     if(typeof step.basis!=='string'||!step.basis.trim())throw Error('Record the expected rule before checking it.');
-    if(!['text','value','visible','checked','disabled','count','url'].includes(step.check))throw Error('Unsupported check.');
-    if(['visible','checked','disabled'].includes(step.check)&&typeof step.expected!=='boolean')throw Error('This check requires a Boolean expected result.');
+    if(!['text','textValue','value','visible','checked','disabled','validity','count','url'].includes(step.check))throw Error('Unsupported check.');
+    if(['visible','checked','disabled','validity'].includes(step.check)&&typeof step.expected!=='boolean')throw Error('This check requires a Boolean expected result.');
     if(step.check==='count'&&(!Number.isInteger(step.expected)||step.expected<0))throw Error('Count requires a nonnegative integer.');
-    if(['text','value','url'].includes(step.check)&&(typeof step.expected!=='string'||(!step.expected&&step.check!=='value')))throw Error('Record a nonempty expected result.');
+    if(['text','textValue','value','url'].includes(step.check)&&(typeof step.expected!=='string'||(!step.expected&&!['value','textValue'].includes(step.check))))throw Error('Record a nonempty expected result.');
   }
 }
 export function stepFingerprint(step,observation,version) {
@@ -53,7 +53,7 @@ export function authorizeStep(step,observation,policy) {
   if(!allowedNavigation(policy.scope,observation.url))return {decision:'deny',reason:'The current page is outside the selected website scope.'};
   const control=observation.controls.find(c=>c.id===step.target);
   if(['click','type','select'].includes(step.action)&&!control)return {decision:'deny',reason:'That control is no longer available.'};
-  if(step.action==='assert'&&['value','visible','checked','disabled'].includes(step.check)&&!control)return {decision:'deny',reason:'This check needs a current observed control.'};
+  if(step.action==='assert'&&['value','textValue','visible','checked','disabled','validity'].includes(step.check)&&!control)return {decision:'deny',reason:'This check needs a current observed control.'};
   if(control?.sensitive&&step.action!=='click')return {decision:'deny',reason:'Use Take over to interact with private fields.'};
   if(step.action==='navigate'&&!allowedNavigation(policy.scope,step.value))return {decision:'deny',reason:'That page is outside the selected website scope.'};
   if(step.action==='assert'&&control?.sensitive)return {decision:'deny',reason:'Private field values are not available to automated checks.'};

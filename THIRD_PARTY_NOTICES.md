@@ -54,6 +54,13 @@ The dedicated browser's component notices are retained as
 credits page during packaging. The source build prepares a clean pinned browser rather
 than copying an everyday browser profile or development cache into the installer.
 
+Accessibility checks bundle unmodified `@axe-core/playwright` 4.13.0 and `axe-core`
+4.13.0 by Deque Systems, distributed under Mozilla Public License 2.0. Their LICENSE
+files remain in the packaged dependencies. Corresponding source is available from
+[axe-core-npm](https://github.com/dequelabs/axe-core-npm) and
+[axe-core](https://github.com/dequelabs/axe-core); the pinned package versions are
+recorded in `pnpm-lock.yaml`.
+
 Google Stitch and other external services remain subject to their respective
 owners' rights and service terms. This repository does not distribute account
 credentials, provider API keys or a license to those services.

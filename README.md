@@ -130,11 +130,21 @@ security settings. Upgrades and uninstall preserve the local chat profile.
 
 Select **Website tester**, or enter `/tester` or `/tester https://example.com <objective>`.
 No project folder or application source is required. Open the website, sign in manually
-if needed, describe one workflow and its expected result, then select **Start checking**.
+if needed, choose a workflow, page or website scope, then select **Start checking**.
 Mora uses the existing native model connection and a dedicated Playwright browser.
-Every automated interaction requires **Allow once**; decline or take over at any time.
-Clicks are recorded separately from actual assertions. Failed assertions are observations,
-not independently reproduced findings in this first version.
+Review each exact short case with **Allow this case**, or **Allow once** for a discovery
+action. Decline, take over or update the testing focus at any time. Set operation/time
+limits in **Website scope and limits**. Clicks are recorded separately from assertions.
+The saved map records observed pages, controls, states and transitions, with normal
+workflows before grounded boundary, input, transition and timing variations. Locally
+executed sequences avoid a model round trip between rapid inputs.
+
+Cases cite supplied requirements, visible rules or exposed input constraints. Unsupported
+expectations need clarification; automation failures are blocked. A failed assertion is
+an observed failure until the unchanged case fails again from its known starting state
+with fresh **Allow replay** permission. Confidence and severity are separate. Optional
+axe accessibility scans include violations and checks needing manual review; they do
+not establish complete accessibility conformance.
 
 Website scope separates navigation origins from supporting resource origins. Add required
 login/API/CDN origins explicitly. Service workers and downloads are disabled; blocked
@@ -149,8 +159,9 @@ sensitive pages. Screenshots stay local with input fields masked.
 cancels work and closes only the owned browser. Take over preserves the current page
 unless an action is already pending in the browser: then Mora closes it to cancel the
 action and records an uncertain outcome. Reopen the site before continuing in that case.
-Starting a fresh check re-observes the page. This foundation does not yet provide whole-site discovery,
-intensive case scheduling, independent replay, workflow teaching or report export.
+Starting a fresh check re-observes the page. Discovery is bounded and describes observed
+coverage only. Other roles need supplied logins; canvas and drag-and-drop are unsupported.
+Workflow teaching, report export and broader reliability benchmarking remain later work.
 Website testing has no source-editing or repair capability.
 
 ### Project tester (experimental)
