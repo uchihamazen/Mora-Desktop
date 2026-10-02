@@ -5,7 +5,7 @@ import {snapshotProject} from './changes.js';
 import {checkpointSource} from './checkpoints.js';
 
 export function parseTesterCommand(text) {
-  const match=/^\s*\/tester\s+(report|solver)(?:\s+([\s\S]*))?$/i.exec(text);
+  const match=/^\s*\/project-tester\s+(report|solver)(?:\s+([\s\S]*))?$/i.exec(text);
   if(!match)return null;
   const mode=match[1].toLowerCase(),request=(match[2]||'').trim();
   if(mode==='solver'&&!request)throw Error('Specify issue IDs or all confirmed issues to solve.');

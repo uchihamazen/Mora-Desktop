@@ -126,10 +126,37 @@ security settings. Upgrades and uninstall preserve the local chat profile.
 4. Select **Test my app** for configured checks and page loading. Expand **Show results** for outputs. Interactions still need suitable project tests.
 5. Select **Fix failures** for one Muse repair and one recheck, or stop the app and open **Checkpoints → Review restore** to select files to undo.
 
-### AI Tester (experimental)
+### Website tester (experimental)
 
-Run your app, open **AI Tester**, describe the behavior you expect, and select
-**Start report**. `/tester report <requirements>` starts the same workflow.
+Select **Website tester**, or enter `/tester` or `/tester https://example.com <objective>`.
+No project folder or application source is required. Open the website, sign in manually
+if needed, describe one workflow and its expected result, then select **Start checking**.
+Mora uses the existing native model connection and a dedicated Playwright browser.
+Every automated interaction requires **Allow once**; decline or take over at any time.
+Clicks are recorded separately from actual assertions. Failed assertions are observations,
+not independently reproduced findings in this first version.
+
+Website scope separates navigation origins from supporting resource origins. Add required
+login/API/CDN origins explicitly. Service workers and downloads are disabled; blocked
+dependencies and untested behavior remain visible. Use test accounts and designated data:
+browser isolation does not undo changes made to the live service. Save a login only when
+needed; it is encrypted by the operating system and separated by site and account label.
+Page text is sent to the connected provider. Password/contact fields and common secrets
+are filtered, but arbitrary personal content is not guaranteed to be recognized; avoid
+sensitive pages. Screenshots stay local with input fields masked.
+
+**Saved reports** preserves checks and evidence across restarts. **Stop and close browser**
+cancels work and closes only the owned browser. Take over preserves the current page
+unless an action is already pending in the browser: then Mora closes it to cancel the
+action and records an uncertain outcome. Reopen the site before continuing in that case.
+Starting a fresh check re-observes the page. This foundation does not yet provide whole-site discovery,
+intensive case scheduling, independent replay, workflow teaching or report export.
+Website testing has no source-editing or repair capability.
+
+### Project tester (experimental)
+
+Run your app, open **Project tester**, describe the behavior you expect, and select
+**Start report**. `/project-tester report <requirements>` starts the same workflow.
 Mora supplies your request and the project's README to native Spark, then executes
 bounded browser decisions in a separate visible Chromium window. Reports and
 screenshots remain in your local profile. **Saved reports** restores them after a
@@ -148,7 +175,7 @@ popups, downloads, embedded cross-origin apps and non-HTML document navigation a
 blocked. Canvas interactions and drag-and-drop are not supported.
 
 For repair, choose **Full access**, select confirmed issues, and use **Repair selected
-issues**, or send `/tester solver BUG-001` (up to five IDs) or `/tester solver all confirmed`.
+issues**, or send `/project-tester solver BUG-001` (up to five IDs) or `/project-tester solver all confirmed`.
 Mora reproduces the original case before allowing edits, saves a source checkpoint,
 runs one native repair, restarts the app and replays unchanged assertions plus up to
 three previously passing cases and configured checks. A changed recognized test,

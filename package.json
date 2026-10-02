@@ -1,7 +1,7 @@
 {
   "name": "mora-desktop",
   "productName": "Mora Desktop",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Desktop chat for the installed Muse coding engine",
   "private": true,
   "license": "MIT",
@@ -15,14 +15,14 @@
     "start": "electron .",
     "test": "node --test tests/*.test.js",
     "smoke": "node scripts/smoke.js",
-    "build": "electron-builder --win nsis --x64 --publish never --config.directories.output=artifacts/release",
-    "build:desktop": "electron-builder --win --dir --x64 --config.directories.output=artifacts/self-build"
+    "build": "node scripts/prepare-website-browser.js && electron-builder --win nsis --x64 --publish never --config.directories.output=artifacts/release",
+    "build:desktop": "node scripts/prepare-website-browser.js && electron-builder --win --dir --x64 --config.directories.output=artifacts/self-build"
   },
   "devDependencies": {
     "electron": "44.5.0",
-    "electron-builder": "26.15.3",
-    "playwright": "1.62.1"
+    "electron-builder": "26.15.3"
   },
+  "dependencies": {"playwright": "1.62.1"},
   "build": {
     "appId": "local.muse.desktop",
     "artifactName": "Mora-Desktop-${version}-${arch}.${ext}",
@@ -31,6 +31,7 @@
       "package.json"
     ],
     "extraFiles": ["LICENSE", "THIRD_PARTY_NOTICES.md"],
+    "extraResources": [{"from":"artifacts/website-browser","to":"website-browser","filter":["**/*"]}],
     "win": {
       "target": "nsis",
       "icon": "src/assets/mora-mark.ico",

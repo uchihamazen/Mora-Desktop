@@ -3,7 +3,7 @@ export function createState() {
 }
 
 export function assertIdle(state) {
-  if (state.testerActive) throw new Error('Stop AI Tester before changing chats, projects or settings.');
+  if (state.testerActive||state.websiteActive) throw new Error('Stop testing before changing chats, projects or settings.');
   if (state.loading) throw new Error('A conversation is loading. Wait before switching or sending.');
   if (state.busy) throw new Error('A request is running. Stop it before switching chats or projects.');
 }

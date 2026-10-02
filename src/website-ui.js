@@ -1,0 +1,40 @@
+export function setupWebsiteTester(api,onError) {
+ const button=document.getElementById('website-tester');let state={},dialog,status,results,permission,url,request,role,origins,resources,include,exclude,viewport,open,start,pause,stop,saveLogin,forgetLogin,signature='',lastOpen;
+ const el=(tag,text)=>{const node=document.createElement(tag);if(text!==undefined)node.textContent=text;return node;};
+ const command=async(action,payload)=>{try{return await api.websiteTesterCommand(action,payload);}catch(error){onError(error);if(status)status.textContent=(error.message||String(error)).replace(/^Error invoking remote method '[^']+': Error: /,'');}};
+ function draw(){if(!dialog)return;const r=state.website,active=!!state.websiteActive,running=['running','awaiting permission','opening'].includes(r?.status);
+  open.disabled=active||!!state.busy||!!state.testerActive;start.disabled=!active||running||state.connection!=='ready';pause.disabled=!active||r?.status==='opening';stop.disabled=!active;saveLogin.disabled=!active||running;forgetLogin.disabled=!r||running;
+  for(const input of [url,role,origins,resources,include,exclude,viewport])input.disabled=active;
+  status.textContent=r?`${r.status} · ${r.message||''}`:'Enter a URL. No project folder is needed.';
+  const next=JSON.stringify(r);if(next===signature)return;signature=next;results.replaceChildren();permission.replaceChildren();if(!r)return;
+  if(r.pending){permission.append(el('strong','Approve an interaction on the live website'),el('p',r.pending.reason),el('p',`${r.pending.step.action} · ${r.pending.control||r.pending.step.value||''}${r.pending.step.action==='type'?' → '+r.pending.step.value:''}`));const allow=el('button','Allow once'),deny=el('button','Decline');allow.type=deny.type='button';for(const control of [allow,deny])control.addEventListener('click',()=>{allow.disabled=deny.disabled=true;command('approve',{id:r.pending.id,allow:control===allow});});permission.append(allow,deny);}
+  const counts={passed:0,failed:0,blocked:0};for(const step of r.steps||[])if(step.result?.status in counts)counts[step.result.status]++;
+  results.append(el('h3','Checked outcomes'),el('p',`${counts.passed} passed · ${counts.failed} observed failures · ${counts.blocked} blocked · ${r.actions||0} browser actions`));
+  if(r.findings?.length)results.append(el('p','Failures are observed, not independently reproduced in this version.'));
+  const steps=el('ol');for(const step of r.steps||[]){const row=el('li');row.append(el('span',`${step.action.action} ${step.control||step.action.target||''} — ${step.result?.status||step.status}`));if(step.action.action==='assert')row.append(el('p',`Expected: ${String(step.action.expected)}\nBasis: ${step.action.basis}\nObserved: ${step.result?.actual??'not checked'}`));if(step.result?.reason)row.append(el('p',step.result.reason));if(step.result?.screenshot){const view=el('button','View screenshot');view.type='button';view.addEventListener('click',async()=>{const data=await command('evidence',{id:r.id,name:step.result.screenshot.name});if(data){const image=el('img');image.src='data:image/png;base64,'+data;image.alt='Website check evidence with input fields masked';row.append(image);view.remove();}});row.append(view);}steps.append(row);}results.append(steps);
+  if(r.blockedOrigins?.length)results.append(el('p',`Blocked dependencies or navigation: ${r.blockedOrigins.join(', ')}. Close the browser and add an origin to the appropriate scope field if it is required.`));
+  results.append(el('h3','Not tested'),el('p',[...(r.gaps||[]),'Whole-site discovery, independent reproduction and intensive case scheduling are not part of this first version. Service workers and downloads are disabled; workflows depending on them remain unverified.'].join('\n')));
+ }
+ function show(seed={}){
+  if(dialog){if(seed.url&&!state.websiteActive)url.value=seed.url;return;}
+  dialog=el('dialog');dialog.className='tester-dialog website-dialog';dialog.setAttribute('aria-label','Website tester');
+  dialog.append(el('h2','Website tester'),el('p','Open a live website and check one focused workflow. Mora uses the rendered page, without project source or repair tools. Page text is sent to your connected AI; use test accounts and avoid sensitive pages.'));
+  const form=el('form');const field=(name,tag='input')=>{const label=el('label',name),input=el(tag);input.setAttribute('aria-label',name);label.append(input);form.append(label);return input;};
+  url=field('Website URL');url.type='url';url.required=true;url.placeholder='https://example.com';url.value=seed.url||state.website?.scope.entryUrl||'';
+  request=field('Workflow and expected result','textarea');request.rows=3;request.maxLength=12000;request.placeholder='Example: searching for a product shows matching results.';request.value=seed.request||state.website?.request||'';
+  role=field('Account label');role.value='guest';role.maxLength=60;
+  viewport=field('Screen size','select');for(const [value,label] of [['desktop','Desktop'],['mobile','Mobile viewport']]){const option=el('option',label);option.value=value;viewport.append(option);}
+  const advanced=el('details'),summary=el('summary','Website scope');advanced.append(summary);form.append(advanced);
+  function scopeField(name){const input=field(name);input.placeholder='Optional, comma separated';advanced.append(input.parentElement);return input;}
+  origins=scopeField('Additional navigation origins');resources=scopeField('Additional resource origins');include=scopeField('Include paths');exclude=scopeField('Exclude paths');
+  advanced.append(el('p','Navigation origins allow pages and login redirects. Resource origins allow supporting APIs, images and fonts without allowing page exploration. Paths start with /.'));
+  open=el('button','Open website');open.type='submit';form.append(open);form.addEventListener('submit',async event=>{event.preventDefault();open.disabled=true;await command('open',{url:url.value,request:request.value,roleId:role.value,viewport:viewport.value,navigationOrigins:origins.value,resourceOrigins:resources.value,includePaths:include.value,excludePaths:exclude.value});draw();});
+  const controls=el('div');controls.className='tester-controls';function control(label,handler){const node=el('button',label);node.type='button';node.addEventListener('click',handler);controls.append(node);return node;}
+  start=control('Start checking',()=>command('start',{request:request.value}));pause=control('Take over / sign in',()=>command('takeover'));saveLogin=control('Save this login',()=>command('save-login'));forgetLogin=control('Forget saved login',()=>command('forget-login'));stop=control('Stop and close browser',()=>command('stop'));
+  control('Saved reports',async()=>{if(state.websiteActive){onError(Error('Close the website browser before opening history.'));return;}const saved=await command('list');if(!saved)return;results.replaceChildren();signature='';for(const item of saved){const load=el('button',`${new Date(item.createdAt).toLocaleString()} · ${item.scope.entryUrl} · ${item.status}`);load.type='button';load.addEventListener('click',()=>command('load',{id:item.id}));results.append(load);}if(!saved.length)results.append(el('p','No website reports yet.'));});
+  control('Close panel',()=>dialog.close());status=el('p');status.setAttribute('role','status');status.setAttribute('aria-live','polite');permission=el('section');permission.className='website-permission';permission.setAttribute('aria-label','Website action permission');results=el('section');results.className='tester-report';
+  dialog.append(form,controls,status,permission,results);dialog.addEventListener('close',()=>{dialog.remove();dialog=null;signature='';api.browserCommand?.('occlude',{hidden:false}).catch(()=>{});button.focus();});api.browserCommand?.('occlude',{hidden:true}).catch(()=>{});document.body.append(dialog);dialog.showModal();draw();url.focus();
+ }
+ button.addEventListener('click',()=>show());
+ return next=>{state=next;button.disabled=!!state.loading||!!state.testerActive;if(state.websiteOpen?.id!==lastOpen){lastOpen=state.websiteOpen?.id;if(lastOpen)show(state.websiteOpen);}draw();};
+}

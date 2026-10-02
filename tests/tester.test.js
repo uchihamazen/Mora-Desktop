@@ -7,16 +7,16 @@ import {assertIdle} from '../src/state.js';
 const api=await import('../src/tester.js').catch(()=>({}));
 const controller=await import('../src/tester-run.js').catch(()=>({}));
 test('tester work prevents project and conversation mutations until it stops',()=>{
-  assert.throws(()=>assertIdle({testerActive:true}),/tester|testing/i);
+  assert.throws(()=>assertIdle({testerActive:true}),/project-tester|testing/i);
   assert.doesNotThrow(()=>assertIdle({testerActive:false}));
 });
 
 test('tester commands preserve ordinary chat and require an explicit solver selection',()=>{
   assert.equal(typeof api.parseTesterCommand,'function');
-  assert.equal(api.parseTesterCommand('Explain /tester report'),null);
-  assert.deepEqual(api.parseTesterCommand('/tester report Check the cart'),{mode:'report',request:'Check the cart'});
-  assert.deepEqual(api.parseTesterCommand('/tester solver BUG-001 Keep design'),{mode:'solver',request:'BUG-001 Keep design'});
-  assert.throws(()=>api.parseTesterCommand('/tester solver'),/select|specify/i);
+  assert.equal(api.parseTesterCommand('Explain /project-tester report'),null);
+  assert.deepEqual(api.parseTesterCommand('/project-tester report Check the cart'),{mode:'report',request:'Check the cart'});
+  assert.deepEqual(api.parseTesterCommand('/project-tester solver BUG-001 Keep design'),{mode:'solver',request:'BUG-001 Keep design'});
+  assert.throws(()=>api.parseTesterCommand('/project-tester solver'),/select|specify/i);
 });
 
 test('tester scope rejects remote sites, credentials and unsafe schemes',()=>{

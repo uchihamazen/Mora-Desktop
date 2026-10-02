@@ -8,7 +8,7 @@ const {chromium}=require('./runtime-packages.cjs').runtimeRequire('playwright');
 const png='iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+ip1sAAAAASUVORK5CYII=';
 const server=createServer(async(req,res)=>{
   const file={'/':'index.html','/style.css':'style.css','/renderer.js':'renderer.js','/markdown.js':'markdown.js','/project-ui.js':'project-ui.js','/work-ui.js':'work-ui.js','/images.js':'images.js','/projects.js':'projects.js','/browser-ui.js':'browser-ui.js','/assets/mora-mark.svg':'assets/mora-mark.svg'}[req.url];
-  if(req.url==='/tester-ui.js'){res.setHeader('Content-Type','application/javascript');res.end(await readFile('src/tester-ui.js'));return;}
+  if(['/tester-ui.js','/website-ui.js'].includes(req.url)){res.setHeader('Content-Type','application/javascript');res.end(await readFile('src'+req.url));return;}
   if(!file){res.writeHead(404).end();return;}
   res.setHeader('Content-Type',file.endsWith('.svg')?'image/svg+xml':file.endsWith('.css')?'text/css':file.endsWith('.js')?'application/javascript':'text/html');
   res.end(await readFile(path.join('src',file)));
@@ -248,5 +248,12 @@ try{
  await page.getByRole('button',{name:'Resume unfinished cases',exact:true}).click();assert.equal(await page.evaluate(()=>window.smoke.testerCalls.at(-1).action),'resume');
  await page.getByRole('button',{name:'Stop testing',exact:true}).click();await page.keyboard.press('Escape');await page.locator('.tester-dialog').waitFor({state:'detached'});
  await page.locator('#ai-tester').click();await page.getByRole('button',{name:'Saved reports',exact:true}).click();await page.locator('.tester-report button').first().click();assert.equal(await page.locator('.tester-report details').count(),2);await page.keyboard.press('Escape');
- console.log('PASS deterministic UI: stable streamed rows, lazy output, safe Markdown/images, durable drafts/attachments, Stop on save failure, queue, changes and tester report/start/stop/resume/evidence/history');
+ await page.evaluate(()=>{window.smoke.websiteCalls=[];window.muse.websiteTesterCommand=async(action,payload)=>{window.smoke.websiteCalls.push({action,payload});if(action==='open')window.smoke.emit({websiteActive:true,website:{id:'site1',scope:{entryUrl:payload.url},request:payload.request,status:'manual',steps:[],findings:[],gaps:[]}});};window.smoke.emit({projectPath:null,websiteActive:false,testerActive:false,busy:false});});
+ await page.locator('#website-tester').click();assert.equal(await page.getByRole('button',{name:'Repair selected issues',exact:true}).count(),0);
+ await page.getByLabel('Website URL',{exact:true}).fill('https://example.com');await page.getByLabel('Workflow and expected result',{exact:true}).fill('Search finds matching results');await page.getByRole('button',{name:'Open website',exact:true}).click();
+ assert.equal(await page.evaluate(()=>window.smoke.websiteCalls[0].payload.url),'https://example.com');assert.equal(await page.getByRole('button',{name:'Start checking',exact:true}).isEnabled(),true);
+ await page.evaluate(()=>window.smoke.emit({website:{id:'site1',scope:{entryUrl:'https://example.com'},status:'awaiting permission',steps:[],findings:[],gaps:[],pending:{id:'permission1',control:'<b>Submit</b>',reason:'Review the interaction',step:{action:'click'}}}}));
+ assert.equal(await page.locator('.website-permission b').count(),0);await page.getByRole('button',{name:'Allow once',exact:true}).click();assert.deepEqual(await page.evaluate(()=>window.smoke.websiteCalls.at(-1)),{action:'approve',payload:{id:'permission1',allow:true}});
+ await page.getByRole('button',{name:'Stop and close browser',exact:true}).click();assert.equal(await page.evaluate(()=>window.smoke.websiteCalls.at(-1).action),'stop');await page.keyboard.press('Escape');
+ console.log('PASS deterministic UI: existing chat/project flows and website setup without a project, safe permission rendering, approval and Stop');
 }finally{await browser.close();await new Promise(resolve=>server.close(resolve));}

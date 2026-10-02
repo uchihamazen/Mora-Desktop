@@ -8,6 +8,7 @@ contextBridge.exposeInMainWorld('muse', {
   checkpointCommand: (action,payload) => ipcRenderer.invoke('muse:checkpoints',action,payload),
   projectCommand: action => ipcRenderer.invoke('muse:project-work',action),
   testerCommand: (action,payload) => ipcRenderer.invoke('muse:tester',action,payload),
+  websiteTesterCommand: (action,payload) => ipcRenderer.invoke('muse:website-tester',action,payload),
   newChat: (projectPath = null) => ipcRenderer.invoke('muse:new-chat', projectPath),
   resumeChat: id => ipcRenderer.invoke('muse:resume-chat', id),
   deleteChat: id => ipcRenderer.invoke('muse:delete-chat', id),

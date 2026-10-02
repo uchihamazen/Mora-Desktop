@@ -5,6 +5,7 @@ import {markdownBlocks, inlineParts} from './markdown.js';
 import {setupProjects} from './project-ui.js';
 import {setupProjectWork} from './work-ui.js';
 import {setupTester} from './tester-ui.js';
+import {setupWebsiteTester} from './website-ui.js';
 
 const $ = id => document.getElementById(id);
 const api = window.muse;
@@ -13,7 +14,7 @@ const dismissedErrors = new Set();
 let state = { items: [], sessions: [], models: [], busy: false, connection: 'connecting' };
 let attachments = [], sending = false, lastSignature = '', startedAt = 0;
 let sidebarSignature='', draftOwner, draftTimer, draftWrites=Promise.resolve();
-let updateProjects,updateProjectWork,updateTester;
+let updateProjects,updateProjectWork,updateTester,updateWebsiteTester;
 const messageRows=new Map();
 let stitchConfigured=false,stitchChanging=false;
 function refreshStitch(){if(!api.stitchCommand)return;for(const name of ['connect','test','disconnect'])$(`stitch-${name}`).disabled=stitchChanging || state.busy || state.loading || (name==='test' && !stitchConfigured && !$('stitch-key').value.trim()) || (name==='disconnect' && !stitchConfigured);}
@@ -200,6 +201,7 @@ function update(next) {
   updateProjects?.(state);
   updateProjectWork?.(state);
   updateTester?.(state);
+  updateWebsiteTester?.(state);
   const account=state.account || {status:'unknown',message:'Uses your existing Muse login.'};
   $('account-settings').hidden=!api.accountCommand;
   $('account-status').textContent=account.message;
@@ -293,7 +295,7 @@ function update(next) {
   }
   renderMessages(); refreshSend();refreshStitch();
 }
-function refreshSend() { $('send-button').disabled = sending || state.loading || state.testerActive || state.projectOperation || state.projectRepair || state.historyMissing || state.workUnavailable || ['required','pending'].includes(state.account?.status) || state.connection !== 'ready' || (!$('prompt').value.trim() && !attachments.length); }
+function refreshSend() { $('send-button').disabled = sending || state.loading || state.testerActive || state.websiteActive || state.projectOperation || state.projectRepair || state.historyMissing || state.workUnavailable || ['required','pending'].includes(state.account?.status) || state.connection !== 'ready' || (!$('prompt').value.trim() && !attachments.length); }
 function renderAttachments(persist=true) {
   $('attachments').replaceChildren(); $('attachments').hidden = !attachments.length;
   for (const [index,image] of attachments.entries()) {
@@ -367,5 +369,6 @@ setupBrowser(api,capture=>{addImages([capture]);$('prompt').focus();});
 updateProjects=setupProjects(api,action);
 updateProjectWork=setupProjectWork(api,action);
 updateTester=setupTester(api,error);
+updateWebsiteTester=setupWebsiteTester(api,error);
 $('onboarding-action').addEventListener('click',()=>{$('settings-panel').hidden=false;if(state.account?.status==='pending')return;action(()=>api.accountCommand(state.account?.status==='missing'?'install':state.account?.status==='required'?'login':'refresh'));});
 update(await api.getState()); $('prompt').focus();

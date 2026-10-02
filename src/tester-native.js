@@ -16,8 +16,8 @@ export const decisionSchema={type:'object',additionalProperties:false,properties
 },required:['action','caseId','target','text','note','check','expected','present','cases']};
 
 export class TesterNative {
-  constructor(executable,{modelId='muse-spark-1.3-contributor',reasoningEffort='minimal'}={}) {
-    Object.assign(this,{executable,modelId,reasoningEffort});this.runner=new ExecRunner();this.stopped=false;
+  constructor(executable,{modelId='muse-spark-1.3-contributor',reasoningEffort='minimal',schema=decisionSchema}={}) {
+    Object.assign(this,{executable,modelId,reasoningEffort,schema});this.runner=new ExecRunner();this.stopped=false;
   }
   async initialize({project,repair=false}={}) {
     this.directory=await mkdtemp(path.join(tmpdir(),'mora-tester-runtime-'));
@@ -37,12 +37,12 @@ export class TesterNative {
     const original=path.join(process.env.XDG_CONFIG_HOME||path.join(homedir(),'.config'),'muse','auth.json');
     this.credential=path.join(config,'auth.json');
     try{await copyFile(original,this.credential);}catch{throw Error('Sign in to Muse before using AI Tester.');}
-    this.schemaFile=path.join(this.workspace,'decision-schema.json');await writeFile(this.schemaFile,JSON.stringify(decisionSchema));
+    this.schemaFile=path.join(this.workspace,'decision-schema.json');await writeFile(this.schemaFile,JSON.stringify(this.schema));
   }
-  async decide(prompt,{image,allowedActions=decisionSchema.properties.action.enum}={}) {
+  async decide(prompt,{image,allowedActions=this.schema.properties.action.enum}={}) {
     if(this.stopped)throw Error('Testing stopped.');
     const promptFile=path.join(this.workspace,'request.txt');await writeFile(promptFile,prompt);
-    await writeFile(this.schemaFile,JSON.stringify({...decisionSchema,properties:{...decisionSchema.properties,action:{type:'string',enum:allowedActions}}}));
+    await writeFile(this.schemaFile,JSON.stringify({...this.schema,properties:{...this.schema.properties,action:{type:'string',enum:allowedActions}}}));
     if(this.stopped)throw Error('Testing stopped.');
     let forbidden=false,timedOut=false;
     const observe=record=>{if(record.payload?.event?.task_kind?.startsWith('tool.')){forbidden=true;this.runner.stop().catch(()=>{});}};
@@ -55,7 +55,7 @@ export class TesterNative {
       if(result.stopped||this.stopped)throw Error('Testing stopped.');
       if(result.code!==0||result.error||result.terminal?.terminal!=='completed')throw Error('Muse did not complete the next testing decision. Reconnect and resume saved work.');
       let decision;try{decision=JSON.parse(result.terminal.text);}catch{throw Error('Muse returned an invalid testing decision. Saved work was preserved.');}
-      if(!decision||!decisionSchema.properties.action.enum.includes(decision.action)||JSON.stringify(decision).length>20000)throw Error('Muse returned an unsupported testing decision.');
+      if(!decision||!allowedActions.includes(decision.action)||JSON.stringify(decision).length>20000)throw Error('Muse returned an unsupported testing decision.');
       return decision;
     }finally{clearTimeout(timer);this.runner.off('record',observe);}
   }
@@ -78,4 +78,9 @@ export class TesterNative {
     }finally{clearTimeout(timer);}
   }
   async close(){await this.stop();if(this.credential)await rm(this.credential,{force:true});}
+}
+
+export function createWebsiteObserver(executable,options={}) {
+  const native=options.native||new TesterNative(executable,options);
+  return Object.freeze({initialize:()=>native.initialize(),decide:(prompt,settings)=>native.decide(prompt,settings),stop:()=>native.stop(),close:()=>native.close()});
 }

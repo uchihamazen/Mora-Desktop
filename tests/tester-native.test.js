@@ -3,7 +3,14 @@ import assert from 'node:assert/strict';
 import {mkdtemp} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {TesterNative} from '../src/tester-native.js';
+import {TesterNative,createWebsiteObserver} from '../src/tester-native.js';
+test('website observer exposes no repair method or project initialization arguments',async()=>{
+ const calls=[],native={initialize:async(...args)=>calls.push(args),decide:async()=>({action:'finish'}),stop:async()=>{},close:async()=>{}};
+ const observer=createWebsiteObserver('unused',{native});
+ assert.deepEqual(Object.keys(observer).sort(),['close','decide','initialize','stop']);
+ await observer.initialize({project:'private',repair:true});assert.deepEqual(calls,[[]]);
+ assert.equal(observer.repair,undefined);
+});
 for(const mode of ['decide','repair'])test(`stop during ${mode} preparation prevents native launch`,async()=>{
  const native=new TesterNative('unused');native.workspace=await mkdtemp(path.join(tmpdir(),'mora-native-stop-'));native.schemaFile=path.join(native.workspace,'schema.json');
  let calls=0;native.runner.run=async()=>{calls++;return {code:1};};native.runner.stop=async()=>{};

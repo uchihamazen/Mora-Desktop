@@ -46,6 +46,14 @@ and notices. Windows packages preserve `LICENSE.electron.txt` and
 `LICENSES.chromium.html` from the Electron distribution. Development dependencies
 are obtained from their package publishers when installed.
 
+Website testing bundles Playwright and its matching browser distribution. Playwright
+is distributed under Apache-2.0; its LICENSE and NOTICE are retained in the runtime
+and `resources/website-browser/PLAYWRIGHT-LICENSE` and `PLAYWRIGHT-NOTICE`.
+The dedicated browser's component notices are retained as
+`resources/website-browser/LICENSES.chromium.html`, collected from that exact browser's
+credits page during packaging. The source build prepares a clean pinned browser rather
+than copying an everyday browser profile or development cache into the installer.
+
 Google Stitch and other external services remain subject to their respective
 owners' rights and service terms. This repository does not distribute account
 credentials, provider API keys or a license to those services.

@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog, clipboard, nativeImage, shell } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, clipboard, nativeImage, shell, safeStorage } from 'electron';
 import { readFile, writeFile, mkdir, rename, stat, mkdtemp, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -19,7 +19,10 @@ import { DesktopBrowser } from './browser.js';
 import {TesterReports,parseTesterCommand,projectRevision,reportForRevision} from './tester.js';
 import {TesterRun} from './tester-run.js';
 import {TesterBrowser} from './tester-browser.js';
-import {TesterNative} from './tester-native.js';
+import {TesterNative,createWebsiteObserver} from './tester-native.js';
+import {WebsiteReports,parseWebsiteTesterCommand} from './website-tester.js';
+import {WebsiteBrowser} from './website-browser.js';
+import {WebsiteRun,websiteDecisionSchema} from './website-run.js';
 import {TesterSolver} from './tester-solver.js';
 import {checkStitch,configureStitch,readStitchSettings,stitchStatus} from './stitch.js';
 
@@ -30,7 +33,27 @@ const state = { ...createState(), connection: 'connecting', workspace: '', proje
 let preferences = {};
 let projectRunner, desktopBrowser, drainCompletion, projectOperation=false, projectCancelled=false, repairInProgress=false;
 let testerReports,testerRun,testerCompletion,testerEpoch=0;
+let websiteReports,websiteRun,websiteCommandBusy=false;
+async function websiteCommand(action,payload={}) {
+  if(!['open','start','stop','takeover','approve','list','load','evidence','save-login','forget-login'].includes(action))throw Error('This website action is unavailable. Website testing cannot repair source.');
+  if(action==='stop'){await websiteRun?.stop();return state.website;}
+  if(action==='takeover'){await websiteRun?.pause();return state.website;}
+  if(action==='approve'){await websiteRun?.approve(payload.id,payload.allow);return state.website;}
+  if(action==='list')return websiteReports.list();
+  if(action==='evidence'){const saved=await websiteReports.load(payload.id);if(!saved.steps.some(s=>s.result?.screenshot?.name===payload.name))throw Error('Choose evidence recorded in this report.');return websiteReports.evidence(payload.id,payload.name);}
+  if(websiteCommandBusy)throw Error('Wait for the current website operation.');
+  if(state.busy||state.testerActive||projectOperation||repairInProgress)throw Error('Wait for the current request or project operation.');
+  websiteCommandBusy=true;
+  try {
+    if(action==='load'){if(state.websiteActive)throw Error('Close the website browser before opening a saved report.');state.website=await websiteReports.load(payload.id);publish();return state.website;}
+    if(action==='open')return await websiteRun.open(payload);
+    if(action==='start'){if(state.connection!=='ready')throw Error('Connect to Muse before starting website checks.');state.queuePaused=true;return await websiteRun.start(payload.request);}
+    if(action==='save-login')return await websiteRun.saveLogin();
+    if(action==='forget-login'){if(!state.website)throw Error('Choose a website session first.');await websiteReports.forgetLogin(state.website.scope);return state.website;}
+  }finally{websiteCommandBusy=false;}
+}
 async function testerCommand(action,payload={}) {
+  if(state.websiteActive)throw Error('Close website testing before using the project tester.');
   if(action==='stop'){testerEpoch++;await testerRun?.stop();await testerCompletion;return state.tester;}
   if(!state.projectPath)throw Error('Open a project before using AI Tester.');
   if(action==='list'){const project=state.projectPath,reports=await testerReports.list(project),revision=await projectRevision(project);return reports.map(saved=>reportForRevision(saved,revision));}
@@ -93,7 +116,7 @@ async function checkpointCommand(action,payload={}) {
   }finally{projectOperation=false;state.projectOperation=false;publish();}
 }
 async function projectCommand(action) {
-  if(state.testerActive)throw Error('Stop AI Tester before changing the running app.');
+  if(state.testerActive||state.websiteActive)throw Error('Stop AI Tester before changing the running app.');
   if(action==='stop'){projectCancelled=true;await projectRunner.stopRun();return state.projectWork;}
   if(action==='stop-tests'){projectCancelled=true;await projectRunner.stopTests();return state.projectWork;}
   if(action==='fix')return repairFailures();
@@ -297,7 +320,8 @@ function consume(record) {
 }
 
 async function sendMessage({ text, images = [] } = {},{repair=false}={}) {
-  if(state.testerActive)throw Error('Stop AI Tester before sending another request. Your draft is saved.');
+  if(typeof text==='string'&&text.length<=12000){const website=parseWebsiteTesterCommand(text);if(website){if(images.length)throw Error('Use a website URL and a text objective.');if(state.busy||state.testerActive)throw Error('Wait for the current request before opening website testing.');state.websiteOpen={...website,id:uuid7()};publish();if(website.url)await websiteCommand('open',website);return state;}}
+  if(state.testerActive||state.websiteActive)throw Error('Stop AI Tester before sending another request. Your draft is saved.');
   if(projectOperation || (repairInProgress && !repair))throw new Error('Wait for project checks or repair to finish. Your draft is saved.');
   if(['required','pending'].includes(state.account?.status))throw new Error('Complete Muse sign-in before sending. Your draft is saved.');
   if(state.workUnavailable) throw new Error('Restore the saved work backup before sending.');
@@ -332,11 +356,11 @@ async function editQueue(action, payload) {
   queueReservation=action==='clear'?previous.length:action==='remove'?1:0;
   try {
   if(action==='resume') {
-    if(state.testerActive)throw Error('Stop AI Tester before resuming queued requests.');
+    if(state.testerActive||state.websiteActive)throw Error('Stop AI Tester before resuming queued requests.');
     if(projectOperation || repairInProgress)throw new Error('Wait for project checks or repair before resuming the queue.');
     if(state.connection!=='ready' || state.historyMissing || state.loading || state.stopping) throw new Error('Reconnect and wait for the current request before resuming.');
     state.queuePaused = false; await persistWork();
-    if(state.testerActive)throw Error('Stop AI Tester before resuming queued requests.');
+    if(state.testerActive||state.websiteActive)throw Error('Stop AI Tester before resuming queued requests.');
     if(projectOperation||repairInProgress)throw Error('Wait for project checks or repair before resuming the queue.');
     if(!state.busy && state.pendingQueue.length) {
       const next = state.pendingQueue.shift(); return startDrain(next);
@@ -359,7 +383,7 @@ async function editQueue(action, payload) {
   } finally {queueReservation=0;}
 }
 function startDrain(request) {
-  if(state.testerActive)throw Error('Stop AI Tester before starting a queued request.');
+  if(state.testerActive||state.websiteActive)throw Error('Stop AI Tester before starting a queued request.');
   state.busy = true; state.finishing = false; state.activity = 'Starting Muse'; state.error = ''; state.stopping = false; state.activeTurnId = uuid7(); publish();
   let acceptResolve, acceptReject;
   const accepted = new Promise((resolve, reject) => { acceptResolve = resolve; acceptReject = reject; });
@@ -546,7 +570,7 @@ else {
       if(state.busy)state.queuePaused=true;
       if(!state.workUnavailable)await persistWork();
       await saveQueue;
-      await testerRun?.stop();await testerCompletion;await projectRunner.shutdown();await runner.stop();
+      await websiteRun?.stop();await testerRun?.stop();await testerCompletion;await projectRunner.shutdown();await runner.stop();
       while(projectOperation || repairInProgress || state.busy)await new Promise(resolve=>setTimeout(resolve,30));
       window.destroy();
     }).catch(error=>{closing=false;report(new Error(`Could not save pending work: ${error.message}`));});
@@ -561,6 +585,9 @@ else {
   });
   state.projectWork=projectRunner.state;
   testerReports=new TesterReports(app.getPath('userData'));
+  websiteReports=new WebsiteReports(app.getPath('userData'),{crypto:safeStorage});
+  websiteRun=new WebsiteRun({store:websiteReports,makeBrowser:(evidenceDirectory,onClose)=>new WebsiteBrowser({directory:evidenceDirectory,executablePath:app.isPackaged?path.join(process.resourcesPath,'website-browser','chrome.exe'):undefined,onClose}),makeModel:()=>createWebsiteObserver(executable,{modelId:state.modelId,reasoningEffort:'minimal',schema:websiteDecisionSchema}),onChange:value=>{state.website=value;state.websiteActive=value.status==='opening'||!!(websiteRun.browser&&!websiteRun.browser.closed);publish();}});
+  handle('website-tester',websiteCommand);
   handle('tester',testerCommand);
   handle('project-work',projectCommand);
   handle('browser', (action, payload) => browser.command(action, payload));
