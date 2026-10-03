@@ -1,0 +1,87 @@
+import assert from 'node:assert/strict';
+import {createServer} from 'node:http';
+import {readFile,mkdir} from 'node:fs/promises';
+import path from 'node:path';
+import {createRequire} from 'node:module';
+const require=createRequire(import.meta.url);
+const {chromium}=require('./runtime-packages.cjs').runtimeRequire('playwright');
+const root=path.resolve('src');
+const server=createServer(async(req,res)=>{
+  const file=path.resolve(root,'.'+decodeURIComponent(req.url==='/'?'/index.html':req.url));
+  if(!file.startsWith(root+path.sep)){res.writeHead(403).end();return;}
+  try{res.setHeader('Content-Type',file.endsWith('.js')?'application/javascript':file.endsWith('.css')?'text/css':file.endsWith('.svg')?'image/svg+xml':file.endsWith('.wav')?'audio/wav':'text/html');res.end(await readFile(file));}catch{res.writeHead(404).end();}
+});
+await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
+const browser=await chromium.launch({channel:'msedge',headless:true});
+try{
+  const page=await browser.newPage({viewport:{width:1440,height:1000}}),errors=[];
+  page.on('pageerror',error=>errors.push(error.message));
+  await page.addInitScript(()=>{
+    let state={sessionId:'counter-chat',projectPath:'C:\\Projects\\Counter app',workspace:'C:\\Projects\\Counter app',projects:['C:\\Projects\\Counter app'],sessions:[{sessionId:'counter-chat',title:'Make the counter easier to use',projectPath:'C:\\Projects\\Counter app'}],items:[{itemId:'u',kind:'userMessage',text:'Make the counter easier to read on smaller screens.'},{itemId:'a',kind:'agentMessage',status:'completed',text:'The counter is larger and the buttons are easier to use. Try it in the preview.'}],models:[{modelId:'muse-spark-1.3-contributor',variants:['low','medium','high']}],modelId:'muse-spark-1.3-contributor',reasoningEffort:'medium',speedPreset:'balanced',executionMode:'full',connection:'ready',busy:false,pendingQueue:[],projectWork:{root:'C:\\Projects\\Counter app',run:{status:'ready',message:'App running'},tests:{status:'not checked'}}};
+    let preview={open:true,url:'http://127.0.0.1:60562/',title:'Counter app',deviceMode:'desktop',deviceReady:true,tabs:[{id:'first',url:'http://127.0.0.1:60562/',title:'Counter app'}],activeTabId:'first',history:{entries:[{url:'http://127.0.0.1:60562/',title:'Counter app'}]}};
+    const listeners=[];window.layout={calls:[],emit:next=>{state={...state,...next};for(const listener of listeners)listener({type:'state',state});},preview:next=>{preview={...preview,...next};for(const listener of listeners)listener({type:'browser',state:preview});}};
+    window.muse={getState:async()=>state,onEvent:listener=>listeners.push(listener),saveDraft:async()=>{},setOptions:async next=>{window.layout.calls.push(['options',next]);state={...state,...next};return state;},projectCommand:async name=>{window.layout.calls.push(['project',name]);return state;},projectBriefCommand:async()=>({text:'Keep the counter simple.',revision:'1'}),createProject:async()=>state,chooseWorkspace:async()=>state,exportProject:async()=>null,copyText:async()=>{},newChat:async()=>state,browserCommand:async(name,payload)=>{window.layout.calls.push(['browser',name,payload]);if(name==='open'||name==='close')preview={...preview,open:name==='open'};if(name==='tab-close'){preview={...preview,tabs:preview.tabs.filter(tab=>tab.id!==payload.id)};preview.activeTabId=preview.tabs[0].id;}return preview;}};
+  });
+  await page.goto(`http://127.0.0.1:${server.address().port}`);
+  await page.locator('#browser-panel').waitFor();
+  assert.match(await page.locator('#model').textContent(),/Muse Spark 1.3/,'Model labels should be readable while keeping their exact engine identifiers');
+  assert.equal(await page.locator('#model').inputValue(),'muse-spark-1.3-contributor');
+  await page.evaluate(()=>window.layout.emit({models:[{modelId:'muse-spark-1.3-contributor',displayLabel:'muse-spark-1.3-contributor',variants:['low','medium','high']}]}));
+  assert.match(await page.locator('#model option:checked').textContent(),/Muse Spark 1.3/,'An engine-provided label identical to the identifier should also be readable');
+  assert.equal(await page.locator('#effort').isVisible(),false,'Reasoning effort belongs in advanced composer options, not beside the work preset');
+  assert.ok(await page.locator('#project-toolbar button:visible').count()<=2,'Only primary project actions should occupy the header');
+  assert.ok((await page.locator('#browser-viewport').boundingBox()).y<200,'Preview controls must leave room for the page');
+  assert.ok((await page.locator('.browser-annotation').boundingBox()).height<=70,'The empty selection hint should be compact');
+  assert.equal(await page.locator('.browser-history-label').isVisible(),false,'History should be accessible from the preview menu');
+  await page.locator('#workspace-menu > summary').click();
+  await page.locator('#project-brief').click();
+  await page.getByRole('dialog',{name:'Project brief',exact:true}).waitFor();
+  await page.getByRole('button',{name:'Close brief',exact:true}).click();
+  await page.locator('.brief-dialog').waitFor({state:'detached'});
+  assert.equal(await page.evaluate(()=>document.activeElement===document.querySelector('#workspace-menu > summary')),true,'Closing a menu action should return focus to its visible trigger');
+  await page.locator('#workspace-menu > summary').click();await page.keyboard.press('Escape');
+  assert.equal(await page.locator('#workspace-menu').getAttribute('open'),null);
+  await page.locator('#composer-options > summary').click();
+  await page.locator('#effort').selectOption('high');
+  await page.waitForFunction(()=>window.layout.calls.some(([type,value])=>type==='options'&&value.reasoningEffort==='high'));
+  await page.locator('#preview-menu > summary').click();
+  assert.equal(await page.locator('.browser-history-label').isVisible(),true);
+  await page.locator('#browser-before').click();
+  await page.waitForFunction(()=>window.layout.calls.some(([type,name])=>type==='browser'&&name==='compare-before'));
+  assert.equal(await page.locator('#preview-menu').getAttribute('open'),null);
+  await page.locator('#preview-menu > summary').click();await page.keyboard.press('Control+k');
+  await page.getByLabel('Search quick actions',{exact:true}).fill('Toggle navigation');await page.keyboard.press('Enter');
+  await page.locator('.quick-dialog').waitFor({state:'hidden'});
+  assert.equal(await page.locator('#preview-menu').getAttribute('open'),null,'Opening a keyboard dialog must close the previous menu');
+  await page.keyboard.press('Control+b');
+  await page.locator('#preview-menu > summary').click();
+  await page.evaluate(()=>window.layout.preview({loading:true}));
+  assert.equal(await page.locator('#browser-before').isDisabled(),true,'Moving a control into a menu must retain its safety checks');
+  await page.keyboard.press('Escape');await page.evaluate(()=>window.layout.preview({loading:false}));
+  await page.evaluate(()=>window.layout.preview({selection:{mode:'element',selector:'button'}}));
+  assert.equal(await page.locator('#browser-add').isVisible(),true);
+  assert.equal(await page.locator('#browser-add').isDisabled(),false);
+  await page.evaluate(()=>window.layout.preview({selection:null}));
+  assert.equal(await page.locator('#browser-add').isVisible(),false);
+  await page.evaluate(()=>window.layout.preview({tabs:[{id:'first',title:'Counter app'},{id:'second',title:'Second page'}],activeTabId:'second'}));
+  await page.getByRole('button',{name:'Close tab Second page',exact:true}).focus();await page.keyboard.press('Enter');
+  await page.waitForFunction(()=>document.querySelector('#browser-tabs-bar').hidden);
+  assert.equal(await page.evaluate(()=>document.activeElement.id),'browser-url','Closing the last extra tab should preserve visible keyboard focus');
+  for(const width of [1440,1280,1100,980,860]){
+    await page.setViewportSize({width,height:900});await page.waitForTimeout(150);
+    const layout=await page.evaluate(()=>({width:innerWidth,overflow:document.documentElement.scrollWidth,controls:['prompt','send-button','test-project','browser-button'].map(id=>{const {left,right}=document.getElementById(id).getBoundingClientRect();return {id,left,right};})}));
+    assert.ok(layout.overflow<=layout.width,`The workspace must fit a ${width}px window`);
+    for(const control of layout.controls)assert.ok(control.left>=0&&control.right<=width,`${control.id} must remain reachable at ${width}px`);
+  }
+  await page.evaluate(()=>window.layout.emit({projectWork:{root:'C:\\Projects\\Counter app',run:{status:'stopped'},tests:{status:'not checked'}}}));
+  await page.locator('#workspace-menu > summary').click({timeout:1500});
+  const menuBounds=await page.locator('#workspace-menu > summary').boundingBox(),chatBounds=await page.locator('main').boundingBox();
+  assert.ok(menuBounds.x+menuBounds.width<=chatBounds.x+chatBounds.width,'Stopped-app actions must stay inside the narrow chat pane');
+  await page.keyboard.press('Escape');
+  await page.evaluate(()=>window.layout.emit({projectWork:{root:'C:\\Projects\\Counter app',run:{status:'ready'},tests:{status:'not checked'}}}));
+  await page.setViewportSize({width:1440,height:1000});
+  await mkdir('artifacts/layout-proof',{recursive:true});
+  await page.screenshot({path:'artifacts/layout-proof/workspace.png'});
+  assert.deepEqual(errors,[],'The layout must not introduce renderer errors');
+  console.log('Layout smoke passed: primary controls, menus, focus, preserved commands, selection and five window sizes.');
+}finally{await browser.close();await new Promise(resolve=>server.close(resolve));}

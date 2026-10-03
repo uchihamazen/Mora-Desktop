@@ -4,6 +4,13 @@ import {once} from 'node:events';
 const require=createRequire(import.meta.url);
 const {_electron}=require('./runtime-packages.cjs').runtimeRequire('playwright');
 
+export async function clickControl(page,id) {
+  const control=page.locator('#'+id);
+  const menu=await control.evaluate(node=>{const menu=node.closest('[data-workspace-menu]');return menu&&!menu.open?menu.id:null;});
+  if(menu)await page.locator('#'+menu+' > summary').click();
+  await control.click();
+}
+
 // Initialize the hidden native view before Playwright attaches to all pages.
 export async function launchDesktop(packaged,env) {
   const reservation=createServer();reservation.listen(0,'127.0.0.1');await once(reservation,'listening');const port=reservation.address().port;await new Promise(resolve=>reservation.close(resolve));

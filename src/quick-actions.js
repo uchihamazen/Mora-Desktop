@@ -1,3 +1,4 @@
+import {focusMenuControl,previewOccluded} from './menu-ui.js';
 export function setupQuickActions(api,{find,sidebar}) {
   const $=id=>document.getElementById(id),make=(tag,text)=>{const node=document.createElement(tag);node.textContent=text;return node;};
   const commands=[
@@ -20,7 +21,7 @@ export function setupQuickActions(api,{find,sidebar}) {
   function open(){if(dialog.open){input.focus();return;}returnFocus=document.activeElement;draw();api.browserCommand?.('occlude',{hidden:true}).catch(()=>{});dialog.showModal();input.focus();}
   input.addEventListener('input',draw);input.addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();list.querySelector('button:not(:disabled)')?.click();}});
   dialog.addEventListener('keydown',event=>{if(event.key==='Escape'){event.preventDefault();dialog.close();}else if(['ArrowDown','ArrowUp'].includes(event.key)){event.preventDefault();const buttons=[...list.querySelectorAll('button:not(:disabled)')],index=buttons.indexOf(document.activeElement);buttons[(index+(event.key==='ArrowDown'?1:-1)+buttons.length)%buttons.length]?.focus();}});
-  close.addEventListener('click',()=>dialog.close());dialog.addEventListener('close',()=>{api.browserCommand?.('occlude',{hidden:!!document.querySelector('dialog[open],.changes-panel')}).catch(()=>{});if(document.activeElement===document.body || dialog.contains(document.activeElement))(returnFocus?.isConnected && returnFocus.checkVisibility()?returnFocus:$('quick-actions')).focus();});
+  close.addEventListener('click',()=>dialog.close());dialog.addEventListener('close',()=>{api.browserCommand?.('occlude',{hidden:previewOccluded()}).catch(()=>{});if(document.activeElement===document.body || dialog.contains(document.activeElement)){const target=returnFocus?.isConnected && returnFocus.checkVisibility()?returnFocus:$('quick-actions');target.checkVisibility()?target.focus():focusMenuControl(target);}});
   $('quick-actions').addEventListener('click',open);
   document.addEventListener('keydown',event=>{if(!event.ctrlKey || event.altKey || event.isComposing || document.querySelector('dialog[open]'))return;const key=event.key.toLowerCase();if(key==='k' && !event.shiftKey){event.preventDefault();open();return;}const command=commands.find(command=>command.key===key && !!command.shift===event.shiftKey);if(command){event.preventDefault();run(command);}});
   return ()=>{if(dialog.open)draw();};

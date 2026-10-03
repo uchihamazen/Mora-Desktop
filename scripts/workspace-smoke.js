@@ -4,7 +4,7 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import assert from 'node:assert/strict';
 import {uuid7} from '../src/msp.js';
-import {launchDesktop} from './electron-ui.js';
+import {launchDesktop,clickControl} from './electron-ui.js';
 const profile=await mkdtemp(path.join(tmpdir(),'mora-workspace-')),a=uuid7(),b=uuid7();let hits=0;
 const server=createServer(async(req,res)=>{hits++;if(req.url==='/slow')await new Promise(resolve=>setTimeout(resolve,700));res.setHeader('Content-Type','text/html');res.end(`<!doctype html><title>${req.url}</title><h1>${req.url}</h1><label>Page input <input id="input"></label><a href="/two">Second page</a>`);});
 await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));const origin=`http://127.0.0.1:${server.address().port}`;
@@ -41,7 +41,7 @@ try {
  for(let i=1;i<8;i++)await command('tab-new');await assert.rejects(()=>command('tab-new'),/8 per chat/);
  await page.locator('#browser-expand').click();await page.locator('#browser-url').focus();await page.keyboard.press('Control+f');assert.equal(await page.locator('#conversation-find').isVisible(),true);await page.keyboard.press('Escape');
  await page.locator('#browser-expand').click();await page.locator('#browser-url').focus();await page.keyboard.press('Control+Shift+f');assert.equal(await page.locator('#library-search').isVisible(),true);assert.equal(await page.locator('#library-search').evaluate(node=>node===document.activeElement),true);
- await page.locator('#quick-actions').click();assert.equal(await page.getByRole('dialog',{name:'Quick actions and shortcuts'}).isVisible(),true);await page.keyboard.press('Escape');
+ await clickControl(page,'quick-actions');assert.equal(await page.getByRole('dialog',{name:'Quick actions and shortcuts'}).isVisible(),true);await page.keyboard.press('Escape');
  await mkdir('artifacts',{recursive:true});await page.screenshot({path:'artifacts/workspace-tabs.png'});
  await app.close();app=null;
  const saved=JSON.parse(await readFile(path.join(profile,'conversations.backup.json'),'utf8'));assert.equal(saved.sessions.find(session=>session.sessionId===b).browser.tabs[0].url,origin+'/one');assert.equal(JSON.stringify(saved).includes('pageState'),false);

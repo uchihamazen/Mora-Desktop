@@ -9,6 +9,7 @@ import {setupProjectWork} from './work-ui.js';
 import {setupTester} from './tester-ui.js';
 import {setupWebsiteTester} from './website-ui.js';
 import {setupReadiness} from './setup-ui.js';
+import {setupWorkspaceMenus,previewOccluded} from './menu-ui.js';
 
 const $ = id => document.getElementById(id);
 const api = window.muse;
@@ -73,7 +74,7 @@ function showImage(source,alt) {
   const viewer=textNode('dialog','','image-viewer'),image=document.createElement('img'),close=textNode('button','×','image-viewer-close');
   image.alt=alt;image.referrerPolicy='no-referrer';image.src=source;close.setAttribute('aria-label','Close image');close.addEventListener('click',()=>viewer.close());
   viewer.append(close,image);viewer.addEventListener('click',event=>{if(event.target===viewer)viewer.close();});
-  viewer.addEventListener('close',()=>{viewer.remove();api.browserCommand?.('occlude',{hidden:!!document.querySelector('.changes-panel, .image-viewer[open]')}).catch(()=>{});});
+  viewer.addEventListener('close',()=>{viewer.remove();api.browserCommand?.('occlude',{hidden:previewOccluded()}).catch(()=>{});});
   document.body.append(viewer);api.browserCommand?.('occlude',{hidden:true}).catch(()=>{});viewer.showModal();close.focus();
 }
 function renderImage(parent,url,alt) {
@@ -117,7 +118,7 @@ function renderText(parent, text, streaming=false) {
 function changeCounts(parent, added, removed) {
   parent.append(textNode('span', `+${added}`, 'change-added'), textNode('span', `-${removed}`, 'change-removed'));
 }
-function closeChanges() { const panel=document.querySelector('.changes-panel');panel?.remove();if(panel)api.browserCommand?.('occlude',{hidden:!!document.querySelector('.image-viewer[open]')}).catch(()=>{});openReviewId = null; selectedReviewPath = null; openReviewSignature = ''; }
+function closeChanges() { const panel=document.querySelector('.changes-panel');panel?.remove();if(panel)api.browserCommand?.('occlude',{hidden:previewOccluded()}).catch(()=>{});openReviewId = null; selectedReviewPath = null; openReviewSignature = ''; }
 function showChanges(item, refresh = false) {
   if (!refresh) { closeChanges(); openReviewId = item.itemId; }
   if (!refresh) api.browserCommand?.('occlude',{hidden:true}).catch(()=>{});
@@ -183,7 +184,7 @@ function renderMessages() {
         const summary=node.querySelector('summary');summary.children[1].textContent=item.description || item.tool || item.commandText || 'Project operation';summary.children[2].textContent=item.status==='inProgress'?'Running':item.status || 'Completed';renderToolOutput(node);
       }else if(item.kind==='agentMessage' || item.kind==='userMessage' || item.kind==='queued') {
         const user=item.kind!=='agentMessage';node.className='message '+(user?'user':'assistant')+(item.kind==='queued'?' queued':'');
-        if(!sameKind){node.replaceChildren();const avatar=textNode('div',user?'Y':'','avatar');if(!user){const logo=document.createElement('img');logo.src='assets/mora-mark.svg';logo.alt='Mora';avatar.append(logo);}const content=textNode('div','','message-content');content.append(textNode('div',user?'You':'Muse','message-label'),textNode('div','','message-images'),textNode('div','','message-body'));node.append(avatar,content);}
+        if(!sameKind){node.replaceChildren();const avatar=textNode('div',user?'Y':'','avatar');if(!user){const logo=document.createElement('img');logo.src='assets/mora-mark.svg';logo.alt='Mora';avatar.append(logo);}const content=textNode('div','','message-content');content.append(textNode('div',user?'You':'Mora','message-label'),textNode('div','','message-images'),textNode('div','','message-body'));node.append(avatar,content);}
         if(!sameImages){const imgs=node.querySelector('.message-images');imgs.replaceChildren();for(const image of item.images || []){const img=document.createElement('img');img.src='data:'+image.mediaType+';base64,'+image.base64Data;img.alt='Attached image';imgs.append(img);}}
         renderText(node.querySelector('.message-body'),item.displayText || item.text || '',item.status==='inProgress');
         if(item.kind==='queued') {
@@ -194,7 +195,7 @@ function renderMessages() {
       }else {
         node.replaceChildren();
         if(item.kind==='fileChanges') {
-          node.className='change-row';const button=textNode('button','','change-badge');button.append(textNode('span',item.files.length+' '+(item.files.length===1?'file':'files')+' changed'+(item.partial?' · partial':'')));changeCounts(button,item.added,item.removed);if(item.live)button.append(textNode('span','Live','change-live'));button.title='Review file changes';button.addEventListener('click',()=>showChanges(node.currentItem));node.append(button);
+          node.className='change-row';const button=textNode('button','','change-badge');button.append(textNode('strong',item.files.length+' '+(item.files.length===1?'file':'files')+' changed'+(item.partial?' · partial':'')));changeCounts(button,item.added,item.removed);if(item.live)button.append(textNode('span','Live','change-live'));button.append(textNode('span','Review changes','change-review-label'));button.title='Review file changes';button.addEventListener('click',()=>showChanges(node.currentItem));node.append(button);
         }else if(item.kind==='activity'){node.className='activity-step';node.dir='auto';node.textContent=item.text;}
         else {
           node.className='completion-card '+item.status;node.append(textNode('strong',item.status==='finished'?'Request finished':item.status==='interrupted'?'Request interrupted':'Request failed'),textNode('p',item.message));
@@ -261,11 +262,11 @@ function update(next) {
   const general = state.projectPath === null;
   $('project-name').textContent = general ? 'General chat' : (state.workspace || '').split(/[\\/]/).filter(Boolean).at(-1) || 'Your project';
   $('project-path').textContent = general ? 'No project attached' : state.workspace || 'Select a folder';
-  $('workspace-button').title = general ? 'Start a chat in a project folder' : 'Choose a project folder';
+  $('workspace-button').title = general ? 'Start a chat in a project folder' : state.workspace+'\nChoose a project folder';
   $('workspace-label').textContent = general ? 'GENERAL CHAT' : 'PROJECT WORKSPACE';
   const ready = state.connection === 'ready';
   $('connection-badge').className = `connection-badge ${state.connection}`; $('connection-badge').textContent = ready ? 'Connected' : state.connection === 'connecting' ? 'Connecting' : 'Disconnected';
-  $('connection-dot').className = `connection-dot ${state.connection}`; $('engine-label').textContent = ready ? `Muse Code ${state.engineVersion || ''}` : 'Muse disconnected'; $('engine-detail').textContent = ready ? 'Runs on your installed engine' : 'Reconnect in Engine settings';
+  $('connection-dot').className = `connection-dot ${state.connection}`; $('engine-label').textContent = ready ? 'Muse connected' : state.connection==='connecting'?'Connecting to Muse':'Muse disconnected'; $('engine-detail').textContent = ready ? 'Runs on your installed engine' : 'Reconnect in Settings';
   const work=state.projectWork?.root===state.projectPath?state.projectWork:null;
   const failure=work?.run?.status==='failed'?work.run.message||'Your app could not start. Show results for details.':work?.tests?.status==='failed'?work.tests.message||'Project checks failed. Show results for details.':'';
   if(projectFailureNotice!==failure){dismissedErrors.delete(previousFailureKey);if($('error-text').textContent===projectFailureNotice)$('error-banner').hidden=true;projectFailureNotice=failure;}
@@ -278,7 +279,7 @@ function update(next) {
   for (const id of ['new-chat','add-project','workspace-button','model','effort','execution-mode','choose-muse','reconnect']) $(id).disabled = state.busy || state.loading || sending || state.connection==='connecting';
   $('attach-button').disabled = state.loading || sending || state.workUnavailable;
   $('prompt').disabled = state.loading || sending || state.workUnavailable;
-  $('prompt').placeholder = state.busy && state.finishing ? 'Write your next message while Muse finishes…' : state.busy ? 'Queue a follow-up while Muse works…' : general ? 'Ask Muse anything, or attach an image…' : 'Ask Muse to build, fix, or explain…';
+  $('prompt').placeholder = state.busy && state.finishing ? 'Write your next message while Muse finishes…' : state.busy ? 'Queue a follow-up while Muse works…' : general ? 'Ask Muse anything, or attach an image…' : 'Describe what you want to change…';
   $('composer').classList.toggle('full-mode', !general && state.executionMode === 'full');
   $('execution-mode').hidden = general;
   for (const [id,title,detail,prompt] of general ? [
@@ -288,7 +289,8 @@ function update(next) {
     ['explore-suggestion','Explore my project','Get the lay of the land','Explore this project and explain its structure. Do not modify anything.'],
     ['explain-suggestion','Find a bug','Make the next fix clearer','Inspect this project for a concrete bug. Explain what you find before making changes.'],
   ]) { const button=$(id); button.querySelector('strong').textContent=title; button.querySelector('small').textContent=detail; button.dataset.prompt=prompt; }
-  fillSelect($('model'), (state.models || []).map(model => ({ value: model.modelId, label: model.displayLabel || model.modelId })), state.modelId);
+  fillSelect($('model'), (state.models || []).map(model => ({ value: model.modelId, label: model.displayLabel && model.displayLabel !== model.modelId ? model.displayLabel : model.modelId.replace(/[-_]/g,' ').replace(/\b[a-z]/g,letter=>letter.toUpperCase()) })), state.modelId);
+  $('model').title=state.modelId || '';
   const model = state.models?.find(model => model.modelId === state.modelId);
   fillSelect($('effort'), (Array.isArray(model?.variants) ? model.variants : ['max']).map(value => ({ value, label: value[0].toUpperCase() + value.slice(1) })), state.reasoningEffort);
   $('execution-mode').value = state.executionMode || 'readonly';
@@ -376,5 +378,6 @@ updateProjectWork=setupProjectWork(api,action);
 updateTester=setupTester(api,error);
 updateWebsiteTester=setupWebsiteTester(api,error);
 updateReadiness=setupReadiness(api,error,()=>{setSidebar(false);$('settings-panel').hidden=false;$('settings-button').focus();});
+setupWorkspaceMenus(api);
 $('onboarding-action').addEventListener('click',()=>{setSidebar(false);$('settings-panel').hidden=false;if(state.account?.status==='pending')return;action(()=>api.accountCommand(state.account?.status==='missing'?'install':state.account?.status==='required'?'login':'refresh'));});
 update(await api.getState()); $('prompt').focus();

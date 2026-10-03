@@ -1,9 +1,10 @@
+import {previewOccluded} from './menu-ui.js';
 export function setupProjectWork(api,action) {
   const $=id=>document.getElementById(id),node=(tag,text)=>{const value=document.createElement(tag);value.textContent=text;return value;};
   let current,signature;
   for(const [id,name] of [['run-project','run'],['restart-project','restart'],['stop-project','stop'],['test-project','test'],['stop-tests','stop-tests'],['fix-tests','fix']])$(id).addEventListener('click',()=>action(()=>api.projectCommand(name),{flush:!name.startsWith('stop')}));
   $('project-output').addEventListener('click',()=>{const hidden=$('project-results').hidden;$('project-results').hidden=!hidden;$('project-output').textContent=hidden?'Hide results':'Show results';$('project-output').setAttribute('aria-expanded',String(hidden));if(hidden)action(()=>api.projectCommand('results'),{flush:false});});
-  const essential=node('button','Add essential tests');essential.id='add-essential-tests';$('test-project').after(essential);
+  const essential=node('button','Add essential tests');essential.id='add-essential-tests';$('ai-tester').before(essential);
   essential.addEventListener('click',()=>{const prompt=$('prompt');if(prompt.value.trim()){prompt.focus();return;}prompt.value='Add focused, repeatable tests for the essential user flows in this app using its existing test tools. Configure test:flows or test:e2e in package.json. State which behaviors the assertions cover and which remain untested. Preserve existing tests and use local test data.';prompt.dispatchEvent(new Event('input'));prompt.focus();});
   async function openCheckpoints(id) {
     if(document.querySelector('.checkpoint-dialog'))return;
@@ -28,13 +29,15 @@ export function setupProjectWork(api,action) {
       const back=node('button','Back to checkpoints');back.addEventListener('click',()=>invoke(list));body.append(restore,back);if(!preview.changes.length)body.append(node('p','No files need restoring.'));
     }
     create.addEventListener('click',()=>invoke(async()=>{create.disabled=true;try{await api.checkpointCommand('create',{label:'Saved checkpoint'});await list();}finally{create.disabled=false;}}));
-    dialog.addEventListener('close',()=>{dialog.remove();api.browserCommand?.('occlude',{hidden:!!document.querySelector('.changes-panel,.image-viewer[open]')}).catch(()=>{});});document.body.append(dialog);api.browserCommand?.('occlude',{hidden:true}).catch(()=>{});dialog.showModal();close.focus();await invoke(id?async()=>show(await api.checkpointCommand('preview',{id})):list);
+    dialog.addEventListener('close',()=>{dialog.remove();api.browserCommand?.('occlude',{hidden:previewOccluded()}).catch(()=>{});});document.body.append(dialog);api.browserCommand?.('occlude',{hidden:true}).catch(()=>{});dialog.showModal();close.focus();await invoke(id?async()=>show(await api.checkpointCommand('preview',{id})):list);
   }
   $('checkpoints').addEventListener('click',()=>action(()=>openCheckpoints()));
-  const preview=node('button','Open preview');preview.id='preview-project';preview.hidden=true;$('run-project').after(preview);preview.addEventListener('click',()=>action(()=>api.projectCommand('preview')));
+  const preview=node('button','Open app preview');preview.id='preview-project';preview.hidden=true;$('restart-project').before(preview);preview.addEventListener('click',()=>action(()=>api.projectCommand('preview')));
   const update=state=>{
     current=state;const work=state.projectWork?.root===state.projectPath?state.projectWork:null,run=work?.run || {status:'stopped'},tests=work?.tests || {status:'not checked'};
     $('project-toolbar').hidden=!state.projectPath || !api.projectCommand;
+    $('project-tools').hidden=$('project-toolbar').hidden;
+    $('project-work-status').hidden=$('project-toolbar').hidden;
     const busy=state.testerActive || state.busy || state.loading || state.projectOperation || state.projectRepair;
     $('run-project').hidden=['starting','ready','stopping'].includes(run.status);$('run-project').disabled=busy;
     preview.hidden=run.status!=='ready';preview.disabled=!!state.loading;
@@ -44,7 +47,7 @@ export function setupProjectWork(api,action) {
     essential.hidden=!!tests.flowScript;essential.disabled=busy || state.executionMode!=='full' || state.connection!=='ready';essential.title='Describe the essential behaviors in chat before sending';
     $('fix-tests').hidden=tests.status!=='failed';$('fix-tests').disabled=busy || state.executionMode!=='full' || state.connection!=='ready';$('fix-tests').title=state.executionMode==='full'?'Ask Muse to repair, then test once':'Choose Full access to repair project files';
     $('checkpoints').disabled=busy || ['starting','ready','stopping'].includes(run.status);
-    $('project-work-status').textContent=state.projectRepair?'Muse is fixing failures…':state.projectOperation && tests.status!=='running'?'Saving checkpoint…':tests.status==='running'?'Running checks…':run.status==='ready'?'App running':tests.message || run.message || '';
+    $('project-work-status').textContent=state.projectRepair?'Muse is fixing failures…':state.projectOperation && tests.status!=='running'?'Saving checkpoint…':tests.status==='running'?'Running checks…':run.status==='ready'?'Running locally':tests.message || run.message || '';
     const next=JSON.stringify([state.projectPath,work]);if(next===signature)return;signature=next;const results=$('project-results');results.replaceChildren();
     const section=(heading,text,output)=>{const group=node('div','');group.append(node('strong',heading),node('p',text));if(output){const detail=node('details',''),summary=node('summary','Output'),pre=node('pre',output);detail.append(summary,pre);group.append(detail);}results.append(group);};
     section('Run',run.message || 'App has not been run.',run.output);

@@ -1,3 +1,4 @@
+import {previewOccluded} from './menu-ui.js';
 import {conversationGroups} from './projects.js';
 
 export function setupLibrary(api,action) {
@@ -9,7 +10,7 @@ export function setupLibrary(api,action) {
   title.id='chat-title';title.maxLength=120;label.htmlFor=title.id;notice.setAttribute('role','status');dialog.setAttribute('aria-labelledby','chat-options-heading');heading.id='chat-options-heading';dialog.append(heading,label,title,notice,buttons);document.body.append(dialog);
   let selectedId,opener,pending=false;
   const close=node('button','Close');close.addEventListener('click',()=>dialog.close());
-  dialog.addEventListener('close',()=>{api.browserCommand?.('occlude',{hidden:!!document.querySelector('.changes-panel,dialog[open]')}).catch(()=>{});if(document.activeElement!==document.body && !dialog.contains(document.activeElement) && document.activeElement!==opener)return;const row=[...document.querySelectorAll('.session-row')].find(row=>row.dataset.sessionId===selectedId);(row?.querySelector('.session-options') || (opener?.isConnected?opener:$('library-search'))).focus();});
+  dialog.addEventListener('close',()=>{api.browserCommand?.('occlude',{hidden:previewOccluded()}).catch(()=>{});if(document.activeElement!==document.body && !dialog.contains(document.activeElement) && document.activeElement!==opener)return;const row=[...document.querySelectorAll('.session-row')].find(row=>row.dataset.sessionId===selectedId);(row?.querySelector('.session-options') || (opener?.isConnected?opener:$('library-search'))).focus();});
   function options(session,button) {
     selectedId=session.sessionId;opener=button;heading.textContent=session.title || 'New conversation';title.value=session.title || 'New conversation';notice.textContent='Archive keeps messages, drafts and queued work.';drawOptions();
     api.browserCommand?.('occlude',{hidden:true}).catch(()=>{});dialog.showModal();title.focus();title.select();
@@ -42,7 +43,9 @@ export function setupLibrary(api,action) {
     for(const details of $('sessions').querySelectorAll('.project-group'))if(!query){if(details.open)collapsed.delete(details.dataset.projectPath);else collapsed.add(details.dataset.projectPath);}
     $('sessions').replaceChildren();$('general-sessions').replaceChildren();
     const groups=conversationGroups(state.sessions || [],state.projects || [],{query,archived});
-    $('library-status').textContent=query?`${groups.reduce((count,group)=>count+group.sessions.length,0)} chats · title/project search`:archived?'Archived chats':'Chat titles and project paths';
+    $('library-status').textContent=query?`${groups.reduce((count,group)=>count+group.sessions.length,0)} chats · title/project search`:archived?'Archived chats':'';
+    const hasGeneral=groups.some(group=>group.projectPath===null&&group.sessions.length);
+    $('general-label').hidden=!hasGeneral;$('general-sessions').hidden=!hasGeneral&&!query&&groups.some(group=>group.projectPath!==null);
     for(const group of groups) {
       let container=$('general-sessions');
       if(group.projectPath!==null) {

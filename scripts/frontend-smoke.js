@@ -1,3 +1,4 @@
+import {clickControl} from './electron-ui.js';
 import {createRequire} from 'node:module';
 import {createServer} from 'node:http';
 import {readFile,mkdir} from 'node:fs/promises';
@@ -8,7 +9,8 @@ const {chromium}=require('./runtime-packages.cjs').runtimeRequire('playwright');
 const png='iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+ip1sAAAAASUVORK5CYII=';
 const server=createServer(async(req,res)=>{
   const file={'/':'index.html','/style.css':'style.css','/renderer.js':'renderer.js','/markdown.js':'markdown.js','/project-ui.js':'project-ui.js','/work-ui.js':'work-ui.js','/images.js':'images.js','/projects.js':'projects.js','/browser-ui.js':'browser-ui.js','/assets/mora-mark.svg':'assets/mora-mark.svg'}[req.url];
-  if(['/tester-ui.js','/website-ui.js','/website-coverage.js','/library-ui.js','/find-ui.js','/quick-actions.js','/setup-ui.js'].includes(req.url)){res.setHeader('Content-Type','application/javascript');res.end(await readFile('src'+req.url));return;}
+  if(['/tester-ui.js','/website-ui.js','/website-coverage.js','/library-ui.js','/find-ui.js','/quick-actions.js','/setup-ui.js','/menu-ui.js'].includes(req.url)){res.setHeader('Content-Type','application/javascript');res.end(await readFile('src'+req.url));return;}
+  if(req.url==='/workspace.css'){res.setHeader('Content-Type','text/css');res.end(await readFile('src/workspace.css'));return;}
   if(!file){res.writeHead(404).end();return;}
   res.setHeader('Content-Type',file.endsWith('.svg')?'image/svg+xml':file.endsWith('.css')?'text/css':file.endsWith('.js')?'application/javascript':'text/html');
   res.end(await readFile(path.join('src',file)));
@@ -274,27 +276,27 @@ try{
  assert.equal(await page.locator('#sign-in').isVisible(),false);
  await page.locator('#cancel-sign-in').click();
  await page.waitForFunction(()=>document.querySelector('#login-code').hidden);
- await page.locator('#create-project').click();
+ await clickControl(page,'create-project');
  await page.getByRole('textbox',{name:'Project name',exact:true}).fill('First app');
  await page.getByRole('button',{name:'Choose parent folder',exact:true}).click();
  await page.getByRole('button',{name:'Create project',exact:true}).click();
  await page.waitForFunction(()=>window.smoke.projectsCreated.length===1);
  assert.equal(await page.evaluate(()=>window.smoke.projectsCreated[0].name),'First app');
- await page.locator('#create-project').click();await page.getByRole('textbox',{name:'Project name',exact:true}).fill('Plain site');await page.getByLabel('Project starter',{exact:true}).selectOption('static');await page.getByRole('button',{name:'Choose parent folder',exact:true}).click();await page.getByRole('button',{name:'Create project',exact:true}).click();await page.waitForFunction(()=>window.smoke.projectsCreated.length===2);assert.equal(await page.evaluate(()=>window.smoke.projectsCreated[1].starter),'static');
+ await clickControl(page,'create-project');await page.getByRole('textbox',{name:'Project name',exact:true}).fill('Plain site');await page.getByLabel('Project starter',{exact:true}).selectOption('static');await page.getByRole('button',{name:'Choose parent folder',exact:true}).click();await page.getByRole('button',{name:'Create project',exact:true}).click();await page.waitForFunction(()=>window.smoke.projectsCreated.length===2);assert.equal(await page.evaluate(()=>window.smoke.projectsCreated[1].starter),'static');
  await page.evaluate(()=>window.smoke.emit({projectPath:'C:\\Projects\\First app',projectWork:{root:'C:\\Projects\\First app',run:{status:'ready',url:'http://localhost:3000'},tests:{status:'failed',message:'Tests failed',results:[{script:'test',status:'failed',output:'failure'}]}},executionMode:'readonly'}));
- assert.equal(await page.locator('#error-banner').isVisible(),true,'Failed project checks must offer recovery without an engine error');assert.equal(await page.locator('#recovery-results').isVisible(),true);await page.locator('#recovery-results').click();assert.equal(await page.locator('#project-results').isVisible(),true);await page.locator('#recovery-results').click();assert.equal(await page.locator('#project-results').isVisible(),true);await page.locator('#project-output').click();
+ assert.equal(await page.locator('#error-banner').isVisible(),true,'Failed project checks must offer recovery without an engine error');assert.equal(await page.locator('#recovery-results').isVisible(),true);await page.locator('#recovery-results').click();assert.equal(await page.locator('#project-results').isVisible(),true);await page.locator('#recovery-results').click();assert.equal(await page.locator('#project-results').isVisible(),true);await clickControl(page,'project-output');
  await page.evaluate(()=>window.smoke.emit({projectPath:'C:\\Projects\\Other'}));assert.equal(await page.locator('#recovery-results').isVisible(),false,'Recovery output must belong to the selected project');await page.evaluate(()=>window.smoke.emit({projectPath:'C:\\Projects\\First app',error:''}));
- await page.locator('#export-project').click();await page.getByText('SHA-256: '+'a'.repeat(64),{exact:true}).waitFor();await page.getByRole('button',{name:'Copy checksum',exact:true}).click();assert.equal(await page.evaluate(()=>window.smoke.copied),'a'.repeat(64));await page.getByRole('button',{name:'Show ZIP in folder',exact:true}).click();assert.equal(await page.evaluate(()=>window.smoke.revealed),true);await page.getByRole('button',{name:'Close export',exact:true}).click();assert.equal(await page.locator('#export-project').evaluate(e=>e===document.activeElement),true);
- await page.evaluate(()=>window.smoke.exportFails=true);await page.locator('#export-project').click();await page.getByText('Source limits exceeded.',{exact:true}).waitFor();assert.equal(await page.getByRole('button',{name:'Copy checksum',exact:true}).isVisible(),false);await page.getByRole('button',{name:'Close export',exact:true}).click();await page.evaluate(()=>window.smoke.exportFails=false);
+ await clickControl(page,'export-project');await page.getByText('SHA-256: '+'a'.repeat(64),{exact:true}).waitFor();await page.getByRole('button',{name:'Copy checksum',exact:true}).click();assert.equal(await page.evaluate(()=>window.smoke.copied),'a'.repeat(64));await page.getByRole('button',{name:'Show ZIP in folder',exact:true}).click();assert.equal(await page.evaluate(()=>window.smoke.revealed),true);await page.getByRole('button',{name:'Close export',exact:true}).click();await page.locator('.export-dialog').waitFor({state:'detached'});assert.equal(await page.locator('#workspace-menu > summary').evaluate(e=>e===document.activeElement),true);
+ await page.evaluate(()=>window.smoke.exportFails=true);await clickControl(page,'export-project');await page.getByText('Source limits exceeded.',{exact:true}).waitFor();assert.equal(await page.getByRole('button',{name:'Copy checksum',exact:true}).isVisible(),false);await page.getByRole('button',{name:'Close export',exact:true}).click();await page.evaluate(()=>window.smoke.exportFails=false);
  await page.locator('#run-project').waitFor({state:'hidden'});assert.equal(await page.locator('#fix-tests').isDisabled(),true);
- await page.locator('#project-brief').click();await page.getByLabel('Shared project brief',{exact:true}).waitFor();
+ await clickControl(page,'project-brief');await page.getByLabel('Shared project brief',{exact:true}).waitFor();
  assert.equal(await page.getByRole('button',{name:'Save brief',exact:true}).isDisabled(),true);
- await page.getByRole('button',{name:'Close brief',exact:true}).click();await page.locator('.brief-dialog').waitFor({state:'detached',timeout:1000});assert.equal(await page.locator('.brief-dialog').count(),0,'An untouched CRLF brief is not dirty');await page.locator('#project-brief').click();
+ await page.getByRole('button',{name:'Close brief',exact:true}).click();await page.locator('.brief-dialog').waitFor({state:'detached',timeout:1000});assert.equal(await page.locator('.brief-dialog').count(),0,'An untouched CRLF brief is not dirty');await clickControl(page,'project-brief');
  await page.evaluate(()=>window.smoke.emit({executionMode:'full'}));await page.getByLabel('Shared project brief',{exact:true}).fill('Goal: keep the shop simple');
  await page.getByRole('button',{name:'Save brief',exact:true}).click();await page.waitForFunction(()=>window.smoke.brief.text==='Goal: keep the shop simple');
  await page.getByRole('button',{name:'Close brief',exact:true}).click();
  await page.evaluate(()=>window.smoke.emit({executionMode:'readonly'}));
- await page.locator('#stop-project').click();assert.equal(await page.evaluate(()=>window.smoke.projectActions.at(-1)),'stop');
+ await clickControl(page,'stop-project');assert.equal(await page.evaluate(()=>window.smoke.projectActions.at(-1)),'stop');
  await page.evaluate(()=>window.smoke.emit({projectWork:{root:'C:\\Projects\\First app',run:{status:'stopped'},tests:{status:'not checked'}}}));
  await page.evaluate(()=>window.smoke.emit({lastOutcome:{status:'finished',turnId:'request-undo',message:'Built your app',checkpointId:'cp1'}}));
  await page.evaluate(()=>{window.smoke.originalProjectCommand=window.muse.projectCommand;window.smoke.stopResolves=[];window.muse.projectCommand=async name=>{if(name==='stop')await new Promise(resolve=>window.smoke.stopResolves.push(resolve));};window.smoke.emit({projectWork:{root:'C:\\Projects\\First app',run:{status:'ready'},tests:{status:'not checked'}}});});
@@ -305,11 +307,11 @@ try{
  await page.getByRole('button',{name:'Undo this request',exact:true}).click();
  await page.getByRole('button',{name:'Restore selected files'}).waitFor();
  await page.getByRole('button',{name:'Close',exact:true}).click();
- await page.locator('#checkpoints').click();await page.getByRole('button',{name:'Review restore'}).click();
+ await clickControl(page,'checkpoints');await page.getByRole('button',{name:'Review restore'}).click();
  assert.equal(await page.locator('.checkpoint-dialog input[type=checkbox]').first().isChecked(),false);
  await page.locator('.checkpoint-dialog input[type=checkbox]').first().check();await page.locator('.checkpoint-dialog input[type=checkbox]').last().check();await page.getByRole('button',{name:'Restore selected files'}).click();
  await page.waitForFunction(()=>window.smoke.restores.length===1);assert.equal(await page.evaluate(()=>window.smoke.restores[0].allowConflicts),true);await page.getByRole('button',{name:'Close',exact:true}).click();
- await page.locator('#ai-tester').click();await page.getByLabel('What should work?').fill('Cart adds one item');await page.getByRole('button',{name:'Start report',exact:true}).click();
+ await clickControl(page,'ai-tester');await page.getByLabel('What should work?').fill('Cart adds one item');await page.getByRole('button',{name:'Start report',exact:true}).click();
  assert.equal(await page.getByRole('button',{name:'Start report',exact:true}).isDisabled(),true);
  assert.equal(await page.locator('.tester-report b').count(),0);
  await page.getByRole('button',{name:'Stop testing',exact:true}).click();
@@ -318,9 +320,9 @@ try{
  await page.screenshot({path:'artifacts/mora-tester-report.png'});
  await page.getByRole('button',{name:'Resume unfinished cases',exact:true}).click();assert.equal(await page.evaluate(()=>window.smoke.testerCalls.at(-1).action),'resume');
  await page.getByRole('button',{name:'Stop testing',exact:true}).click();await page.keyboard.press('Escape');await page.locator('.tester-dialog').waitFor({state:'detached'});
- await page.locator('#ai-tester').click();await page.getByRole('button',{name:'Saved reports',exact:true}).click();await page.locator('.tester-report button').first().click();assert.equal(await page.locator('.tester-report details').count(),2);await page.keyboard.press('Escape');
+ await clickControl(page,'ai-tester');await page.getByRole('button',{name:'Saved reports',exact:true}).click();await page.locator('.tester-report button').first().click();assert.equal(await page.locator('.tester-report details').count(),2);await page.keyboard.press('Escape');
  await page.evaluate(()=>{window.smoke.websiteCalls=[];window.muse.websiteTesterCommand=async(action,payload)=>{window.smoke.websiteCalls.push({action,payload});if(action==='open')window.smoke.emit({websiteActive:true,website:{id:'site1',scope:{entryUrl:payload.url},request:payload.request,status:'manual',steps:[],findings:[],gaps:[]}});};window.smoke.emit({projectPath:null,websiteActive:false,testerActive:false,busy:false});});
- await page.locator('#website-tester').click();assert.equal(await page.getByRole('button',{name:'Repair selected issues',exact:true}).count(),0);
+ await clickControl(page,'website-tester');assert.equal(await page.getByRole('button',{name:'Repair selected issues',exact:true}).count(),0);
  await page.getByLabel('Website URL',{exact:true}).fill('https://example.com');await page.getByLabel('Workflow and expected result',{exact:true}).fill('Search finds matching results');await page.getByRole('button',{name:'Open website',exact:true}).click();
  assert.equal(await page.evaluate(()=>window.smoke.websiteCalls[0].payload.url),'https://example.com');assert.equal(await page.getByRole('button',{name:'Start checking',exact:true}).isEnabled(),true);
  await page.evaluate(()=>window.smoke.emit({website:{id:'site1',scope:{entryUrl:'https://example.com'},status:'awaiting permission',steps:[],findings:[],gaps:[],pending:{id:'permission1',control:'<b>Submit</b>',reason:'Review the interaction',step:{action:'click'}}}}));

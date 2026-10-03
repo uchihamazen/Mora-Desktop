@@ -1,13 +1,9 @@
-import {createRequire} from 'node:module';
+import {clickControl,launchDesktop} from './electron-ui.js';
 import {createServer} from 'node:http';
-import {createServer as reservePort} from 'node:net';
-import {once} from 'node:events';
 import {mkdtemp,writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import assert from 'node:assert/strict';
-const require=createRequire(import.meta.url);
-const {_electron}=require('./runtime-packages.cjs').runtimeRequire('playwright');
 const packaged=process.argv.slice(2).find(argument=>!argument.startsWith('--'));
 const realSend=process.argv.includes('--send');
 const server=createServer(async(req,res)=>{
@@ -19,21 +15,7 @@ await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
 const url=`http://127.0.0.1:${server.address().port}`;
 const env={...process.env};delete env.ELECTRON_RUN_AS_NODE;
 env.MUSE_DESKTOP_TEST_USER_DATA=await mkdtemp(path.join(tmpdir(),'muse-browser-profile-'));
-const reservation=reservePort();reservation.listen(0,'127.0.0.1');await once(reservation,'listening');const port=reservation.address().port;await new Promise(resolve=>reservation.close(resolve));
-let launchError;const launching=_electron.launch({executablePath:packaged || require('electron'),args:[...(packaged ? [] : ['.']),`--remote-debugging-port=${port}`],cwd:process.cwd(),env,timeout:40000}).catch(error=>{launchError=error;});
-// Initialize the hidden native view before Playwright waits for every page.
-// A newly constructed, unloaded WebContentsView can otherwise stall attachment.
-const until=Date.now()+35000;let target,bootstrapError;
-while(!target&&!launchError&&Date.now()<until){try{target=(await(await fetch(`http://127.0.0.1:${port}/json/list`)).json()).find(t=>t.url.endsWith('/index.html'));}catch{}if(!target)await new Promise(resolve=>setTimeout(resolve,100));}
-if(target){
- const socket=new WebSocket(target.webSocketDebuggerUrl);await once(socket,'open');
- try {await new Promise((resolve,reject)=>{
-  const timer=setTimeout(()=>reject(Error('Browser initialization timed out')),10000);
-  socket.addEventListener('message',event=>{const message=JSON.parse(event.data);if(message.id===1){clearTimeout(timer);message.result?.exceptionDetails?reject(Error('Browser initialization failed')):resolve();}});
-  socket.send(JSON.stringify({id:1,method:'Runtime.evaluate',params:{expression:"window.muse.browserCommand('open').then(()=>window.muse.browserCommand('close'))",awaitPromise:true}}));
- });}catch(error){bootstrapError=error;}finally{socket.close();}
-}
-const app=await launching;if(launchError||bootstrapError){await app?.close();await new Promise(resolve=>server.close(resolve));throw launchError||bootstrapError;}
+const app=await launchDesktop(packaged,env);
 try {
   const page=app.context().pages().find(candidate=>candidate.url().endsWith('/index.html'));assert.ok(page,'Mora main window is available');
   await page.locator('#browser-button').waitFor({timeout:10000});
@@ -58,13 +40,14 @@ try {
   await page.locator('#sidebar-toggle').click();
   const initialWidth=await panelWidth(),divider=await page.locator('#browser-resizer').boundingBox();
   const nativeView=()=>app.evaluate(({BrowserWindow})=>{const window=BrowserWindow.getAllWindows()[0],view=window.contentView.children.find(child=>child.webContents&&child.webContents!==window.webContents);return{visible:view.getVisible(),bounds:view.getBounds()};});
+  async function waitNativeVisible(){const end=Date.now()+5000;while(Date.now()<end){if((await nativeView()).visible)return;await new Promise(resolve=>setTimeout(resolve,50));}throw Error('The native preview did not become visible after loading');}
   await page.mouse.move(divider.x+divider.width/2,divider.y+divider.height/2);await page.mouse.down();await page.mouse.move(divider.x-110,divider.y+divider.height/2,{steps:8});assert.equal((await nativeView()).visible,false,'Native preview cannot steal pointer during resize');await page.mouse.up();
   assert.ok(await panelWidth()>initialWidth+90,'Dragging left expands the browser');
   await page.waitForTimeout(120);assert.equal((await nativeView()).visible,true,'Preview returns after resize');
   const viewport=await page.locator('#browser-viewport').boundingBox(),native=(await nativeView()).bounds;assert.ok(Math.abs(viewport.x-native.x)<=1&&Math.abs(viewport.width-native.width)<=1,'Native browser follows the divider');
   await page.evaluate(url=>{window.slowNavigation=window.muse.browserCommand('navigate',{url});},url+'/slow-resize');await page.waitForFunction(async()=>(await window.muse.browserCommand('state')).loading);
   const loadingDivider=await page.locator('#browser-resizer').boundingBox();await page.mouse.move(loadingDivider.x+3,loadingDivider.y+100);await page.mouse.down();await page.mouse.move(loadingDivider.x+70,loadingDivider.y+100,{steps:4});await page.mouse.up();
-  assert.equal((await nativeView()).visible,false,'Finishing a resize cannot reveal the oversized loading surface');await page.evaluate(()=>window.slowNavigation);await page.waitForFunction(async()=>!(await window.muse.browserCommand('state')).loading);await page.waitForTimeout(100);assert.equal((await nativeView()).visible,true);
+  assert.equal((await nativeView()).visible,false,'Finishing a resize cannot reveal the oversized loading surface');await page.evaluate(()=>window.slowNavigation);await page.waitForFunction(async()=>!(await window.muse.browserCommand('state')).loading);await waitNativeVisible();assert.equal((await nativeView()).visible,true);
   await page.evaluate(url=>window.muse.browserCommand('navigate',{url}),url);await web.locator('#card').waitFor();
   const savedWidth=await panelWidth();await page.reload();await page.locator('#browser-panel').waitFor();
   assert.ok(Math.abs(await panelWidth()-savedWidth)<2,'Preview width survives reload');assert.equal(await page.locator('.sidebar').isVisible(),false);
@@ -147,7 +130,7 @@ try {
   assert.equal(sent.images[0].mediaType,'image/png');
   assert.match(sent.text,/Selection 1.*Make this card blue/);
   await writeFile('artifacts/browser-annotation-proof.png',Buffer.from(sent.images[0].base64Data,'base64'));
-  await page.locator('#browser-region').click();
+  await clickControl(page,'browser-region');
   const start=await point(42,42),end=await point(250,180);
   await web.mouse.move(start.x,start.y);await web.mouse.down();await web.mouse.move(end.x,end.y);await web.mouse.up();
   await page.locator('#browser-selection').filter({hasText:'Region'}).waitFor();
@@ -156,21 +139,21 @@ try {
   await page.waitForFunction(()=>document.querySelector('#attachments img')?.naturalWidth>0);await assertSelectedImage(regionCrop,'Dragged region');
   await writeFile('artifacts/browser-selected-region.png',Buffer.from((await page.locator('#attachments img').getAttribute('src')).split(',')[1],'base64'));
   await page.locator('.attachment button[aria-label="Remove image"]').click();
-  await page.locator('#browser-region').click();
+  await clickControl(page,'browser-region');
   await web.mouse.move(start.x,start.y);await web.mouse.down();await web.mouse.move(end.x,end.y);await web.mouse.up();
   await page.locator('#browser-selection').filter({hasText:'Region'}).waitFor();
   await web.evaluate(()=>history.pushState({},'','#section'));
   await page.waitForFunction(()=>document.getElementById('browser-add').disabled);
   assert.equal(await web.locator('[data-muse-annotation]').count(),0);
   await page.locator('#browser-annotate').click();await web.keyboard.press('Escape');
-  await page.locator('#browser-selection').filter({hasText:'Choose an element'}).waitFor();
+  await page.locator('#browser-selection').filter({hasText:'Select part of the preview'}).waitFor();
   assert.equal(await page.locator('#browser-cancel').isDisabled(),true);
   await web.evaluate(url=>{const frame=document.createElement('iframe');frame.id='frame';frame.src=url+'/frame';frame.style.cssText='position:fixed;left:40px;top:40px;width:300px;height:260px';document.body.append(frame);},url);
   const child=await web.locator('#frame').contentFrame();await child.locator('#link').waitFor();
   await web.evaluate(()=>{const modal=document.createElement('div');modal.id='modal';modal.textContent='Overlay above iframe';modal.style.cssText='position:fixed;left:50px;top:50px;width:200px;height:80px;z-index:10000;background:white';document.body.append(modal);});
   await page.locator('#browser-annotate').click();await clickWeb('#modal',{x:30,y:30});
   await page.locator('#browser-selection').filter({hasText:'#modal'}).waitFor({timeout:1500});
-  await page.locator('#browser-cancel').click();await web.locator('#modal').evaluate(element=>element.remove());
+  await clickControl(page,'browser-cancel');await web.locator('#modal').evaluate(element=>element.remove());
   const frameLink=await child.locator('#link').boundingBox();
   await page.locator('#browser-annotate').click();
   const framePoint=await point(frameLink.x+5,frameLink.y+5);await web.mouse.click(framePoint.x,framePoint.y);
@@ -264,10 +247,10 @@ try {
   do{try{recovered=await app.evaluate(({webContents})=>webContents.getAllWebContents().find(web=>web.getURL().startsWith('http:')).executeJavaScript('({bootWidth:window.bootWidth,hasCard:!!document.getElementById("card")})'));}catch{}if(recovered?.hasCard)break;await new Promise(resolve=>setTimeout(resolve,100));}while(Date.now()<recoveryDeadline);
   assert.equal(recovered?.hasCard,true,'Reload must recover a crashed browser without restarting Muse');
   assert.equal(recovered.bootWidth,390,'Reload after a page crash must retain the mobile viewport at boot');
-  await page.locator('#browser-before').click();
+  await clickControl(page,'browser-before');
   await page.waitForFunction(()=>document.querySelector('#browser-after')?.disabled===false);
   await app.evaluate(({webContents})=>webContents.getAllWebContents().find(web=>web.getURL().startsWith('http:')).executeJavaScript('document.getElementById("card").style.background="pink"'));
-  await page.locator('#browser-after').click();
+  await clickControl(page,'browser-after');
   await page.locator('.comparison-viewer').waitFor();
   assert.equal(await page.locator('.comparison-viewer img').count(),2);
   assert.match(await page.locator('.comparison-viewer').textContent(),/Visual comparison.*does not verify/i);
@@ -275,7 +258,7 @@ try {
   assert.equal(await page.locator('#browser-mobile').getAttribute('aria-pressed'),'true');
   await page.locator('#browser-desktop').click();
   await assert.rejects(page.evaluate(()=>window.muse.browserCommand('compare-after')),/capture before again/i);
-  await page.locator('#browser-close').click();
+  await clickControl(page,'browser-close');
   assert.equal(await page.locator('#browser-panel').isVisible(),false);
   console.log('PASS browser: Desktop/Mobile viewport, cropped element/region PNG and HTML, scrolling, app/page zoom, expansion, isolation and renderer-crash recovery');
 } finally {await app.close();await new Promise(resolve=>server.close(resolve));}

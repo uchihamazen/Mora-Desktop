@@ -1,3 +1,4 @@
+import {clickControl} from './electron-ui.js';
 import {createRequire} from 'node:module';
 import {mkdtemp,readFile,writeFile,mkdir} from 'node:fs/promises';
 import {once} from 'node:events';
@@ -97,7 +98,7 @@ try {
  await page.evaluate(()=>window.muse.projectCommand('test'));await untilState(page,s=>s.projectWork.tests.status==='failed',60000);assert.equal((await page.evaluate(()=>window.muse.getState())).projectWork.tests.preview.status,'failed');await writeFile(index,valid);
 
  await assert.rejects(page.evaluate(id=>window.muse.checkpointCommand('preview',{id}),checkpoint.id),/Stop Run/);
- await page.locator('#stop-project').click();await untilState(page,s=>s.projectWork.run.status==='stopped');
+ await clickControl(page,'stop-project');await untilState(page,s=>s.projectWork.run.status==='stopped');
  await writeFile(path.join(root,'dirty.txt'),'later unrelated work');
  const restore=await page.evaluate(id=>window.muse.checkpointCommand('preview',{id}),checkpoint.id);assert.deepEqual(restore.changes.map(item=>item.path),send?['index.html']:['dirty.txt','index.html']);
  await page.evaluate(restore=>window.muse.checkpointCommand('restore',{token:restore.token,paths:['index.html']}),restore);
@@ -117,7 +118,7 @@ try {
   assert.equal(result.issues.length,1,JSON.stringify(result));assert.equal(result.issues[0].status,'confirmed');
   await page.evaluate(id=>window.muse.testerCommand('solve',{id,issues:['BUG-001']}),result.id);await untilState(page,s=>!s.testerActive,480000);
   const solved=(await page.evaluate(()=>window.muse.getState())).tester;assert.equal(solved.solver.status,'verified',JSON.stringify(solved.solver));assert.equal(solved.issues[0].status,'fixed');
-  await page.locator('#ai-tester').click();await page.screenshot({path:'artifacts/mora-tester-native.png'});await page.keyboard.press('Escape');await page.locator('.tester-dialog').waitFor({state:'detached'});
+  await clickControl(page,'ai-tester');await page.screenshot({path:'artifacts/mora-tester-native.png'});await page.keyboard.press('Escape');await page.locator('.tester-dialog').waitFor({state:'detached'});
   await page.evaluate(()=>window.muse.projectCommand('stop'));const preview=await page.evaluate(id=>window.muse.checkpointCommand('preview',{id}),solved.solver.checkpoint);assert.ok(preview.changes.some(c=>c.path==='src/app.js'));await page.evaluate(p=>window.muse.checkpointCommand('restore',{token:p.token,paths:['src/app.js']}),preview);assert.match(await readFile(counter,'utf8'),/return value;/);assert.equal(await readFile(path.join(root,'dirty.txt'),'utf8'),'later unrelated work');
   await app.close();app=null;page=await launch();await untilState(page,s=>s.projectPath!==null);const saved=await page.evaluate(()=>window.muse.testerCommand('list'));assert.ok(saved.some(r=>r.id===result.id&&r.status==='stale'&&r.issues[0].status==='fixed'));
   tester={report:result.id,confirmed:true,nativeRepair:true,originalReplay:true,checks:solved.solver.checks.status,recovery:true,restart:true};console.log('PASS native AI Tester: confirmed failure, native repair, original assertion, configured checks, source restore and saved report after restart');

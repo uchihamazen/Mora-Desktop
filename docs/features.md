@@ -119,9 +119,11 @@
 - Capture before / Compare after shows timestamped screenshots of the same page, device, viewport and scroll position; changed sources require a new baseline. This compares appearance without verifying functionality. Verify browser tests and `scripts/browser-smoke.js [EXE]`; Mobile previews responsive width without phone hardware emulation.
 
 ## Workspace layout
+- Projects, conversation and preview share a calm three-column workspace. Run/Test/Preview stay in the header; the workspace menu retains restart/stop, results, checkpoints, brief, export and testers. Ctrl+K remains available.
 - The navigation button beside the project selector shows or hides the left sidebar; Ctrl+B works while the Mora interface has focus. The choice persists locally, and hiding a focused sidebar returns focus to the toggle.
-- Narrow chat panes wrap their header and composer controls. Browser resizing temporarily hides the native page during dragging so it cannot steal pointer events; cancellation restores the previous split.
-- Verify frontend and browser smoke checks for persistence, keyboard access, divider bounds, Escape cancellation, native-view alignment and expansion/restoration.
+- The composer shows model, work preset and access; advanced chat options retain explicit reasoning effort. Native model IDs and existing saved choices remain unchanged; friendly labels and model-ID tooltips improve readability.
+- Preview history, new tabs, region selection and captures live in its menu; multiple tabs remain visible. Add to chat appears for a selection; the footer keeps a fixed height to preserve page geometry. Narrow headers wrap; menus/dialogs and resizing share native-preview occlusion and preserve keyboard focus.
+- Verify frontend, `scripts/layout-smoke.js`, `scripts/layout-native-smoke.js [EXE]` and browser smoke for menus, five renderer sizes down to 860px, the native preview's 1080px minimum, trusted pointer input, captures, expansion and resize cancellation. Desktop preview retains its existing scaled viewport; sample pages can appear smaller than the surrounding interface.
 
 ## Google Stitch MCP
 - Engine settings connects/tests/disconnects Stitch's native MCP server; Muse discovers its design tools on the next request in Desktop and PowerShell, with ordinary annotations sent through the existing image/text flow.

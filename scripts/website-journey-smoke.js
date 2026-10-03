@@ -1,3 +1,4 @@
+import {clickControl} from './electron-ui.js';
 import {createRequire} from 'node:module';
 import {createServer} from 'node:http';
 import {createServer as reserve} from 'node:net';
@@ -23,7 +24,7 @@ async function launch(){
 async function close(){if(child?.exitCode===null){await page?.evaluate(()=>window.close()).catch(()=>{});await Promise.race([once(child,'exit'),new Promise(r=>setTimeout(r,8000))]);if(child.exitCode===null){const killer=spawn('taskkill',['/PID',String(child.pid),'/T','/F'],{windowsHide:true,stdio:'ignore'});await once(killer,'exit');}}await browser?.close().catch(()=>{});}
 try {
  await launch();assert.equal((await page.evaluate(()=>window.muse.getState())).projectPath,null);
- await page.locator('#website-tester').click();await page.getByLabel('Website URL',{exact:true}).fill(url);await page.getByLabel('Workflow and expected result',{exact:true}).fill('Click Increase exactly once. Then check that the page contains Count: 1. Finish after that check.');
+ await clickControl(page,'website-tester');await page.getByLabel('Website URL',{exact:true}).fill(url);await page.getByLabel('Workflow and expected result',{exact:true}).fill('Click Increase exactly once. Then check that the page contains Count: 1. Finish after that check.');
  await page.getByLabel('What to test').selectOption('workflow');await page.getByRole('button',{name:'Open website',exact:true}).click();await page.waitForFunction(()=>document.querySelector('.website-dialog [role=status]').textContent.startsWith('Ready for you'),null,{timeout:30000});
  await assert.rejects(page.evaluate(()=>window.muse.websiteTesterCommand('solve',{issues:['BUG-001']})),/unavailable|repair/i);
  await page.getByRole('tab',{name:'Setup',exact:true}).click();await page.getByText('Account, screen size and website limits',{exact:true}).click();await page.getByRole('button',{name:'Save this login',exact:true}).click();await page.waitForFunction(()=>document.querySelector('.website-dialog [role=status]').textContent.includes('Login saved'));

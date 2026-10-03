@@ -1,3 +1,4 @@
+import {focusMenuControl,previewOccluded} from './menu-ui.js';
 export function setupProjects(api,action) {
   const $=id=>document.getElementById(id);
   let current={};
@@ -13,7 +14,7 @@ export function setupProjects(api,action) {
     const reveal=document.createElement('button');reveal.textContent='Show ZIP in folder';reveal.hidden=true;
     const close=document.createElement('button');close.textContent='Close export';close.disabled=true;close.addEventListener('click',()=>dialog.close());
     let busy=true;dialog.addEventListener('cancel',event=>{if(busy)event.preventDefault();});
-    dialog.addEventListener('close',()=>{dialog.remove();api.browserCommand?.('occlude',{hidden:!!document.querySelector('.changes-panel,dialog[open]')}).catch(()=>{});if(current.projectPath===owner&&(document.activeElement===document.body||dialog.contains(document.activeElement)))exporting.focus();});
+    dialog.addEventListener('close',()=>{dialog.remove();api.browserCommand?.('occlude',{hidden:previewOccluded()}).catch(()=>{});if(current.projectPath===owner&&(document.activeElement===document.body||dialog.contains(document.activeElement)))focusMenuControl(exporting);});
     dialog.append(heading,note,status,checksum,copy,reveal,close);document.body.append(dialog);api.browserCommand?.('occlude',{hidden:true}).catch(()=>{});dialog.showModal();
     try{const result=await api.exportProject();if(result){status.textContent='Saved '+result.fileCount+' source files and run instructions to '+result.destination;checksum.textContent='SHA-256: '+result.sha256;checksum.hidden=false;copy.hidden=false;reveal.hidden=!api.revealProjectExport;copy.addEventListener('click',()=>action(()=>api.copyText(result.sha256),{flush:false}));reveal.addEventListener('click',()=>action(()=>api.revealProjectExport(),{flush:false}));}else status.textContent='Export cancelled. Your project is unchanged.';}
     catch(error){status.textContent=error.message;}finally{busy=false;close.disabled=false;}
@@ -36,7 +37,7 @@ export function setupProjects(api,action) {
     reload.addEventListener('click',()=>{if(dirty()&&!discard){discard=true;status.textContent='Your text has not been saved. Press Reload brief again to discard it.';return;}load();});
     const closing=()=>{if(loading)return;if(dirty()&&!discard){discard=true;status.textContent='Your text has not been saved. Press Close brief again to discard it.';return;}dialog.close();};
     close.addEventListener('click',closing);dialog.addEventListener('cancel',event=>{event.preventDefault();closing();});input.addEventListener('input',()=>{discard=false;});
-    dialog.append(heading,note,input,status,save,reload,close);dialog.addEventListener('close',()=>{dialog.remove();api.browserCommand?.('occlude',{hidden:!!document.querySelector('.changes-panel,.image-viewer[open]')}).catch(()=>{});brief.focus();});
+    dialog.append(heading,note,input,status,save,reload,close);dialog.addEventListener('close',()=>{dialog.remove();api.browserCommand?.('occlude',{hidden:previewOccluded()}).catch(()=>{});focusMenuControl(brief);});
     document.body.append(dialog);api.browserCommand?.('occlude',{hidden:true}).catch(()=>{});dialog.showModal();await load();input.focus();
   }));
   function create() {
@@ -61,7 +62,7 @@ export function setupProjects(api,action) {
       const result=await action(()=>api.createProject({parent:parentPath,name:input.value.trim(),starter:starter.value==='static'?'static':starter.value==='node'}));
       if(result)dialog.close();else{status.textContent='The project could not be created. Check the message in chat.';submit.disabled=false;}
     });
-    dialog.addEventListener('close',()=>{dialog.remove();api.browserCommand?.('occlude',{hidden:!!document.querySelector('.changes-panel, .image-viewer[open]')}).catch(()=>{});});
+    dialog.addEventListener('close',()=>{dialog.remove();api.browserCommand?.('occlude',{hidden:previewOccluded()}).catch(()=>{});});
     api.browserCommand?.('occlude',{hidden:true}).catch(()=>{});document.body.append(dialog);dialog.showModal();input.focus();
   }
   for(const id of ['create-project','welcome-project']) {

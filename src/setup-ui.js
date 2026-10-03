@@ -1,3 +1,4 @@
+import {previewOccluded} from './menu-ui.js';
 export function setupReadiness(api,onError,openSettings) {
   const $=id=>document.getElementById(id),node=(tag,text)=>{const el=document.createElement(tag);el.textContent=text;return el;};
   const settings=node('button','Check setup');settings.id='check-setup';const welcome=node('button','Check setup');welcome.id='welcome-setup';
@@ -13,7 +14,7 @@ export function setupReadiness(api,onError,openSettings) {
     async function check(){again.disabled=true;status.textContent='Checking local tools…';try{const checks=await api.inspectSetup();if(!dialog.isConnected)return;body.replaceChildren();for(const item of checks){const row=node('div','');row.append(node('strong',`${item.title}: ${item.status}`),node('p',item.detail));body.append(row);}status.textContent='These checks do not install tools or change your account. Open a project, describe your app, then use Run my app and Test my app.';}catch(error){status.textContent=error.message;}finally{again.disabled=false;}}
     again.addEventListener('click',check);close.addEventListener('click',()=>dialog.close());engine.addEventListener('click',()=>{dialog.close();openSettings();});
     dialog.append(node('h2','Ready to build?'),node('p','Check your installed engine, account and local project tools.'),body,status,again,engine,links,close);
-    dialog.addEventListener('close',()=>{dialog.remove();api.browserCommand?.('occlude',{hidden:!!document.querySelector('.changes-panel,dialog[open]')}).catch(()=>{});if(document.activeElement!==document.body&&!dialog.contains(document.activeElement))return;(current.items?.length?settings:welcome).focus();});
+    dialog.addEventListener('close',()=>{dialog.remove();api.browserCommand?.('occlude',{hidden:previewOccluded()}).catch(()=>{});if(document.activeElement!==document.body&&!dialog.contains(document.activeElement))return;(current.items?.length?settings:welcome).focus();});
     document.body.append(dialog);api.browserCommand?.('occlude',{hidden:true}).catch(()=>{});dialog.showModal();close.focus();await check();
   }
   for(const button of [settings,welcome]){button.hidden=!api.inspectSetup;button.addEventListener('click',open);}
