@@ -67,6 +67,15 @@ try{
   await page.getByRole('button',{name:'Expand browser',exact:true}).click();assert.equal(await page.locator('#browser-expand svg').count(),1);
   await page.getByRole('button',{name:'Back to chat',exact:true}).click();
   assert.equal(await page.locator('#model').inputValue(),'preview-model');
+  await page.locator('#model-trigger').click();
+  assert.equal(await page.getByRole('menu',{name:'Model options',exact:true}).isVisible(),true);
+  assert.match(await page.getByRole('menuitemradio',{name:/Sample model/}).textContent(),/preview-model/);
+  await page.screenshot({path:'artifacts/ui-preview-proof/model-menu.png'});
+  await page.keyboard.press('Escape');assert.equal(await page.evaluate(()=>document.activeElement.id),'model-trigger');
+  await page.locator('#effort-trigger').click();await page.getByRole('menuitemradio',{name:'High',exact:true}).click();
+  assert.equal((await page.evaluate(()=>window.muse.getState())).reasoningEffort,'high');
+  await page.locator('#effort-trigger').click();await page.screenshot({path:'artifacts/ui-preview-proof/reasoning-menu.png'});await page.keyboard.press('Home');await page.keyboard.press('Enter');
+  assert.equal((await page.evaluate(()=>window.muse.getState())).reasoningEffort,'low');
   await page.locator('#effort').selectOption('high');assert.equal((await page.evaluate(()=>window.muse.getState())).reasoningEffort,'high');
   const emptyPromptHeight=(await page.locator('#prompt').boundingBox()).height;
   await page.locator('#prompt').fill(Array(12).fill('A longer message line').join('\n'));

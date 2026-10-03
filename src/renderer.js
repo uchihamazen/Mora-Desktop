@@ -9,7 +9,7 @@ import {setupProjectWork} from './work-ui.js';
 import {setupTester} from './tester-ui.js';
 import {setupWebsiteTester} from './website-ui.js';
 import {setupReadiness} from './setup-ui.js';
-import {setupWorkspaceMenus,previewOccluded} from './menu-ui.js';
+import {setupWorkspaceMenus,setupSelectMenus,previewOccluded} from './menu-ui.js';
 
 const $ = id => document.getElementById(id);
 const api = window.muse;
@@ -299,7 +299,7 @@ function update(next) {
   const efforts=Array.isArray(model?.variants)?model.variants:[];
   fillSelect($('effort'), efforts.length?efforts.map(value => ({ value, label:value==='xhigh'?'Extra high':value[0].toUpperCase()+value.slice(1) })):[{value:'',label:'Not available'}], efforts.length?state.reasoningEffort:'');
   $('effort').disabled=state.busy || state.loading || sending || !efforts.length || state.connection!=='ready';
-  $('execution-mode').value = state.executionMode || 'readonly';syncModeMenu();
+  $('execution-mode').value = state.executionMode || 'readonly';syncSelectMenus();
   $('completion-sound').checked=state.completionSound!==false;
   updateLibrary(state,sending);updateQuickActions();
   renderMessages(); conversationFind.update(state.sessionId);refreshSend();refreshStitch();
@@ -361,29 +361,7 @@ $('workspace-button').addEventListener('click', () => action(() => api.chooseWor
 $('model').addEventListener('change', () => action(() => api.setOptions({ modelId: $('model').value })));
 $('effort').addEventListener('change', () => action(() => api.setOptions({ reasoningEffort: $('effort').value })));
 $('execution-mode').addEventListener('change', () => action(() => api.setOptions({ executionMode: $('execution-mode').value })));
-const modeMenu=$('execution-mode-menu'),modeTrigger=$('execution-mode-trigger'),modeChoices=[...modeMenu.querySelectorAll('[data-mode]')];
-function syncModeMenu(){
-  const select=$('execution-mode');modeTrigger.hidden=select.hidden;modeTrigger.disabled=select.disabled;
-  modeTrigger.firstChild.textContent=(select.value==='full'?'Full access':'Read only')+' ';
-  for(const choice of modeChoices){choice.setAttribute('aria-checked',String(choice.dataset.mode===select.value));choice.disabled=select.disabled;}
-  if((select.hidden||select.disabled)&&modeMenu.matches(':popover-open'))modeMenu.hidePopover();
-}
-modeTrigger.addEventListener('click',()=>{
-  if(modeMenu.matches(':popover-open')){modeMenu.hidePopover();return;}
-  const rect=modeTrigger.getBoundingClientRect();modeMenu.style.left=Math.max(8,Math.min(rect.right-300,innerWidth-308))+'px';modeMenu.style.bottom=Math.max(8,innerHeight-rect.top+8)+'px';
-  modeMenu.showPopover();modeChoices.find(button=>button.getAttribute('aria-checked')==='true').focus();
-});
-for(const choice of modeChoices)choice.addEventListener('click',()=>{
-  const select=$('execution-mode');if(select.disabled)return;
-  select.value=choice.dataset.mode;modeMenu.hidePopover();modeTrigger.focus();select.dispatchEvent(new Event('change'));syncModeMenu();
-});
-modeMenu.addEventListener('keydown',event=>{
-  const index=modeChoices.indexOf(document.activeElement);
-  if(['ArrowDown','ArrowUp','Home','End'].includes(event.key)){event.preventDefault();modeChoices[event.key==='Home'?0:event.key==='End'?modeChoices.length-1:(index+(event.key==='ArrowUp'?-1:1)+modeChoices.length)%modeChoices.length].focus();}
-  if(event.key==='Escape'){event.preventDefault();modeMenu.hidePopover();modeTrigger.focus();}
-});
-modeMenu.addEventListener('toggle',()=>{modeTrigger.setAttribute('aria-expanded',String(modeMenu.matches(':popover-open')));api.browserCommand?.('occlude',{hidden:previewOccluded()}).catch(()=>{});});
-window.addEventListener('resize',()=>modeMenu.hidePopover());
+
 
 function openSettings(){
   setSidebar(false);
@@ -426,5 +404,6 @@ updateTester=setupTester(api,error);
 updateWebsiteTester=setupWebsiteTester(api,error);
 updateReadiness=setupReadiness(api,error,openSettings);
 setupWorkspaceMenus(api);
+const syncSelectMenus=setupSelectMenus(api);
 $('onboarding-action').addEventListener('click',()=>{openSettings();if(state.account?.status==='pending')return;action(()=>api.accountCommand(state.account?.status==='missing'?'install':state.account?.status==='required'?'login':'refresh'));});
 update(await api.getState()); $('prompt').focus();

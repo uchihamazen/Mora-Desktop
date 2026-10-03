@@ -23,7 +23,7 @@ async function counter(){
 }
 try{
  app=await launchDesktop(packaged,env);await app.firstWindow();page=app.windows().find(p=>p.url().endsWith('/index.html'));await until(s=>s.connection==='ready'&&!s.loading);
- await clickControl(page,'create-project');await page.getByLabel('Project name',{exact:true}).fill('Plain site');await page.getByLabel('Project starter',{exact:true}).selectOption('static');
+ await clickControl(page,'create-project');await page.getByLabel('Project name',{exact:true}).fill('Plain site');await page.getByRole('button',{name:'Project starter',exact:true}).click();await page.getByRole('menuitemradio',{name:'Plain HTML/CSS/JS website',exact:true}).click();
  await app.evaluate(({dialog},parent)=>{dialog.showOpenDialog=async()=>({canceled:false,filePaths:[parent]});},profile);
  await page.getByRole('button',{name:'Choose parent folder',exact:true}).click();await page.getByRole('button',{name:'Create project',exact:true}).click();await until(s=>s.projectPath);root=(await state()).projectPath;
  await page.evaluate(()=>window.muse.setOptions({executionMode:'full'}));await page.locator('#run-project').click();await until(s=>s.projectWork?.run.status==='ready');const originalURL=await counter();

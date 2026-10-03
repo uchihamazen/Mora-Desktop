@@ -45,7 +45,7 @@ try{
   await page.locator('#effort').selectOption('high');
   await page.waitForFunction(()=>window.layout.calls.some(([type,value])=>type==='options'&&value.reasoningEffort==='high'));
   await page.evaluate(()=>window.layout.emit({models:[{modelId:'muse-spark-1.3-contributor',variants:[]}]}));
-  assert.equal(await page.locator('#effort').isDisabled(),true);assert.equal(await page.locator('#effort').inputValue(),'');assert.equal(await page.locator('#effort option:checked').textContent(),'Not available');
+  assert.equal(await page.locator('#effort').isDisabled(),true);assert.equal(await page.locator('#effort-trigger').isDisabled(),true);assert.equal(await page.locator('#effort').inputValue(),'');assert.equal(await page.locator('#effort option:checked').textContent(),'Not available');
   await page.evaluate(()=>window.layout.emit({models:[{modelId:'muse-spark-1.3-contributor',variants:['low','medium','high']}],reasoningEffort:'high'}));
   await page.locator('#preview-menu > summary').click();
   assert.equal(await page.locator('.browser-history-label').isVisible(),true);
