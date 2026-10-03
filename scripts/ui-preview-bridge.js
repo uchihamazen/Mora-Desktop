@@ -16,6 +16,8 @@
     resumeChat:async id=>{const chat=state.sessions.find(chat=>chat.sessionId===id);return update({sessionId:id,projectPath:chat?.projectPath||null,items:[],draft:{text:'',images:[]}});},
     chatMetadata:async(id,action,title)=>{const chat=state.sessions.find(chat=>chat.sessionId===id);if(!chat)throw Error('Choose a sample chat.');if(action==='rename')chat.title=title;if(action==='pin')chat.pinned=!chat.pinned;if(action==='archive'||action==='restore')chat.archived=action==='archive';return update({sessions:[...state.sessions]});},
     deleteChat:async id=>update({sessions:state.sessions.filter(chat=>chat.sessionId!==id)}),
+    removeProject:async projectPath=>update({projects:state.projects.filter(project=>project!==projectPath),sessions:state.sessions.filter(chat=>chat.projectPath!==projectPath),...(state.projectPath===projectPath?{sessionId:null,projectPath:null,workspace:'',items:[],draft:{text:'',images:[]}}:{})}),
+    trelloCommand:async action=>action==='state'?{configured:false}:unavailable(),
     sendMessage:async message=>{update({items:[...state.items,{itemId:crypto.randomUUID(),kind:'userMessage',text:message.text,images:message.images},{itemId:crypto.randomUUID(),kind:'agentMessage',status:'completed',text:'Sample response only. To change Mora, send your browser annotations to Codex.'}]});return {accepted:true};},
     stopTurn:async()=>state,queueCommand:async()=>state,connect:async()=>state,pickImages:async()=>[],
     chooseWorkspace:unavailable,chooseMuse:unavailable,projectCommand:unavailable,createProject:unavailable,chooseProjectParent:unavailable,accountCommand:unavailable,exportProject:unavailable,revealProjectExport:unavailable,checkpointCommand:unavailable,

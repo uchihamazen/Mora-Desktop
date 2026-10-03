@@ -8,7 +8,9 @@ async function connect(t) {
   assert.equal(typeof api.MspClient, 'function', 'MspClient is implemented');
   const client = new api.MspClient();
   t.after(() => client.close());
-  await client.connect({ executable: process.execPath, args: [host], workspace: process.cwd(), timeoutMs: 300 });
+  // Process startup on Windows has a separate budget from protocol timeout checks.
+  await client.connect({ executable: process.execPath, args: [host], workspace: process.cwd(), timeoutMs: 5000 });
+  client.timeoutMs=300;
   return client;
 }
 test('uuid7MatchesWireContract', () => {

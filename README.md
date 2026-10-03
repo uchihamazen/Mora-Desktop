@@ -52,9 +52,13 @@ Choose your Muse executable, reconnect the engine, and configure your own Google
 | Project brief | Edit shared goals, decisions and constraints; project chats use the current local brief on each request. |
 | Setup readiness | Check Muse/account, Node, Git, package manager and project commands without automatic installation. |
 | Projects & general chat | Group conversations under local project folders, or ask general questions without attaching a project. |
+| Project removal | Confirm removal of a project and its chats from Mora while keeping its source folder and files. |
+| Chat organization | Search, pin, archive/restore and rename chats, including inline pencil rename. |
+| Native editing menu | Right-click editing actions, spelling suggestions and dictionary support. |
+| Trello board connection | Save and verify read-only board access with your own API key and token; no card or AI automation. |
 | Persistent conversations | Restore chats across restarts and upgrades; remove a conversation explicitly from the sidebar. |
 | Live activity | Show current work, public progress messages, actual commands, tool arguments, output and exit codes supplied by Muse. |
-| Live file reviews | Update a changed-file badge and added/removed line counts during edits; open a colored diff preview. |
+| Live file reviews | Keep a Live changes bar above the composer during edits, then a completed inline badge; open a colored diff preview. |
 | Request queue | Durable follow-ups with images, edit/remove controls and explicit pause/resume; Stop preserves pending work. |
 | Execution controls | Read only for inspection, Full access for project operations, and Stop for the active request. |
 | Integrated browser | Browse websites and local development servers in a Chromium panel with Desktop/Mobile previews and an expanded view. |
@@ -309,6 +313,18 @@ Stitch generation depends on the tools available to your account, authentication
 quota. Supported Stitch image links render in chat and open in a larger viewer. A
 failed or expired image URL offers a copy-link fallback. There is no separate model
 or image-generation service bundled in the desktop app.
+
+### Trello
+
+Open **Settings → Trello board**, enter your Trello API key, token and board link
+or ID, then **Test** or **Connect**. Test verifies access without saving pasted
+credentials; Connect saves a verified connection in Mora's local profile. Leave
+the fields empty to test the saved connection. **Disconnect** removes its settings,
+including unreadable files.
+
+This feature checks board access and list counts. It does not create or edit cards
+and does not give Muse Trello tools. Credentials are stored locally; keep your
+profile private. Automated checks use a mocked provider, not a real Trello account.
 
 ## Technology stack
 

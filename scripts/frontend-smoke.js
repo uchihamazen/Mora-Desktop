@@ -63,11 +63,17 @@ try{
  await page.locator('#sidebar-toggle').click();
  await page.evaluate(()=>{
   window.muse.chatMetadata=async(id,action,title)=>{const state=await window.muse.getState();const {changeConversation}=await import('/projects.js');changeConversation(state,id,action,title);window.smoke.emit({sessions:state.sessions});return state;};
+  window.smoke.removedProjects=[];window.muse.removeProject=async root=>{window.smoke.removedProjects.push(root);const state=await window.muse.getState();state.projects=state.projects.filter(project=>project!==root);state.sessions=state.sessions.filter(chat=>chat.projectPath!==root);window.smoke.emit(state);return state;};
   window.smoke.emit({sessionId:'chat-a',projectPath:null,sessions:[{sessionId:'chat-a',projectPath:null,workspace:'private',title:'Alpha'},{sessionId:'chat-b',projectPath:'C:/Example',workspace:'C:/Example',title:'Build'},{sessionId:'chat-c',projectPath:null,workspace:'private',title:'Old',archived:true}],projects:['C:/Example','D:/Empty'],items:[{itemId:'find-a',kind:'agentMessage',status:'completed',text:'A safe **match** here.\n\nA safe match again.\n\n> A safe **match** quote.\n\n| Header |\n| --- |\n| A safe **match** cell. |\n\n<img src=x onerror=alert(1)>'}]});
  });
  await page.locator('#library-search').fill('example');assert.equal(await page.locator('.session-row').count(),1);
  await page.locator('#library-search').fill('does not exist');assert.match(await page.locator('#general-sessions').textContent(),/No matching/);
  await page.locator('#library-clear').click();assert.equal(await page.locator('.session-row').count(),2);
+ await page.getByRole('button',{name:'Rename Alpha',exact:true}).click();await page.getByLabel('Rename chat',{exact:true}).fill('Cancelled draft');await page.keyboard.press('Escape');assert.equal(await page.getByRole('button',{name:'Options for Alpha',exact:true}).count(),1);
+ await page.getByRole('button',{name:'Rename Alpha',exact:true}).click();await page.getByLabel('Rename chat',{exact:true}).fill('Inline title');await page.keyboard.press('Enter');await page.getByRole('button',{name:'Options for Inline title',exact:true}).waitFor();assert.equal(await page.evaluate(async()=> (await window.muse.getState()).sessions[0].customTitle),true);
+ await page.evaluate(()=>window.muse.chatMetadata('chat-a','rename','Alpha'));
+ await page.getByRole('button',{name:'Remove project Empty',exact:true}).click();assert.match(await page.locator('.project-remove-dialog').textContent(),/archived chats.*folder and files stay on disk/s);assert.equal(await page.getByRole('button',{name:'Cancel',exact:true}).evaluate(node=>node===document.activeElement),true);await page.getByRole('button',{name:'Cancel',exact:true}).click();assert.equal(await page.evaluate(()=>window.smoke.removedProjects.length),0);
+ await page.getByRole('button',{name:'Remove project Empty',exact:true}).click();await page.getByRole('button',{name:'Remove project',exact:true}).click();await page.locator('.project-remove-dialog').waitFor({state:'hidden'});assert.deepEqual(await page.evaluate(()=>window.smoke.removedProjects),['D:/Empty']);assert.equal(await page.getByRole('button',{name:'Remove project Example',exact:true}).count(),1);
  await page.getByRole('button',{name:'Options for Alpha',exact:true}).click();await page.getByLabel('Chat title',{exact:true}).fill('Renamed');await page.getByRole('button',{name:'Save title',exact:true}).click();await page.locator('.chat-dialog').waitFor({state:'hidden'});
  await page.getByRole('button',{name:'Options for Renamed',exact:true}).click();await page.getByRole('button',{name:'Pin',exact:true}).click();await page.locator('.chat-dialog').waitFor({state:'hidden'});assert.match(await page.locator('#general-sessions .session-button').textContent(),/★ Renamed/);
  await page.getByRole('button',{name:'Options for Renamed',exact:true}).click();await page.getByRole('button',{name:'Save title',exact:true}).focus();await page.evaluate(()=>window.smoke.emit({busy:true}));assert.equal(await page.getByRole('button',{name:'Save title',exact:true}).evaluate(el=>el===document.activeElement),true);assert.equal(await page.getByRole('button',{name:'Archive chat',exact:true}).isDisabled(),true);await page.keyboard.press('Escape');
@@ -220,7 +226,8 @@ try{
  assert.equal(await page.locator('.diff-line.added').textContent(),'+<script>literal text</script>');
  assert.equal(await page.locator('.changes-panel script').count(),0);
  await page.evaluate(()=>window.smoke.emit({busy:true,items:[{itemId:'step',kind:'activity',text:'Preparing the response'},{itemId:'change-test',kind:'fileChanges',live:true,added:2,removed:1,files:[{path:'src/other.js',added:1,removed:0,patch:'+other'},{path:'src/feature.js',added:1,removed:1,patch:'@@ -1 +1 @@\n-old\n+updated live'}]}]}));
- assert.match(await page.locator('.change-badge').textContent(),/Live/);
+ assert.match(await page.locator('#live-review').textContent(),/2 files changed.*Live/);assert.equal(await page.locator('.change-badge').count(),0,'Live changes have one visible home above the composer');
+ const liveBounds=await page.locator('#live-review').boundingBox(),composerBounds=await page.locator('#composer').boundingBox();assert.ok(liveBounds.y+liveBounds.height<=composerBounds.y);
  assert.equal(await page.locator('.diff-filename').textContent(),'src/feature.js');
  assert.equal(await page.locator('.diff-line.added').textContent(),'+updated live');
  assert.equal(await page.locator('.activity-step').textContent(),'Preparing the response');
@@ -233,6 +240,7 @@ try{
  await page.locator('.changes-close').click();
  assert.equal(await page.locator('.changes-panel').count(),0);
  await page.evaluate(()=>window.smoke.emit({items:[{itemId:'change-test',kind:'fileChanges',live:false,added:3,removed:1,files:[{path:'src/feature.js',patch:'+closed update'}]}]}));
+ assert.equal(await page.locator('#live-review').isVisible(),false);assert.equal(await page.locator('.change-badge').count(),1);
  assert.equal(await page.locator('.changes-panel').count(),0);
  await page.evaluate(()=>{const base=Date.now(), original=Date.now;window.smoke.restoreClock=()=>{Date.now=original;};window.smoke.emit({busy:false});Date.now=()=>base;window.smoke.emit({busy:true});Date.now=()=>base+135000;});
  await page.waitForTimeout(1100);

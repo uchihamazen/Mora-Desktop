@@ -74,8 +74,9 @@ test('deleteInactiveChatRemovesItAndItsHistoryFolder', async () => {
   assert.equal(result.sessions[0].sessionId, 'active-id');
   assert.equal(result.sessionId, 'active-id');
   assert.equal(result.items[0].text, 'keep');
-  assert.equal(h.rmCalls.length, 1);
+  assert.equal(h.rmCalls.length, 2);
   assert.equal(h.rmCalls[0][0], path.join('C:/muse-data', 'old-id'));
+  assert.equal(h.rmCalls[1][0],path.join('C:/muse-data','sessions','.msp-view-v1','old-id'));
   assert.equal(h.rmCalls[0][1].recursive, true);
   assert.equal(h.rmCalls[0][1].force, true);
   assert.equal(JSON.parse(h.writes.at(-1)).sessions.length, 1);
@@ -95,7 +96,7 @@ test('deleteActiveChatClearsTheOpenConversation', async () => {
   assert.equal(h.state.sessions[0].sessionId, 'other-id');
   assert.equal(h.state.sessionId, null);
   assert.deepEqual(h.state.items, []);
-  assert.equal(h.rmCalls.length, 1);
+  assert.equal(h.rmCalls.length, 2);
   assert.equal(h.rmCalls[0][0], path.join('C:/muse-data', 'active-id'));
 });
 

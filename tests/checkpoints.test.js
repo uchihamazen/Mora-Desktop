@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {mkdtemp,mkdir,writeFile,readFile,rm,symlink} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
+import {createHash} from 'node:crypto';
 import {Checkpoints} from '../src/checkpoints.js';
 
 async function fixture(fn) {
@@ -28,6 +29,32 @@ test('later edits require explicit selection and acknowledgement; stale previews
   const next=await store.preview(cp.id);await store.restore({token:next.token,paths:['app.js'],allowConflicts:true});
   assert.equal(await readFile(path.join(root,'other.js'),'utf8'),'unrelated user work');
 }));
+for(const tracked of [false,true])test(`compiled Windows outputs do not block source checkpoints (${tracked?'Git':'plain folder'})`,()=>fixture(async(root,profile)=>{
+  await mkdir(path.join(root,'release'));
+  await writeFile(path.join(root,'app.js'),'original source');await writeFile(path.join(root,'icon.png'),Buffer.from([0,1,2]));
+  await writeFile(path.join(root,'Application.EXE'),Buffer.alloc(2*1024*1024+1));await writeFile(path.join(root,'release','library.dll'),Buffer.alloc(2*1024*1024+1));
+  if(tracked){const {execFile}=await import('node:child_process');const {promisify}=await import('node:util');const exec=promisify(execFile);await exec('git',['init',root],{windowsHide:true});await exec('git',['-C',root,'add','.'],{windowsHide:true});}
+  const store=new Checkpoints(profile,root),cp=await store.create('Before edit',{manual:false});assert.equal(cp.fileCount,2);
+  await writeFile(path.join(root,'app.js'),'edited source');await writeFile(path.join(root,'Application.EXE'),'rebuilt executable');await store.seal(cp.id);
+  const preview=await store.preview(cp.id);assert.deepEqual(preview.changes.map(file=>file.path),['app.js']);
+  await store.restore({token:preview.token,paths:['app.js']});assert.equal(await readFile(path.join(root,'app.js'),'utf8'),'original source');
+  assert.equal(await readFile(path.join(root,'Application.EXE'),'utf8'),'rebuilt executable');
+}));
+
+for(const sealed of [false,true])test(`legacy compiled entries preserve source restore (${sealed?'sealed':'unsealed'})`,()=>fixture(async(root,profile)=>{
+  await writeFile(path.join(root,'app.js'),'original');const store=new Checkpoints(profile,root),cp=await store.create('Legacy',{manual:false}),filename=store.file(cp.id),value=JSON.parse(await readFile(filename,'utf8'));
+  value.files['loose.exe']=Buffer.from('old binary').toString('base64');
+  await writeFile(path.join(root,'app.js'),'edited');await writeFile(path.join(root,'loose.exe'),'current compiled output');
+  if(sealed){value.sealed=true;value.expected=Object.fromEntries([['app.js','edited'],['loose.exe','current compiled output']].map(([name,text])=>[name,createHash('sha256').update(text).digest('hex')]));}
+  await writeFile(filename,JSON.stringify(value));if(!sealed)await store.seal(cp.id);
+  const preview=await store.preview(cp.id);assert.deepEqual(preview.changes.map(file=>file.path),['app.js']);
+  await store.restore({token:preview.token,paths:['app.js']});assert.equal(await readFile(path.join(root,'app.js'),'utf8'),'original');assert.equal(await readFile(path.join(root,'loose.exe'),'utf8'),'current compiled output');
+}));
+test('legacy compatibility never accepts unsafe or secret compiled paths',()=>fixture(async(root,profile)=>{
+  await writeFile(path.join(root,'app.js'),'original');const store=new Checkpoints(profile,root),cp=await store.create('Legacy'),filename=store.file(cp.id),value=JSON.parse(await readFile(filename,'utf8'));
+  for(const name of ['../outside.exe','.env.exe','dist/app.exe']){await writeFile(filename,JSON.stringify({...value,files:{...value.files,[name]:Buffer.from('invalid').toString('base64')}}));await assert.rejects(store.preview(cp.id),/excluded|Invalid project path/);}
+}));
+
 test('secret/generated files are excluded and unsafe/incomplete snapshots cannot protect edits',()=>fixture(async(root,profile)=>{
   await mkdir(path.join(root,'dist'));await writeFile(path.join(root,'dist','output.js'),'generated');await writeFile(path.join(root,'.env'),'private');await writeFile(path.join(root,'app.js'),'source');
   const store=new Checkpoints(profile,root),cp=await store.create('Snapshot');assert.equal(cp.fileCount,1);

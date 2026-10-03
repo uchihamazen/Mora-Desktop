@@ -52,6 +52,32 @@ async function stitchAction(name,payload) {
 let openReviewId = null, selectedReviewPath = null, openReviewSignature = '';
 const icon = name => { const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); const use = document.createElementNS('http://www.w3.org/2000/svg', 'use'); use.setAttribute('href', `#i-${name}`); svg.append(use); return svg; };
 const textNode = (tag, text, className) => { const node = document.createElement(tag); node.textContent = text; if (className) node.className = className; return node; };
+const liveReview=textNode('button','','live-review');liveReview.id='live-review';liveReview.hidden=true;liveReview.setAttribute('aria-label','Review live file changes');$('composer').before(liveReview);
+let trelloConfigured=false,trelloChanging=false;
+const trello=textNode('section','');trello.id='trello-settings';trello.append(textNode('strong','Trello board'),Object.assign(textNode('p','Checking connection…'),{id:'trello-status'}));trello.querySelector('p').setAttribute('role','status');
+for(const [name,label,placeholder] of [['key','API key','Paste your Trello API key'],['token','Token','Paste your Trello token'],['board','Board link or ID','https://trello.com/b/…']]){
+  const input=document.createElement('input');input.id='trello-'+name;input.type=name==='board'?'text':'password';input.autocomplete='off';input.spellcheck=false;input.maxLength=name==='board'?2048:256;input.placeholder=placeholder;
+  const caption=textNode('label',label);caption.htmlFor=input.id;trello.append(caption,input);input.addEventListener('input',refreshTrello);
+}
+const trelloButtons=textNode('div','','trello-buttons');
+for(const name of ['connect','test','disconnect']){const button=textNode('button',name[0].toUpperCase()+name.slice(1));button.id='trello-'+name;button.addEventListener('click',()=>trelloAction(name,{apiKey:$('trello-key').value,token:$('trello-token').value,board:$('trello-board').value}));trelloButtons.append(button);}
+trello.append(trelloButtons,textNode('small','Your API key and token are saved locally in Mora. This connection only checks board access; it does not edit cards or give the AI access to Trello.'));$('stitch-settings').after(trello);
+function refreshTrello(){
+  if(!api.trelloCommand)return;
+  const fields=['key','token','board'].map(name=>$('trello-'+name).value.trim()),provided=fields.some(Boolean),complete=fields.every(Boolean),blocked=trelloChanging||state.busy||state.loading||state.projectOperation||state.projectRepair||state.testerActive||state.websiteActive||['starting','ready'].includes(state.projectWork?.run?.status);
+  for(const name of ['connect','test','disconnect'])$('trello-'+name).disabled=!!(blocked||(name==='connect'&&!complete)||(name==='test'&&!(provided?complete:trelloConfigured)));
+  for(const name of ['key','token','board'])$('trello-'+name).disabled=!!trelloChanging;
+}
+async function trelloAction(name,payload){
+  if(trelloChanging)return;trelloChanging=true;refreshTrello();$('trello-status').textContent=name==='connect'||name==='test'?'Checking Trello board access…':'Updating Trello connection…';
+  try{
+    const result=await api.trelloCommand(name,payload);
+    if(name!=='test')trelloConfigured=result.configured;
+    $('trello-status').textContent=result.keyOnly?`Credentials verified · ${result.boardName} · press Connect to save`:result.verified?`Board verified · ${result.boardName} · ${result.listCount} lists`:result.configured?`Saved connection · ${result.boardName || 'Trello board'} · Test to verify access`:'Not connected';
+    if(name==='connect'||name==='disconnect')for(const name of ['key','token','board'])$('trello-'+name).value='';
+  }catch(error){$('trello-status').textContent=(error.message||String(error)).replace(/^Error invoking remote method '[^']+': Error: /,'');}
+  finally{trelloChanging=false;refreshTrello();}
+}
 function error(error) { $('error-text').textContent = (error?.message || String(error)).replace(/^Error invoking remote method '[^']+': Error: /, ''); $('error-banner').hidden = false; refreshRecovery(); }
 const errorKey = message => JSON.stringify([state.sessionId, message]);
 async function action(fn, {flush=true}={}) { try { if(flush && !state.workUnavailable)await flushDraft(); const result = await fn(); if (result?.connection) update(result); return result; } catch (e) { error(e); } }
@@ -160,13 +186,16 @@ function showChanges(item, refresh = false) {
 }
 document.addEventListener('keydown', event => { if (event.key === 'Escape' && !document.querySelector('.image-viewer[open]')) closeChanges(); });
 function renderMessages() {
+  const live=state.busy&&(state.items||[]).find(item=>item.kind==='fileChanges'&&item.live&&item.files?.length);
+  liveReview.hidden=!live;liveReview.replaceChildren();
+  if(live){liveReview.append(textNode('strong',live.files.length+' '+(live.files.length===1?'file':'files')+' changed'+(live.partial?' · partial':'')));changeCounts(liveReview,live.added,live.removed);liveReview.append(textNode('span','Live','change-live'));liveReview.onclick=()=>showChanges(live);}else liveReview.onclick=null;
   if (openReviewId) {
     const review=state.items.find(item=>item.itemId===openReviewId);
     if(!review)closeChanges();else if(JSON.stringify(review)!==openReviewSignature)showChanges(review,true);
   }
   const area=$('scroll-area'),nearBottom=area.scrollHeight-area.scrollTop-area.clientHeight<130;
   if(historyOwner!==state.sessionId){historyOwner=state.sessionId;visibleHistory=200;}
-  const history=(state.items || []).filter(item=>!item.retracted);
+  const history=(state.items || []).filter(item=>!item.retracted&&item!==live);
   older.hidden=history.length<=visibleHistory;older.textContent=`Load older messages (${Math.max(0,history.length-visibleHistory)} remaining)`;
   const rows=[...history.slice(-visibleHistory),...(state.pendingQueue || []).map(entry=>({...entry,itemId:'queue-'+entry.queueId,kind:'queued'}))];
   if(state.lastOutcome && !state.busy)rows.push({...state.lastOutcome,itemId:'outcome-'+state.lastOutcome.turnId,kind:'outcome',previewReady:state.projectWork?.root===state.projectPath&&state.projectWork?.run?.status==='ready',tools:(state.items || []).filter(item=>item.turnId===state.lastOutcome.turnId && (item.kind==='toolCall' || item.kind==='userShell')),review:(state.items || []).find(item=>item.turnId===state.lastOutcome.turnId && item.kind==='fileChanges'),activeRequest:state.activeRequest});
@@ -275,7 +304,7 @@ function update(next) {
   const failure=work?.run?.status==='failed'?work.run.message||'Your app could not start. Show results for details.':work?.tests?.status==='failed'?work.tests.message||'Project checks failed. Show results for details.':'';
   if(projectFailureNotice!==failure){dismissedErrors.delete(previousFailureKey);if($('error-text').textContent===projectFailureNotice)$('error-banner').hidden=true;projectFailureNotice=failure;}
   const notice=state.error||failure;if(notice&&!dismissedErrors.has(errorKey(notice)))error(notice);
-  refreshRecovery();
+  refreshRecovery();refreshTrello();
   $('welcome').hidden = !!state.items?.length || state.busy;
   $('working').hidden = !state.busy && !state.loading; $('working-label').textContent = state.loading ? 'Opening conversation…' : state.stopping ? 'Stopping Muse…' : state.finishing ? 'Reply ready · finishing final checks' : state.activity || 'Muse is working on it';
   if (state.busy && !wasBusy) { startedAt = Date.now(); $('elapsed').textContent = '0s'; }
@@ -388,6 +417,7 @@ if(api.stitchCommand){
   for(const name of ['disconnect','open'])$(`stitch-${name}`).addEventListener('click',()=>stitchAction(name));
   stitchAction('state');
 }else $('stitch-settings').hidden=true;
+if(api.trelloCommand)trelloAction('state');else trello.hidden=true;
 $('choose-muse').addEventListener('click', () => action(() => api.chooseMuse())); $('reconnect').addEventListener('click', () => action(() => api.connect()));
 $('dismiss-error').addEventListener('click', () => { dismissedErrors.add(errorKey($('error-text').textContent)); $('error-banner').hidden = true; });
 document.querySelectorAll('[data-prompt]').forEach(button => button.addEventListener('click', () => { $('prompt').value = button.dataset.prompt; $('prompt').dispatchEvent(new Event('input')); $('prompt').focus(); }));

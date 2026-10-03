@@ -10,7 +10,7 @@
 ## Conversation retention
 - All normal launches, including Windows Search, use `%APPDATA%\Muse Desktop`; builds and workspace changes retain conversations until explicit deletion.
 - A separate conversation index and its latest atomic backup protect the sidebar from settings resets; existing preferences migrate automatically without importing unrelated native/test sessions.
-- Saved chat ownership loads before the renderer; engine initialization overlaps renderer loading. Metadata-only discovery uses a memory-only Muse host and publishes verified readiness before cleanup; ordinary chat requests keep native journals. A damaged index preserves files and stops startup.
+- Saved chat ownership loads before the renderer; engine initialization overlaps renderer loading. Metadata-only discovery uses a memory-only Muse host and publishes verified readiness before cleanup; ordinary chat requests keep native journals. Explicit chat/project deletion removes native logs and display recovery journals. A damaged index preserves files and stops startup.
 - Per-chat drafts, image/annotation attachments, pending requests and active receipts use separate atomic files with latest backups; interrupted work stays paused, and admitted requests are never replayed automatically. Native logs remain authoritative for conversation context.
 - Verify persistence/recovery/deletion tests and `scripts/history-smoke.js`: restart from another working folder, restore native messages, and keep the real profile untouched.
 
@@ -18,7 +18,7 @@
 - Sidebar groups conversations under collapsible project folders, with a + for a new chat in that project; Add/Open project chooses a local folder. New project offers Node, plain HTML/CSS/JS or empty starters, refusing existing targets and linked parent paths. New conversation / Ctrl N starts a general chat for questions and images.
 - Existing chats keep their IDs, messages, and saved workspace; absent project identity uses the legacy workspace. Full Windows paths distinguish folders, including projects with the same name.
 - Explicit null project identity keeps general chats separate on reopen; the engine uses a private profile folder and Read only, without inheriting the previously selected project or its Full access setting. This is not a filesystem sandbox.
-- Project paths and chat identity persist in the existing conversation index and backup; project entries remain after their last chat is deleted. Full access remains available in project chats.
+- Project paths and chat identity use the backed-up index; entries remain after the last chat is deleted. Remove project confirms deletion of all active/archived chats, drafts and engine history while keeping source files. Running work must stop and saved queues/interrupted requests must be resolved first. Failed saves preserve the project; incomplete cleanup is reported.
 - Verify grouping/lifecycle/persistence/date-boundary tests, `scripts/frontend-smoke.js`, and `scripts/projects-smoke.js [EXE] --send` for two real general replies with context and enabled sending after restart; tests use temporary profiles.
 
 ## Shared project brief
@@ -30,7 +30,7 @@
 
 ## Chat organization and conversation find
 - Search filters chat titles and project names/paths in Active or Archived views; it does not search message history. Pins sort first within their project while preserving the remaining order.
-- Each chat has keyboard-accessible Options for rename, pin, archive and restore. Archiving keeps its session, native history, draft, queue and project; current work must stop before its chat can be archived. Deletion remains separate.
+- Each chat has keyboard-accessible Options for rename, pin, archive and restore, plus a pencil for inline rename (Enter saves, Escape cancels). Both rename paths use the same metadata validation and preserve chosen titles. Archiving keeps its session, native history, draft, queue and project; current work must stop before its chat can be archived. Deletion remains separate.
 - Metadata uses the existing backed-up index, accepts older records and ignores malformed organization flags. Restore never creates a new native session; renamed titles stay chosen by the user.
 - Ctrl+F searches visible text in the current conversation, including formatted text and expanded operations; counts, Enter/Shift+Enter, arrows and Escape support navigation. Stream updates refresh safe native highlights; switching chats clears the query. Native page focus keeps its own shortcuts.
 - Verify grouping/persistence tests, frontend smoke and project restart smoke with an isolated profile, including primary-index corruption and draft retention.
@@ -105,7 +105,7 @@
 - Keep the installed EXE path stable so the Windows Search shortcut continues working.
 
 ## File change review
-- Full access requests update a Live file count and green/red line totals during edits; an open diff updates while preserving the selected file, scroll and keyboard focus.
+- Full access requests keep a Live file count and green/red line totals above the composer during edits, returning the completed review inline afterward. An open diff updates while preserving the selected file, scroll and keyboard focus.
 - Live scans reuse unchanged file contents and diff results against the original baseline; ignore changes, unnamed events and watcher failures trigger full scans. The final full reconciliation also catches missed events and concurrent external edits.
 - Uses installed Git for diff calculations, with the existing Codex Git runtime as a fallback; works in ordinary folders and respects Git ignore rules in repositories.
 - Saves reviews per conversation until that chat is deleted; skips symlinks, generated folders outside Git, files over 2 MiB and snapshots over 32 MiB/5,000 files. Partial reviews are labelled; binary files have no line counts and long previews are truncated.
@@ -130,6 +130,16 @@
 - The composer keeps its CSS minimum height for short messages and grows for longer text; shortcut hints beneath it are omitted, while paste and Enter/Shift+Enter behavior remain available. It shows model, its supported native reasoning levels and access directly. Model, reasoning, access, browser-history and project-starter selectors share a dark popover with selected checkmarks, supported options and keyboard navigation. Clicking an open selector’s trigger closes it. Composer menus open upward; other menus fit above or below their trigger. Access descriptions and full model IDs remain visible; existing values, busy guards, Escape and outside dismissal stay in effect. Native model IDs and saved effort choices remain unchanged; friendly labels and model-ID tooltips improve readability.
 - Preview navigation, address, device icons, Point to edit, expand and menu share one compact row; icon buttons retain accessible labels and tooltips. Preview history, new tabs, region selection and captures live in its menu; multiple tabs remain visible. History options stay within that menu: Escape returns focus to the visible trigger; closing the menu or Preview closes its popovers. Add to chat appears for a selection; the bottom action strip is hidden until a selection or saved notes needs its controls. Menus/dialogs and resizing share native-preview occlusion and preserve keyboard focus.
 - Verify frontend, `scripts/layout-smoke.js`, `scripts/layout-native-smoke.js [EXE]` and browser smoke for menus, five renderer sizes down to 860px, the native preview's 1080px minimum, trusted pointer input, captures, expansion and resize cancellation. Desktop preview retains its existing scaled viewport; sample pages can appear smaller than the surrounding interface.
+
+## Trello board connection
+- Settings accepts a Trello API key, token and board link/ID. Test checks account, board and list access without saving new credentials; Connect verifies and saves them in Mora's local profile. Test with empty fields uses the saved connection.
+- This is read-only board verification, not card editing or an AI tool integration. Requests use only the fixed HTTPS Trello API origin, reject redirects, time out after 30 seconds and redact credentials from returned status/errors.
+- Credentials are stored locally in primary/backup JSON files; use your own key/token and keep the profile private. Password fields clear after Connect or Disconnect. Disconnect clears damaged settings and interrupted credential temp files, reporting failed deletion honestly.
+- Verify Trello unit tests and `scripts/features-native-smoke.js` for real IPC, profile saves and corrupt recovery with a mocked provider. Actual account/board access remains unverified without user-supplied credentials.
+
+## Native editing menu
+- Right-click editable fields for Cut/Copy/Paste/Select all, spelling suggestions and Add to dictionary; selected read-only text offers Copy. Uses Electron's native menu and spellchecker, with no extra dependency.
+- Suggestions depend on the installed spellchecker; credential fields disable spelling. Verify context-menu unit tests and native source-mode smoke for actual menu registration and editing roles.
 
 ## Google Stitch MCP
 - Engine settings connects/tests/disconnects Stitch's native MCP server; Muse discovers its design tools on the next request in Desktop and PowerShell, with ordinary annotations sent through the existing image/text flow.
@@ -180,7 +190,7 @@
 
 ## Checkpoints and restore
 - Full access Muse requests and Run/Test commands save bounded project source checkpoints in the local app profile; failed or incomplete snapshots block mutation. Manual save/list/delete uses Checkpoints.
-- Includes dirty and visible untracked source; excludes generated/secret files even if tracked, rejects links, and limits files to 2 MiB, snapshots to 32 MiB/5,000 files and stored checkpoints to 256 MiB per project. Checkpoints are not a backup of databases, dependencies or secrets.
+- Includes dirty and visible untracked source; excludes generated/secret files and compiled binaries (including loose EXE/DLL files) even if tracked, rejects links, and limits files to 2 MiB, snapshots to 32 MiB/5,000 files and stored checkpoints to 256 MiB per project. Older checkpoints can still restore source while leaving compiled output alone. Checkpoints are not a backup of databases, dependencies or secrets.
 - Automatic Muse/Test snapshots seal post-work hashes; restore previews select only those changed paths and flag later edits. Manual/Run snapshots require file selection. Stale previews refuse writes; newer edits need explicit acknowledgement.
 - Undo this request beside the latest completed/interrupted editable request opens its sealed checkpoint review, stopping the owned preview first. Restore requires idle work, saves recovery, changes selected files only and leaves Git history intact. Partial failure preserves recovery; chat deletion retains checkpoints.
 - Verify checkpoint/lifecycle tests and native journey for dirty originals, additions/deletions, exclusions, link/bounds protection, later edits, stale previews, partial failures and restart persistence.

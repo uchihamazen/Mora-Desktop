@@ -6,12 +6,14 @@ import {projectFile} from './project.js';
 
 const digest=value=>value===undefined?null:createHash('sha256').update(value).digest('hex');
 const excluded=new Set(['.git','.ssh','node_modules','.next','.cache','.venv','venv','__pycache__','coverage']);
-export function checkpointSource(name) {
+const compiledOutput=/\.(?:exe|dll|pdb|msi|msix|appx|obj|o|lib|a|so|dylib|pyc|class)$/i;
+function checkpointPath(name) {
   const parts=name.replaceAll('\\','/').split('/'),leaf=parts.at(-1).toLowerCase();
   return !parts.some(part=>excluded.has(part.toLowerCase())) && !['dist','build','artifacts'].includes(parts[0].toLowerCase()) &&
     !/^\.env(?:\.|$)/i.test(leaf) && !/\.(?:pem|key|pfx|p12)$/i.test(leaf) &&
     !['credentials.json','credential.json','tokens.json','auth.json','secrets.json','.npmrc','.netrc'].includes(leaf);
 }
+export const checkpointSource=name=>checkpointPath(name)&&!compiledOutput.test(name);
 async function atomic(file,data) {
   await mkdir(path.dirname(file),{recursive:true});const temp=`${file}.${randomUUID()}.tmp`;
   try {const handle=await open(temp,'wx');try{await handle.writeFile(data);await handle.sync();}finally{await handle.close();}await rename(temp,file);}
@@ -55,7 +57,7 @@ export class Checkpoints {
     await atomic(this.file(value.id),data);return this.summary(value);
   }
   async seal(id) {
-    const value=await this.load(id),snapshot=await this.snapshot({extraPaths:Object.keys(value.files)});value.expected=Object.fromEntries([...snapshot.files].map(([name,data])=>[name,digest(data)]));value.sealed=true;
+    const value=await this.load(id),snapshot=await this.snapshot({extraPaths:await this.sourcePaths(Object.keys(value.files))});value.expected=Object.fromEntries([...snapshot.files].map(([name,data])=>[name,digest(data)]));value.sealed=true;
     await atomic(this.file(id),JSON.stringify(value));return this.summary(value);
   }
   async list() {
@@ -63,9 +65,19 @@ export class Checkpoints {
     catch(error){if(error.code==='ENOENT')return [];throw error;}
   }
   async delete(id) {await this.load(id);await rm(this.file(id));}
+  async sourcePaths(names) {
+    const source=[];
+    for(const name of names){
+      if(!checkpointPath(name))throw Error('Checkpoint contains an excluded path.');
+      await projectFile(this.root,name);
+      // Older checkpoints included small compiled outputs; source recovery now leaves them alone.
+      if(!compiledOutput.test(name))source.push(name);
+    }
+    return source;
+  }
   async preview(id) {
-    const value=await this.load(id),current=await this.snapshot(),before=Object.fromEntries(Object.entries(value.files).map(([name,data])=>[name,digest(Buffer.from(data,'base64'))]));
-    const scoped=value.sealed && !value.manual,expected=scoped?value.expected:Object.fromEntries([...current.files].map(([name,data])=>[name,digest(data)]));
+    const value=await this.load(id),current=await this.snapshot(),before=Object.fromEntries((await this.sourcePaths(Object.keys(value.files))).map(name=>[name,digest(Buffer.from(value.files[name],'base64'))]));
+    const scoped=value.sealed && !value.manual,expected=scoped?Object.fromEntries((await this.sourcePaths(Object.keys(value.expected))).map(name=>[name,value.expected[name]])):Object.fromEntries([...current.files].map(([name,data])=>[name,digest(data)]));
     if(!scoped)for(const name of Object.keys(before))expected[name]=digest(await this.physical(name));
     const changes=[];
     for(const name of [...new Set([...Object.keys(before),...Object.keys(expected)])].sort()) {

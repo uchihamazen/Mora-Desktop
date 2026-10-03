@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog, clipboard, nativeImage, shell, safeStorage, screen } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, clipboard, nativeImage, shell, safeStorage, screen, Menu } from 'electron';
 import { readFile, writeFile, mkdir, rename, stat, mkdtemp, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -17,7 +17,8 @@ import {readProjectBrief,saveProjectBrief} from './project-brief.js';
 import {inspectSetup} from './setup.js';
 import {Checkpoints} from './checkpoints.js';
 import {ProjectRunner} from './project-work.js';
-import { projectPathFor, groupConversations, changeConversation } from './projects.js';
+import { projectPathFor, groupConversations, changeConversation, projectKey } from './projects.js';
+import { contextMenuTemplate } from './context-menu.js';
 import {BrowserWorkspace} from './browser-workspace.js';
 import {TesterReports,parseTesterCommand,projectRevision,reportForRevision} from './tester.js';
 import {TesterRun} from './tester-run.js';
@@ -29,6 +30,7 @@ import {WebsiteRun,websiteDecisionSchema} from './website-run.js';
 import {buildWebsiteExport,evidenceName} from './website-report.js';
 import {TesterSolver} from './tester-solver.js';
 import {checkStitch,configureStitch,readStitchSettings,stitchStatus} from './stitch.js';
+import {checkTrello,configureTrello,readTrelloSettings,trelloStatus} from './trello.js';
 import {restoreWindowBounds,CompletionSignals} from './desktop-workspace.js';
 
 const directory = path.dirname(fileURLToPath(import.meta.url));
@@ -212,6 +214,24 @@ async function stitchCommand(action,payload={}) {
     return {...stitchStatus(server),verified:true,keyOnly:action==='test' && provided,...verified,configPath:filename};
   }finally{stitchChanging=false;}
 }
+let trelloChanging=false;
+async function trelloCommand(action,payload={}) {
+  const filename=path.join(app.getPath('userData'),'trello.json');
+  if(action==='state')return trelloStatus(await readTrelloSettings(filename));
+  if(!['connect','test','disconnect'].includes(action))throw Error('Unknown Trello action.');
+  assertIdle(state);assertProjectStopped();
+  if(trelloChanging)throw Error('A Trello connection check is already running.');
+  trelloChanging=true;
+  try{
+    if(action==='disconnect')return await configureTrello(filename,null);
+    const provided=['apiKey','token','board'].some(key=>typeof payload?.[key]==='string'&&payload[key].trim());
+    const saved=action==='connect'||provided?null:await readTrelloSettings(filename);
+    const credentials=action==='connect'||provided?{apiKey:payload?.apiKey,token:payload?.token,board:payload?.board}:{apiKey:saved?.apiKey,token:saved?.token,board:saved?.board};
+    const verified=await checkTrello(credentials);
+    if(action==='connect')await configureTrello(filename,{...credentials,...verified});
+    return {...trelloStatus({...credentials,...verified}),...verified,verified:true,keyOnly:action==='test'&&provided};
+  }finally{trelloChanging=false;}
+}
 let updateTimer, saveQueue = Promise.resolve();
 let completionNotices;
 function reportNotice(kind,value){completionNotices?.report(state,kind,value);}
@@ -353,6 +373,40 @@ async function resumeChat(sessionId) {
   await save(); return state;
   } finally { state.loading = false; publish(); }
 }
+async function removeNativeHistory(sessionId) {
+  const directories=[path.dirname(path.resolve(resolveSessionLogPath(sessionId,museHome))),path.resolve(museHome,'sessions','.msp-view-v1',sessionId)];
+  for(const directory of directories){const relative=path.relative(path.resolve(museHome),directory);if(!relative||relative==='..'||relative.startsWith(`..${path.sep}`)||path.isAbsolute(relative))throw Error('History directory is outside Muse storage.');}
+  const results=await Promise.allSettled(directories.map(directory=>rm(directory,{recursive:true,force:true})));
+  const failed=results.find(result=>result.status==='rejected');if(failed)throw failed.reason;
+}
+async function removeProject(projectPath) {
+  if(typeof projectPath!=='string'||!projectPath)throw Error('Choose a project to remove.');
+  const key=projectKey(projectPath),group=groupConversations(state.sessions,state.projects).find(group=>group.projectPath!==null&&projectKey(group.projectPath)===key);
+  if(!group)throw Error('This project is not in Mora Desktop.');
+  assertIdle(state);assertProjectStopped();
+  const ids=new Set(group.sessions.map(session=>session.sessionId)),active=ids.has(state.sessionId)||(state.projectPath!==null&&projectKey(state.projectPath)===key);
+  if(active&&(state.pendingQueue.length||state.activeRequest)||queueReservation)throw Error('Resolve queued or pending work before removing this project.');
+  const previous={...state},previousPreferences=preferences;
+  projectOperation=true;state.projectOperation=true;state.loading=true;publish();
+  try{
+    await queueOperation;
+    for(const id of ids){const work=await loadWork(app.getPath('userData'),id);if(work.pendingQueue?.length||work.activeRequest)throw Error('Resume this project’s chats and resolve queued or pending work before removing it.');}
+    const workspace=path.join(app.getPath('userData'),'general-chat');
+    if(active)await mkdir(workspace,{recursive:true});
+    state.sessions=state.sessions.filter(session=>!ids.has(session.sessionId));state.projects=state.projects.filter(project=>projectKey(project)!==key);
+    if(active)Object.assign(state,createState(),{sessionId:null,projectPath:null,workspace,loading:true,projectOperation:true});
+    try{await save();}catch(error){Object.assign(state,previous);preferences=previousPreferences;await save().catch(()=>{});throw error;}
+    if(active)desktopBrowser?.selectSession(null);
+    let failures=0;
+    for(const id of ids){
+      for(const cleanup of [()=>deleteChangeSummaries(app.getPath('userData'),id),()=>deleteWork(app.getPath('userData'),id),...(museHome?[()=>removeNativeHistory(id)]:[])]){
+        try{await cleanup();}catch{failures++;}
+      }
+    }
+    if(failures)state.error='Project removed from the list, but some saved chat data could not be deleted.';
+    return state;
+  }finally{projectOperation=false;state.projectOperation=false;state.loading=false;publish();}
+}
 async function deleteChat(sessionId) {
   if (typeof sessionId !== 'string' || !sessionId) throw new Error('Choose a conversation to delete.');
   const index = state.sessions.findIndex(item => item.sessionId === sessionId);
@@ -366,10 +420,7 @@ async function deleteChat(sessionId) {
   await deleteWork(app.getPath('userData'),sessionId).catch(report);
   if (museHome) {
     try {
-      const directory = path.dirname(path.resolve(resolveSessionLogPath(sessionId, museHome)));
-      const relative = path.relative(path.resolve(museHome), directory);
-      if (!relative || relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) throw new Error('History directory is outside Muse storage.');
-      await rm(directory, { recursive: true, force: true });
+      await removeNativeHistory(sessionId);
     }
     catch (error) { state.error = `Chat removed from the list, but its history file could not be deleted: ${error.message}`; }
   }
@@ -634,6 +685,11 @@ else {
   window.on('focus',markCurrentRead);
   window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   window.webContents.on('will-navigate', event => event.preventDefault());
+  window.webContents.on('context-menu',(event,params)=>{
+    event.preventDefault();
+    const template=contextMenuTemplate(params,{replace:word=>window.webContents.replaceMisspelling(word),addToDictionary:word=>window.webContents.session.addWordToSpellCheckerDictionary(word)});
+    if(template.length)Menu.buildFromTemplate(template).popup({window});
+  });
   window.webContents.session.setPermissionRequestHandler((_wc, _permission, callback) => callback(false));
   window.once('ready-to-show', () => window.show());
   let closing = false;
@@ -672,6 +728,7 @@ else {
   handle('setup',async()=>{assertIdle(state);return inspectSetup({root:state.projectPath,account:state.account,connection:state.connection,executable:preferences.executable});});
   handle('browser', (action, payload) => browser.command(action, payload));
   handle('stitch', stitchCommand);
+  handle('trello', trelloCommand);
   handle('get-state', () => state);
   handle('checkpoints',checkpointCommand);
   handle('account',async action=>{
@@ -690,6 +747,7 @@ else {
   handle('new-chat', newChat);
   handle('resume-chat', resumeChat);
   handle('delete-chat', deleteChat);
+  handle('remove-project', removeProject);
   handle('chat-metadata',async(sessionId,action,title)=>{changeConversation(state,sessionId,action,title);await save();publish();return state;});
   handle('completion-sound-options',async enabled=>{if(typeof enabled!=='boolean')throw new Error('Choose whether to play the completion sound.');preferences.completionSound=enabled;state.completionSound=enabled;completionNotices.enabled=enabled;await save();publish();return state;});
   handle('send',async message=>{browser.sendingNotes=(browser.sendingNotes || 0)+1;try{return await sendMessage(message);}finally{browser.sendingNotes--;}});
