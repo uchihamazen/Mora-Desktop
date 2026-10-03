@@ -32,7 +32,7 @@ try{
   assert.equal(await page.locator('#speed').count(),0,'Mora work presets should be removed from the composer');
   assert.ok(await page.locator('#project-toolbar button:visible').count()<=2,'Only primary project actions should occupy the header');
   assert.ok((await page.locator('#browser-viewport').boundingBox()).y<200,'Preview controls must leave room for the page');
-  assert.ok((await page.locator('.browser-annotation').boundingBox()).height<=70,'The empty selection hint should be compact');
+  assert.equal(await page.locator('.browser-annotation').isVisible(),false,'The empty preview action strip should be hidden');
   assert.equal(await page.locator('.browser-history-label').isVisible(),false,'History should be accessible from the preview menu');
   await page.locator('#workspace-menu > summary').click();
   await page.locator('#project-brief').click();
@@ -63,6 +63,7 @@ try{
   await page.keyboard.press('Escape');await page.evaluate(()=>window.layout.preview({loading:false}));
   await page.evaluate(()=>window.layout.preview({selection:{mode:'element',selector:'button'}}));
   assert.equal(await page.locator('#browser-add').isVisible(),true);
+  assert.equal(await page.locator('.browser-annotation').isVisible(),true,'Selection actions must remain available');
   assert.equal(await page.locator('#browser-add').isDisabled(),false);
   await page.evaluate(()=>window.layout.preview({selection:null}));
   assert.equal(await page.locator('#browser-add').isVisible(),false);

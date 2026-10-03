@@ -8,7 +8,9 @@ const browser=await chromium.launch({channel:'msedge',headless:true});
 try{
   const page=await browser.newPage({viewport:{width:1440,height:1000}}),errors=[];page.on('pageerror',error=>errors.push(error.message));page.on('console',message=>{if(message.type()==='error')errors.push(message.text());});
   await page.goto(`http://127.0.0.1:${server.address().port}`);await page.locator('#model option').waitFor({state:'attached'});
-  assert.match(await page.locator('#ui-preview-label').textContent(),/Sample data/);
+  assert.equal(await page.locator('#ui-preview-label').count(),0);
+  assert.equal(await page.locator('.browser-annotation').isVisible(),false);
+  assert.match(await page.locator('#engine-detail').textContent(),/Sample data/);
   assert.equal(await page.locator('#browser-panel').isVisible(),true);
   const settingsAnchor=await page.locator('#settings-button').boundingBox();
   await page.locator('#settings-button').click();
@@ -22,7 +24,7 @@ try{
   await page.getByRole('button',{name:'Close settings',exact:true}).click();
   await page.setViewportSize({width:860,height:600});await page.locator('#settings-button').click();
   const settingsBounds=await page.locator('#settings-panel').boundingBox();
-  assert.ok(settingsBounds.x>=0&&settingsBounds.y>=24&&settingsBounds.x+settingsBounds.width<=860&&settingsBounds.y+settingsBounds.height<=600,'Settings must fit a small window');
+  assert.ok(settingsBounds.x>=0&&settingsBounds.y>=0&&settingsBounds.x+settingsBounds.width<=860&&settingsBounds.y+settingsBounds.height<=600,'Settings must fit a small window');
   await page.mouse.click(800,200);assert.equal(await page.locator('#settings-panel').getAttribute('open'),null);
   await page.setViewportSize({width:1440,height:1000});
   for(const width of [680,500,390]){

@@ -67,7 +67,7 @@ export function setupBrowser(api,addCapture,{flushDraft,send}={}) {
     $('browser-reload').disabled=!state.url;
     for(const id of ['browser-annotate','browser-region'])$(id).disabled=sending || state.noteEditing || state.loading || !/^https?:/.test(state.url || '');
     $('browser-cancel').disabled=!state.annotating && !state.selection;
-    $('browser-selection').textContent=state.selection ? `${state.selection.mode==='region' ? 'Region · ' : ''}${state.selection.selector}` : state.annotating ? 'Select on the page. Escape cancels.' : 'Select part of the preview to describe a change.';
+    $('browser-selection').textContent=state.selection ? `${state.selection.mode==='region' ? 'Region · ' : ''}${state.selection.selector}` : state.annotating ? 'Select on the page. Escape cancels.' : '';
     $('browser-add').hidden=!state.selection;
     $('browser-add').disabled=capturing || !state.selection || state.loading;
     $('browser-before').disabled=capturing || state.loading || !state.deviceReady || !/^https?:/.test(state.url || '');

@@ -8,9 +8,6 @@
   const update=next=>{state={...state,...next};emit('state',state);return state;};
   const unavailable=async()=>{throw Error('UI preview only. Use Mora Desktop for engine, project files, Run and Test.');};
   const frame=document.createElement('iframe');frame.title='Sample counter preview';frame.src='/demo';frame.style.cssText='width:100%;height:100%;border:0';document.getElementById('browser-viewport').replaceChildren(frame);
-  const label=document.createElement('div');label.id='ui-preview-label';label.textContent='Mora UI preview · Sample data · Changes here do not run the engine';label.setAttribute('role','status');
-  label.style.cssText='position:fixed;inset:0 0 auto;height:24px;background:#26324a;color:#dce5f5;font:11px/24px system-ui;text-align:center;z-index:1000';document.body.append(label);
-  const style=document.createElement('style');style.textContent='body{height:calc(100vh - 24px);margin-top:24px}';document.head.append(style);
   window.muse={
     getState:async()=>{setTimeout(labelEngine,0);return state;},onEvent:listener=>{listeners.add(listener);return()=>listeners.delete(listener);},
     setOptions:async options=>update(options),saveDraft:async draft=>{state.draft={text:draft.text,images:draft.images};},
