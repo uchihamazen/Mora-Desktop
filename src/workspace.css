@@ -157,3 +157,6 @@ main{background:#111419}
 @media(max-width:600px){#settings-panel{left:16px}}
 
 .browser-annotation:not(:has(button:not([hidden]))){display:none}
+
+.brand .sidebar-collapse{margin-left:auto;display:flex;align-items:center;justify-content:center;width:30px;height:30px;flex-shrink:0;padding:5px;border:1px solid #455165;border-radius:6px;background:#202630;color:#c9d3e2}
+.brand .sidebar-collapse:hover{background:#28313e;border-color:#60738d}

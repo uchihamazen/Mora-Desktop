@@ -12,6 +12,10 @@ try{
   assert.equal(await page.locator('.browser-annotation').isVisible(),false);
   assert.match(await page.locator('#engine-detail').textContent(),/Sample data/);
   assert.equal(await page.locator('#browser-panel').isVisible(),true);
+  await page.getByRole('button',{name:'Hide sidebar',exact:true}).focus();await page.keyboard.press('Enter');
+  assert.equal(await page.locator('#navigation-sidebar').isVisible(),false);
+  assert.equal(await page.evaluate(()=>document.activeElement.id),'sidebar-toggle');
+  await page.locator('#sidebar-toggle').click();assert.equal(await page.locator('#navigation-sidebar').isVisible(),true);
   const settingsAnchor=await page.locator('#settings-button').boundingBox();
   await page.locator('#settings-button').click();
   await page.getByRole('dialog',{name:'Settings',exact:true}).waitFor();

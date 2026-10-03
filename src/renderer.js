@@ -25,6 +25,7 @@ function setSidebar(collapsed) {
 }
 setSidebar(sidebarCollapsed);
 $('sidebar-toggle').addEventListener('click',()=>setSidebar(!sidebarCollapsed));
+$('sidebar-collapse').addEventListener('click',()=>setSidebar(true));
 const dismissedErrors = new Set();
 let state = { items: [], sessions: [], models: [], busy: false, connection: 'connecting' };
 let projectFailureNotice='';
