@@ -2,7 +2,7 @@ import {previewOccluded} from './menu-ui.js';
 export function setupReadiness(api,onError,openSettings) {
   const $=id=>document.getElementById(id),node=(tag,text)=>{const el=document.createElement(tag);el.textContent=text;return el;};
   const settings=node('button','Check setup');settings.id='check-setup';const welcome=node('button','Check setup');welcome.id='welcome-setup';
-  $('settings-panel').prepend(settings);document.querySelector('.welcome-project-actions').append(welcome);
+  $('settings-panel').querySelector('.settings-content').prepend(settings);document.querySelector('.welcome-project-actions').append(welcome);
   let current={};
   async function open() {
     if(document.querySelector('.setup-dialog'))return;

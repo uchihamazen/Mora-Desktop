@@ -10,6 +10,21 @@ try{
   await page.goto(`http://127.0.0.1:${server.address().port}`);await page.locator('#model option').waitFor({state:'attached'});
   assert.match(await page.locator('#ui-preview-label').textContent(),/Sample data/);
   assert.equal(await page.locator('#browser-panel').isVisible(),true);
+  const settingsAnchor=await page.locator('#settings-button').boundingBox();
+  await page.locator('#settings-button').click();
+  await page.getByRole('dialog',{name:'Settings',exact:true}).waitFor();
+  assert.deepEqual(await page.locator('#settings-button').boundingBox(),settingsAnchor,'Opening settings must not move its sidebar anchor');
+  await page.locator('#stitch-key').evaluate(node=>node.value='local-unsaved-draft');
+  await mkdir('artifacts/ui-preview-proof',{recursive:true});await page.screenshot({path:'artifacts/ui-preview-proof/settings.png'});
+  await page.keyboard.press('Escape');
+  assert.equal(await page.evaluate(()=>document.activeElement.id),'settings-button');
+  await page.locator('#settings-button').click();assert.equal(await page.locator('#stitch-key').inputValue(),'local-unsaved-draft');
+  await page.getByRole('button',{name:'Close settings',exact:true}).click();
+  await page.setViewportSize({width:860,height:600});await page.locator('#settings-button').click();
+  const settingsBounds=await page.locator('#settings-panel').boundingBox();
+  assert.ok(settingsBounds.x>=0&&settingsBounds.y>=24&&settingsBounds.x+settingsBounds.width<=860&&settingsBounds.y+settingsBounds.height<=600,'Settings must fit a small window');
+  await page.mouse.click(800,200);assert.equal(await page.locator('#settings-panel').getAttribute('open'),null);
+  await page.setViewportSize({width:1440,height:1000});
   for(const width of [680,500,390]){
     await page.locator('#browser-panel').evaluate((node,width)=>node.style.setProperty('--browser-width',width+'px'),width);
     const layout=await page.locator('.browser-heading').evaluate(header=>{

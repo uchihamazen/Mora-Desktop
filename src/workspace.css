@@ -5,7 +5,9 @@ main{background:#111419}
 .brand{margin:0 3px 26px}
 .brand-mark{width:44px;height:44px}
 .brand strong{font-size:23px}
-.new-chat{font-size:14px;padding:12px;border-color:#57516c;background:#292638}
+.new-chat{font-size:14px;min-height:44px;padding:12px 14px;border-color:#455165;background:#202630;border-radius:8px}
+.new-chat:hover{background:#28313e;border-color:#60738d}
+.new-chat .shortcut{color:#aeb9ca;border-color:#3b4658;background:#1a2029}
 .shortcut{font-size:10px;color:#b3acc6}
 .library-label{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
 .library-search input{font:13px "Segoe UI",sans-serif;padding:10px;background:#1d2129;border-color:#3c424f}
@@ -18,7 +20,10 @@ main{background:#111419}
 .project-group>summary{font-size:14px;padding:9px 5px}
 .project-chats{margin-left:12px}
 .project-chats .session-button{padding:11px 8px}
-.session-row.active{background:#2b293b}
+.session-row{border:1px solid transparent;border-radius:8px}
+.session-row.active{background:#202630;border-color:#455165}
+.session-row.active:hover{background:#28313e;border-color:#60738d}
+.session-row.active .session-button{color:#e6edf7}
 .session-options{color:#a9acbb;opacity:0}
 .session-row:hover .session-options,.session-row:focus-within .session-options{opacity:1}
 .session-row .session-delete-icon{position:absolute;right:26px;background:#262b35}
@@ -131,3 +136,22 @@ main{background:#111419}
   .welcome h1{font-size:28px}.welcome-project-actions{flex-wrap:wrap}
 }
 @media(max-width:1100px){.sidebar{width:218px;padding:20px 12px 14px}.new-chat{font-size:13px}.shortcut{display:none}}
+
+/* Settings float outside sidebar layout while preserving its bottom anchor. */
+#settings-panel{position:fixed;inset:auto auto 16px 296px;margin:0;width:360px;max-width:calc(100vw - 32px);max-height:calc(100vh - 48px);padding:0;overflow:hidden;background:#171b22;color:#c2cbd8;border:1px solid #3b4555;border-radius:10px;box-shadow:0 18px 56px #0008;font-size:12px;line-height:1.6}
+#settings-panel[open]{display:flex;flex-direction:column}
+#settings-panel::backdrop{background:#0002}
+.settings-heading{display:flex;align-items:center;justify-content:space-between;padding:16px 18px;border-bottom:1px solid #303846;flex-shrink:0}
+.settings-heading h2{font-size:18px;color:#edf2f9;margin:0}
+#settings-panel #settings-close{display:flex;align-items:center;justify-content:center;width:30px;height:30px;padding:5px;margin:0;border-color:#3b4555;background:#202630}
+.settings-content{padding:16px 18px;overflow:auto;min-height:0}
+#settings-panel section{border-top:1px solid #303846;padding-top:14px;margin-top:16px}
+#settings-panel strong{font-size:13px;color:#d6deeb}
+#settings-panel button{font-size:12px;border-color:#3d4b60;background:#242d3a;border-radius:6px;padding:7px 10px}
+#settings-panel button:hover{background:#303d50}
+#settings-panel #sign-in,#settings-panel #stitch-connect{background:#0082fb;color:white;border-color:#0082fb}
+#settings-panel small{color:#9ca8b9;font-size:11px}
+#settings-panel .notification-setting{font-size:12px;color:#d6deeb}
+#settings-panel #stitch-key{font-size:12px;padding:9px}
+@media(max-width:1100px){#settings-panel{left:234px}}
+@media(max-width:600px){#settings-panel{left:16px}}

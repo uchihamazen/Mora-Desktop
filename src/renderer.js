@@ -357,7 +357,23 @@ $('workspace-button').addEventListener('click', () => action(() => api.chooseWor
 $('model').addEventListener('change', () => action(() => api.setOptions({ modelId: $('model').value })));
 $('effort').addEventListener('change', () => action(() => api.setOptions({ reasoningEffort: $('effort').value })));
 $('execution-mode').addEventListener('change', () => action(() => api.setOptions({ executionMode: $('execution-mode').value })));
-$('settings-button').addEventListener('click', () => { $('settings-panel').hidden = !$('settings-panel').hidden; });
+function openSettings(){
+  setSidebar(false);
+  const panel=$('settings-panel');if(panel.open)return;
+  panel.showModal();$('settings-close').focus();
+  api.browserCommand?.('occlude',{hidden:true}).catch(()=>{});
+}
+$('settings-button').addEventListener('click',openSettings);
+$('settings-close').addEventListener('click',()=>$('settings-panel').close());
+$('settings-panel').addEventListener('click',event=>{
+  if(event.target!==$('settings-panel'))return;
+  const rect=event.target.getBoundingClientRect();
+  if(event.clientX<rect.left||event.clientX>rect.right||event.clientY<rect.top||event.clientY>rect.bottom)event.target.close();
+});
+$('settings-panel').addEventListener('close',()=>{
+  api.browserCommand?.('occlude',{hidden:previewOccluded()}).catch(()=>{});
+  if(!document.querySelector('dialog[open]'))$('settings-button').focus();
+});
 for(const [id,name] of [['sign-in','login'],['cancel-sign-in','cancel'],['refresh-account','refresh'],['install-muse','install']])$(id).addEventListener('click',()=>action(()=>api.accountCommand(name)));
 if(api.stitchCommand){
   $('stitch-key').addEventListener('input',refreshStitch);
@@ -380,7 +396,7 @@ updateProjects=setupProjects(api,action);
 updateProjectWork=setupProjectWork(api,action);
 updateTester=setupTester(api,error);
 updateWebsiteTester=setupWebsiteTester(api,error);
-updateReadiness=setupReadiness(api,error,()=>{setSidebar(false);$('settings-panel').hidden=false;$('settings-button').focus();});
+updateReadiness=setupReadiness(api,error,openSettings);
 setupWorkspaceMenus(api);
-$('onboarding-action').addEventListener('click',()=>{setSidebar(false);$('settings-panel').hidden=false;if(state.account?.status==='pending')return;action(()=>api.accountCommand(state.account?.status==='missing'?'install':state.account?.status==='required'?'login':'refresh'));});
+$('onboarding-action').addEventListener('click',()=>{openSettings();if(state.account?.status==='pending')return;action(()=>api.accountCommand(state.account?.status==='missing'?'install':state.account?.status==='required'?'login':'refresh'));});
 update(await api.getState()); $('prompt').focus();
