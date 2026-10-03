@@ -12,6 +12,21 @@ try{
   assert.equal(await page.locator('.browser-annotation').isVisible(),false);
   assert.match(await page.locator('#engine-detail').textContent(),/Sample data/);
   assert.equal(await page.locator('#browser-panel').isVisible(),true);
+  await page.locator('#execution-mode-trigger').click();
+  assert.equal(await page.getByRole('menu',{name:'Execution mode options'}).isVisible(),true);
+  const modeBounds=await page.locator('#execution-mode-menu').boundingBox(),triggerBounds=await page.locator('#execution-mode-trigger').boundingBox();
+  assert.ok(modeBounds.y+modeBounds.height<=triggerBounds.y,'Access menu should open above its trigger');
+  await mkdir('artifacts/ui-preview-proof',{recursive:true});await page.screenshot({path:'artifacts/ui-preview-proof/execution-mode.png'});
+  await page.keyboard.press('ArrowDown');await page.keyboard.press('Enter');
+  assert.equal((await page.evaluate(()=>window.muse.getState())).executionMode,'full');
+  assert.equal(await page.locator('#execution-mode-menu').isVisible(),false);
+  assert.equal(await page.evaluate(()=>document.activeElement.id),'execution-mode-trigger');
+  await page.locator('#execution-mode-trigger').click();await page.keyboard.press('Escape');
+  assert.equal(await page.locator('#execution-mode-menu').isVisible(),false);
+  await page.locator('#execution-mode-trigger').click();await page.getByRole('menuitemradio',{name:/Read only/}).click();
+  assert.equal((await page.evaluate(()=>window.muse.getState())).executionMode,'readonly');
+  await page.locator('#execution-mode-trigger').click();await page.locator('#prompt').click();
+  assert.equal(await page.locator('#execution-mode-menu').isVisible(),false,'Clicking outside should dismiss the access menu');
   const chatLayout=await page.evaluate(()=>{
     const user=document.querySelector('.message.user .message-content'),assistant=document.querySelector('.message.assistant');
     return {userBackground:getComputedStyle(user).backgroundColor,rail:getComputedStyle(assistant).borderLeftWidth,userLabel:getComputedStyle(document.querySelector('.message.user .message-label')).display};

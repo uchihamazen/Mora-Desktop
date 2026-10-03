@@ -1,5 +1,5 @@
 export function previewOccluded() {
-  return !!document.querySelector('[data-workspace-menu][open],dialog[open],.changes-panel,.browser-resizing');
+  return !!document.querySelector('[data-workspace-menu][open],dialog[open],[popover]:popover-open,.changes-panel,.browser-resizing');
 }
 
 // Details menus retain the original controls and their command guards.

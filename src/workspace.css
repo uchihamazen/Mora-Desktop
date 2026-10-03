@@ -195,3 +195,17 @@ main{background:#111419}
 @media(max-width:1100px){.message.user .message-content{max-width:95%;padding:10px 12px}.message.assistant,.timeline-operation,.change-row,.activity-step,.completion-card{margin-left:8px;padding-left:18px}.message.assistant .message-body{font-size:15px}}
 
 .timeline-preview-card{display:flex;align-items:center;gap:12px;padding:14px;margin:12px 0;border:1px solid #29445b;border-radius:10px;background:#121e2c;font-size:13px}.timeline-preview-card strong{flex:1;color:#dce6f0}.timeline-preview-card button{border:1px solid #3a536a;border-radius:6px;padding:7px 10px;background:#172a3d;color:#d6eafa;font-size:12px}
+
+.mode-native{position:absolute;width:1px;height:1px;clip-path:inset(50%);overflow:hidden;pointer-events:none}
+#execution-mode-trigger{display:flex;align-items:center;gap:7px;padding:6px 8px;border:1px solid transparent;border-radius:6px;font-size:12px;color:#c3d0e0;white-space:nowrap}
+#execution-mode-trigger:hover,#execution-mode-trigger[aria-expanded=true]{background:#242d3a;border-color:#3d4b60}
+#execution-mode-menu{position:fixed;inset:auto;margin:0;width:300px;max-width:calc(100vw - 16px);max-height:calc(100vh - 100px);overflow:auto;padding:8px;background:#171c24;color:#dce6f0;border:1px solid #455165;border-radius:10px;box-shadow:0 12px 30px #0006}
+.mode-menu-heading{padding:5px 10px 10px;font-size:12px;color:#97a6bb}
+#execution-mode-menu>button{display:flex;align-items:center;gap:10px;width:100%;padding:12px 10px;border:1px solid transparent;border-radius:7px;text-align:left}
+#execution-mode-menu>button+button{margin-top:5px;border-top-color:#303b4b}
+#execution-mode-menu>button[aria-checked=true]{background:#142c43;border-color:#295472}
+#execution-mode-menu>button:hover{background:#243348}
+#execution-mode-menu>button>span:first-of-type{flex:1;min-width:0}
+#execution-mode-menu strong{display:block;font-size:13px;font-weight:600}
+#execution-mode-menu small{display:block;margin-top:3px;font-size:11px;line-height:1.5;color:#a7b8cc}
+.mode-check{color:#43c7ee;visibility:hidden}#execution-mode-menu [aria-checked=true] .mode-check{visibility:visible}
