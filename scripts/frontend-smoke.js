@@ -8,7 +8,7 @@ const {chromium}=require('./runtime-packages.cjs').runtimeRequire('playwright');
 const png='iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+ip1sAAAAASUVORK5CYII=';
 const server=createServer(async(req,res)=>{
   const file={'/':'index.html','/style.css':'style.css','/renderer.js':'renderer.js','/markdown.js':'markdown.js','/project-ui.js':'project-ui.js','/work-ui.js':'work-ui.js','/images.js':'images.js','/projects.js':'projects.js','/browser-ui.js':'browser-ui.js','/assets/mora-mark.svg':'assets/mora-mark.svg'}[req.url];
-  if(['/tester-ui.js','/website-ui.js','/website-coverage.js','/library-ui.js','/find-ui.js','/quick-actions.js'].includes(req.url)){res.setHeader('Content-Type','application/javascript');res.end(await readFile('src'+req.url));return;}
+  if(['/tester-ui.js','/website-ui.js','/website-coverage.js','/library-ui.js','/find-ui.js','/quick-actions.js','/setup-ui.js'].includes(req.url)){res.setHeader('Content-Type','application/javascript');res.end(await readFile('src'+req.url));return;}
   if(!file){res.writeHead(404).end();return;}
   res.setHeader('Content-Type',file.endsWith('.svg')?'image/svg+xml':file.endsWith('.css')?'text/css':file.endsWith('.js')?'application/javascript':'text/html');
   res.end(await readFile(path.join('src',file)));
@@ -22,6 +22,9 @@ try{
   let callback;window.smoke={projectActions:[],restores:[],accountActions:[],projectsCreated:[],stopCalls:0,failDraft:false,sent:[],copied:'',deleted:[],created:[],emit:next=>{state={...state,...next};callback?.({type:'state',state});}};
   window.muse={projectCommand:async action=>{window.smoke.projectActions.push(action);},checkpointCommand:async(action,payload)=>{if(action==='list')return [{id:'cp1',label:'Before request',fileCount:1,createdAt:new Date().toISOString(),manual:false}];if(action==='preview')return {token:'token',checkpoint:{label:'Before request',manual:false},changes:[{path:'app.js',status:'restore original',conflict:true}]};if(action==='restore'){window.smoke.restores.push(payload);return {restored:1};}},chooseProjectParent:async()=> 'C:\\Projects',createProject:async payload=>{window.smoke.projectsCreated.push(payload);return state;},accountCommand:async action=>{window.smoke.accountActions.push(action);window.smoke.emit({account:action==='login'?{status:'pending',message:'Approve the code',userCode:'DEMO-CODE'}:{status:'required',message:'Sign in required'}});},getState:async()=>state,onEvent:cb=>{callback=cb;return()=>{}},copyText:async text=>{window.smoke.copied=text},setOptions:async options=>{state={...state,...options};return state},pickImages:async()=>[{mediaType:'image/png',base64Data:png,name:'image.png'}],newChat:async projectPath=>{window.smoke.created.push(projectPath);return state},resumeChat:async()=>state,deleteChat:async id=>{window.smoke.deleted.push(id);return state},chooseWorkspace:async()=>state,chooseMuse:async()=>state,connect:async()=>state,stopTurn:async()=>{window.smoke.stopCalls++;window.smoke.emit({busy:false,stopping:false,queuePaused:true});},sendMessage:async value=>{window.smoke.sent.push(value);return{accepted:true}},saveDraft:async value=>{if(window.smoke.failDraft)throw new Error('Disk save failed');window.smoke.draft=value;},queueCommand:async action=>{if(action==='clear')window.smoke.emit({pendingQueue:[]});return state;}};
   window.smoke.testerCalls=[];
+  window.muse.inspectSetup=async()=>[{id:'muse',title:'Muse engine',status:'ready',detail:'Connected'},{id:'node',title:'Node.js',status:'missing',detail:'Install Node.js, then restart Mora.'}];
+  window.smoke.brief={text:'Goal: build a local shop\r\n',revision:'brief-1'};
+  window.muse.projectBriefCommand=async(action,payload)=>{if(action==='read')return window.smoke.brief;window.smoke.brief={text:payload.text,revision:'brief-2'};return window.smoke.brief;};
   window.muse.testerCommand=async(action,payload)=>{
     window.smoke.testerCalls.push({action,payload});
     if(action==='list')return state.tester?[state.tester]:[];
@@ -35,8 +38,13 @@ try{
  },{png});
  await page.goto(`http://127.0.0.1:${server.address().port}`);
  await page.locator('#connection-badge').filter({hasText:'Connected'}).waitFor();
+ await page.locator('#welcome-setup').click();await page.getByRole('dialog',{name:'Setup readiness',exact:true}).waitFor();
+ assert.match(await page.locator('.setup-checks').textContent(),/Node.js.*missing.*Install Node.js/);
+ await page.getByRole('button',{name:'Close setup',exact:true}).click();
  assert.equal(await page.locator('#sidebar-toggle').count(),1,'The navigation needs a persistent show/hide control');
  await page.locator('#sidebar-toggle').click();assert.equal(await page.locator('.sidebar').isVisible(),false);
+ await page.locator('#welcome-setup').click();await page.getByRole('button',{name:'Open engine settings',exact:true}).click();await page.locator('.setup-dialog').waitFor({state:'detached'});
+ assert.equal(await page.locator('#settings-panel').isVisible(),true,'Setup opens engine settings even with collapsed navigation');await page.locator('#sidebar-toggle').click();
  await page.reload();await page.locator('#connection-badge').filter({hasText:'Connected'}).waitFor();assert.equal(await page.locator('.sidebar').isVisible(),false,'Collapsed navigation survives reload');
  await page.keyboard.press('Control+b');assert.equal(await page.locator('.sidebar').isVisible(),true);
  await page.locator('#new-chat').focus();await page.keyboard.press('Control+b');assert.equal(await page.locator('#sidebar-toggle').evaluate(e=>e===document.activeElement),true,'Collapsing navigation must not strand focus');
@@ -263,8 +271,24 @@ try{
  assert.equal(await page.evaluate(()=>window.smoke.projectsCreated[0].name),'First app');
  await page.evaluate(()=>window.smoke.emit({projectPath:'C:\\Projects\\First app',projectWork:{root:'C:\\Projects\\First app',run:{status:'ready',url:'http://localhost:3000'},tests:{status:'failed',message:'Tests failed',results:[{script:'test',status:'failed',output:'failure'}]}},executionMode:'readonly'}));
  await page.locator('#run-project').waitFor({state:'hidden'});assert.equal(await page.locator('#fix-tests').isDisabled(),true);
+ await page.locator('#project-brief').click();await page.getByLabel('Shared project brief',{exact:true}).waitFor();
+ assert.equal(await page.getByRole('button',{name:'Save brief',exact:true}).isDisabled(),true);
+ await page.getByRole('button',{name:'Close brief',exact:true}).click();await page.locator('.brief-dialog').waitFor({state:'detached',timeout:1000});assert.equal(await page.locator('.brief-dialog').count(),0,'An untouched CRLF brief is not dirty');await page.locator('#project-brief').click();
+ await page.evaluate(()=>window.smoke.emit({executionMode:'full'}));await page.getByLabel('Shared project brief',{exact:true}).fill('Goal: keep the shop simple');
+ await page.getByRole('button',{name:'Save brief',exact:true}).click();await page.waitForFunction(()=>window.smoke.brief.text==='Goal: keep the shop simple');
+ await page.getByRole('button',{name:'Close brief',exact:true}).click();
+ await page.evaluate(()=>window.smoke.emit({executionMode:'readonly'}));
  await page.locator('#stop-project').click();assert.equal(await page.evaluate(()=>window.smoke.projectActions.at(-1)),'stop');
  await page.evaluate(()=>window.smoke.emit({projectWork:{root:'C:\\Projects\\First app',run:{status:'stopped'},tests:{status:'not checked'}}}));
+ await page.evaluate(()=>window.smoke.emit({lastOutcome:{status:'finished',turnId:'request-undo',message:'Built your app',checkpointId:'cp1'}}));
+ await page.evaluate(()=>{window.smoke.originalProjectCommand=window.muse.projectCommand;window.smoke.stopResolves=[];window.muse.projectCommand=async name=>{if(name==='stop')await new Promise(resolve=>window.smoke.stopResolves.push(resolve));};window.smoke.emit({projectWork:{root:'C:\\Projects\\First app',run:{status:'ready'},tests:{status:'not checked'}}});});
+ await page.getByRole('button',{name:'Undo this request',exact:true}).evaluate(button=>{button.click();button.click();});
+ await page.waitForFunction(()=>window.smoke.stopResolves.length===2);
+ await page.evaluate(()=>{window.smoke.emit({projectWork:{root:'C:\\Projects\\First app',run:{status:'stopped'},tests:{status:'not checked'}}});for(const resolve of window.smoke.stopResolves)resolve();window.muse.projectCommand=window.smoke.originalProjectCommand;});
+ await page.locator('.checkpoint-dialog').first().waitFor();assert.equal(await page.locator('.checkpoint-dialog').count(),1,'Concurrent Undo opens one review');await page.getByRole('button',{name:'Close',exact:true}).click();
+ await page.getByRole('button',{name:'Undo this request',exact:true}).click();
+ await page.getByRole('button',{name:'Restore selected files'}).waitFor();
+ await page.getByRole('button',{name:'Close',exact:true}).click();
  await page.locator('#checkpoints').click();await page.getByRole('button',{name:'Review restore'}).click();
  assert.equal(await page.locator('.checkpoint-dialog input[type=checkbox]').first().isChecked(),false);
  await page.locator('.checkpoint-dialog input[type=checkbox]').first().check();await page.locator('.checkpoint-dialog input[type=checkbox]').last().check();await page.getByRole('button',{name:'Restore selected files'}).click();
@@ -298,5 +322,9 @@ try{
  await page.getByLabel('Demonstrated workflow expected outcome',{exact:true}).fill('Search shows Tea');await page.getByRole('button',{name:'Use this workflow',exact:true}).click();assert.deepEqual(await page.evaluate(()=>window.smoke.websiteCalls.at(-1)),{action:'use-teaching',payload:{expected:'Search shows Tea'}});
  await page.getByRole('tab',{name:'Reports',exact:true}).click();await page.getByLabel('Include masked screenshots in export',{exact:true}).check();await page.getByRole('button',{name:'Export HTML',exact:true}).click();assert.deepEqual(await page.evaluate(()=>window.smoke.websiteCalls.at(-1)),{action:'export',payload:{id:'site1',format:'html',includeEvidence:true}});
  await page.getByRole('button',{name:'Stop and close browser',exact:true}).click();assert.equal(await page.evaluate(()=>window.smoke.websiteCalls.at(-1).action),'stop');await page.evaluate(()=>window.smoke.emit({websiteActive:false}));await page.getByRole('button',{name:'Reopen saved report',exact:true}).click();assert.equal(await page.evaluate(()=>window.smoke.websiteCalls.at(-1).action),'reopen');await page.keyboard.press('Escape');
+ await page.evaluate(()=>window.smoke.emit({sessionId:'long-chat',busy:false,websiteActive:false,projectPath:null,lastOutcome:null,items:Array.from({length:450},(_,i)=>({itemId:'long-'+i,kind:'agentMessage',status:'completed',text:'Saved reply '+i}))}));
+ assert.equal(await page.locator('#messages > *').count(),200);await page.locator('#load-older').click();assert.equal(await page.locator('#messages > *').count(),400);
+ await page.locator('#load-older').click();assert.equal(await page.locator('#messages > *').count(),450);assert.equal(await page.locator('#load-older').isVisible(),false);
+ await page.evaluate(()=>window.smoke.emit({sessionId:'other-long-chat'}));assert.equal(await page.locator('#messages > *').count(),200);
  console.log('PASS deterministic UI: existing chat/project flows and website setup without a project, safe permission rendering, approval and Stop');
 }finally{await browser.close();await new Promise(resolve=>server.close(resolve));}

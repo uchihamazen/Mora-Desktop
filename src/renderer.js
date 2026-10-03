@@ -8,6 +8,7 @@ import {setupProjects} from './project-ui.js';
 import {setupProjectWork} from './work-ui.js';
 import {setupTester} from './tester-ui.js';
 import {setupWebsiteTester} from './website-ui.js';
+import {setupReadiness} from './setup-ui.js';
 
 const $ = id => document.getElementById(id);
 const api = window.muse;
@@ -27,8 +28,11 @@ const dismissedErrors = new Set();
 let state = { items: [], sessions: [], models: [], busy: false, connection: 'connecting' };
 let attachments = [], sending = false, lastSignature = '', startedAt = 0;
 let draftOwner, draftTimer, draftWrites=Promise.resolve();
-let updateProjects,updateProjectWork,updateTester,updateWebsiteTester;
+let updateProjects,updateProjectWork,updateTester,updateWebsiteTester,updateReadiness;
 const messageRows=new Map();
+let visibleHistory=200,historyOwner;
+const older=document.createElement('button');older.id='load-older';older.className='load-older';older.hidden=true;$('messages').before(older);
+older.addEventListener('click',()=>{const area=$('scroll-area'),height=area.scrollHeight;visibleHistory+=200;renderMessages();conversationFind.update(state.sessionId);requestAnimationFrame(()=>{area.scrollTop+=area.scrollHeight-height;});});
 let stitchConfigured=false,stitchChanging=false;
 function refreshStitch(){if(!api.stitchCommand)return;for(const name of ['connect','test','disconnect'])$(`stitch-${name}`).disabled=stitchChanging || state.busy || state.loading || (name==='test' && !stitchConfigured && !$('stitch-key').value.trim()) || (name==='disconnect' && !stitchConfigured);}
 async function stitchAction(name,payload) {
@@ -144,7 +148,10 @@ function renderMessages() {
     if(!review)closeChanges();else if(JSON.stringify(review)!==openReviewSignature)showChanges(review,true);
   }
   const area=$('scroll-area'),nearBottom=area.scrollHeight-area.scrollTop-area.clientHeight<130;
-  const rows=[...(state.items || []).filter(item=>!item.retracted),...(state.pendingQueue || []).map(entry=>({...entry,itemId:'queue-'+entry.queueId,kind:'queued'}))];
+  if(historyOwner!==state.sessionId){historyOwner=state.sessionId;visibleHistory=200;}
+  const history=(state.items || []).filter(item=>!item.retracted);
+  older.hidden=history.length<=visibleHistory;older.textContent=`Load older messages (${Math.max(0,history.length-visibleHistory)} remaining)`;
+  const rows=[...history.slice(-visibleHistory),...(state.pendingQueue || []).map(entry=>({...entry,itemId:'queue-'+entry.queueId,kind:'queued'}))];
   if(state.lastOutcome && !state.busy)rows.push({...state.lastOutcome,itemId:'outcome-'+state.lastOutcome.turnId,kind:'outcome',tools:(state.items || []).filter(item=>item.turnId===state.lastOutcome.turnId && (item.kind==='toolCall' || item.kind==='userShell')),review:(state.items || []).find(item=>item.turnId===state.lastOutcome.turnId && item.kind==='fileChanges'),activeRequest:state.activeRequest});
   const seen=new Set();let position=0;
   for(const item of rows) {
@@ -179,10 +186,17 @@ function renderMessages() {
           if(item.review)node.append(textNode('p',item.review.files.length+' files changed · +'+item.review.added+' / -'+item.review.removed+(item.review.partial?' · partial review':'')));
           if(item.tools.length){const details=document.createElement('details');details.append(textNode('summary','Show '+item.tools.length+' operation outcomes'));for(const tool of item.tools)details.append(textNode('p',(tool.commandText || tool.description || tool.tool || 'Operation')+' · '+(tool.status || 'unknown')+(Number.isInteger(tool.exitCode)?' · exit '+tool.exitCode:'')));node.append(details);}
           if(item.activeRequest){const details=document.createElement('details');details.append(textNode('summary',item.activeRequest.phase==='admitted'?'Saved request · review before continuing':'Unsubmitted request'),textNode('p',item.activeRequest.text));node.append(details);if(item.activeRequest.phase==='preparing'){const recover=textNode('button','Recover as draft');recover.addEventListener('click',()=>{if($('prompt').value || attachments.length){error('Keep or clear the current draft first.');return;}$('prompt').value=item.activeRequest.text;attachments=item.activeRequest.images || [];renderAttachments();scheduleDraft();});node.append(recover);}}
+          if(state.projectPath) {
+            const controls=textNode('div','','request-actions');
+            if(item.status==='finished'){const preview=textNode('button','Run / open preview');preview.addEventListener('click',()=>action(()=>api.projectCommand(state.projectWork?.root===state.projectPath && state.projectWork.run.status==='ready'?'preview':'run')));controls.append(preview);}
+            if(item.checkpointId){const undo=textNode('button','Undo this request');undo.title='Review source files to restore; stops the running preview first';undo.addEventListener('click',()=>action(()=>updateProjectWork.reviewCheckpoint(node.currentItem.checkpointId)));controls.append(undo);}
+            node.append(controls);
+          }
         }
       }
       record.images=item.images;
     }
+    for(const button of node.querySelectorAll('.request-actions button'))button.disabled=!!(state.busy || state.loading || state.projectOperation || state.projectRepair || state.testerActive || state.websiteActive);
     if($('messages').children[position]!==node)$('messages').insertBefore(node,$('messages').children[position] || null);
     seen.add(key);position++;
   }
@@ -215,6 +229,7 @@ function update(next) {
   updateProjectWork?.(state);
   updateTester?.(state);
   updateWebsiteTester?.(state);
+  updateReadiness?.(state);
   const account=state.account || {status:'unknown',message:'Uses your existing Muse login.'};
   $('account-settings').hidden=!api.accountCommand;
   $('account-status').textContent=account.message;
@@ -342,5 +357,6 @@ updateProjects=setupProjects(api,action);
 updateProjectWork=setupProjectWork(api,action);
 updateTester=setupTester(api,error);
 updateWebsiteTester=setupWebsiteTester(api,error);
+updateReadiness=setupReadiness(api,error,()=>{setSidebar(false);$('settings-panel').hidden=false;$('settings-button').focus();});
 $('onboarding-action').addEventListener('click',()=>{setSidebar(false);$('settings-panel').hidden=false;if(state.account?.status==='pending')return;action(()=>api.accountCommand(state.account?.status==='missing'?'install':state.account?.status==='required'?'login':'refresh'));});
 update(await api.getState()); $('prompt').focus();

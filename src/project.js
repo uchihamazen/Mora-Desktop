@@ -32,7 +32,8 @@ export async function projectScripts(root) {
   if(text.length>512000)throw new Error('Project package.json is too large.');
   const pkg=JSON.parse(text),scripts={};
   for(const [name,value] of Object.entries(pkg.scripts || {}))if(/^[a-zA-Z0-9_:-]{1,80}$/.test(name) && typeof value==='string' && value.trim() && value.length<=8000)scripts[name]=value;
-  const checks=[scripts.typecheck?'typecheck':scripts.check?'check':null,scripts.build?'build':null,scripts.test?'test':null].filter(Boolean);
+  const flowScript=scripts['test:flows']?'test:flows':scripts['test:e2e']?'test:e2e':null;
+  const checks=[scripts.typecheck?'typecheck':scripts.check?'check':null,scripts.build?'build':null,scripts.test?'test':null,flowScript].filter(Boolean);
   const manager=/^(npm|pnpm|yarn)@/.exec(pkg.packageManager || '')?.[1] || 'npm';
-  return {start:['dev','start','serve'].find(name=>scripts[name]) || null,checks,scripts,manager};
+  return {start:['dev','start','serve'].find(name=>scripts[name]) || null,checks,scripts,manager,flowScript};
 }

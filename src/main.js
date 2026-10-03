@@ -9,9 +9,11 @@ import { createState, assertIdle, applyEvent } from './state.js';
 import { snapshotProject, compareProject, watchProjectChanges, saveChangeSummary, loadChangeSummaries, deleteChangeSummaries } from './changes.js';
 import { profilePath, loadConversations, saveConversations } from './persistence.js';
 import {loadWork, saveWork, deleteWork, validateDraft} from './work.js';
-import {effortForPreset} from './speed.js';
+import {effortForPreset,initialEffort} from './speed.js';
 import {accountState,AccountLogin} from './account.js';
 import {createProject} from './project.js';
+import {readProjectBrief,saveProjectBrief} from './project-brief.js';
+import {inspectSetup} from './setup.js';
 import {Checkpoints} from './checkpoints.js';
 import {ProjectRunner} from './project-work.js';
 import { projectPathFor, groupConversations, changeConversation } from './projects.js';
@@ -126,13 +128,18 @@ async function checkpointCommand(action,payload={}) {
   try {
     if(action==='create')return await store.create(payload.label);
     if(action==='preview')return await store.preview(payload.id);
-    if(action==='restore'){const result=await store.restore(payload);if(state.tester?.project===state.projectPath)state.tester=reportForRevision(state.tester,await projectRevision(state.projectPath));return result;}
+    if(action==='restore'){const result=await store.restore(payload);if(state.tester?.project===state.projectPath)state.tester=reportForRevision(state.tester,await projectRevision(state.projectPath));if(projectRunner?.state.root===state.projectPath)await projectRunner.refreshTests();return result;}
     if(action==='delete')return await store.delete(payload.id);
     throw new Error('Unknown checkpoint action.');
   }finally{projectOperation=false;state.projectOperation=false;publish();}
 }
 async function projectCommand(action) {
   if(state.testerActive||state.websiteActive)throw Error('Stop AI Tester before changing the running app.');
+  if(action==='results'){if(!projectOperation&&!state.busy&&!repairInProgress&&projectRunner.state.root===state.projectPath)await projectRunner.refreshTests();return state.projectWork;}
+  if(action==='preview') {
+    if(projectRunner.state.root!==state.projectPath || projectRunner.state.run.status!=='ready')throw Error('Run your app before opening its preview.');
+    await desktopBrowser.navigate(projectRunner.state.run.url);return state.projectWork;
+  }
   if(action==='stop'){projectCancelled=true;await projectRunner.stopRun();return state.projectWork;}
   if(action==='stop-tests'){projectCancelled=true;await projectRunner.stopTests();return state.projectWork;}
   if(action==='fix')return repairFailures();
@@ -150,6 +157,16 @@ async function projectCommand(action) {
     else await projectRunner.run(state.projectPath);
     return state.projectWork;
   }finally{if(checkpoint)await checkpointStore().seal(checkpoint.id).catch(report);projectOperation=false;state.projectOperation=false;publish();}
+}
+async function projectBriefCommand(action,payload={}) {
+  if(!state.projectPath || payload.projectPath!==state.projectPath)throw Error('Open this project before reading or saving its brief.');
+  if(action==='read')return readProjectBrief(state.projectPath);
+  assertIdle(state);
+  if(action!=='save' || state.executionMode!=='full')throw Error('Choose Full access to save the project brief.');
+  if(projectOperation || repairInProgress || projectRunner?.active)throw Error('Wait for current project work before saving the brief.');
+  projectOperation=true;state.projectOperation=true;publish();
+  try{return await saveProjectBrief(state.projectPath,payload);}
+  finally{projectOperation=false;state.projectOperation=false;publish();}
 }
 async function repairFailures() {
   assertIdle(state);if(projectOperation || repairInProgress)throw new Error('Wait for the current project command.');
@@ -277,7 +294,7 @@ async function newChat(projectPath = state.projectPath) {
   state.sessionId = uuid7(); Object.assign(state, createState());
   desktopBrowser?.selectSession(state.sessionId);
   state.loading = true;
-  state.sessions.unshift({ sessionId: state.sessionId, title: 'New conversation', hasMessages: false, projectPath, workspace: state.workspace, modelId: state.modelId, reasoningEffort: state.reasoningEffort, createdAt: new Date().toISOString() });
+  state.sessions.unshift({ sessionId: state.sessionId, title: 'New conversation', hasMessages: false, projectPath, workspace: state.workspace, modelId: state.modelId, reasoningEffort: state.reasoningEffort, speedPreset:state.speedPreset || 'custom', createdAt: new Date().toISOString() });
   state.projects = groupConversations(state.sessions, state.projects).slice(1).map(group => group.projectPath);
   await restoreWork(state.sessionId);
   await save(); return state;
@@ -291,7 +308,7 @@ async function resumeChat(sessionId) {
   state.loading = true; publish();
   try {
   if(!state.workUnavailable) await persistWork();
-  Object.assign(state, createState(), { loading: true, sessionId, projectPath: projectPathFor(session), workspace: session.workspace, modelId: session.modelId || state.modelId, reasoningEffort: session.reasoningEffort || state.reasoningEffort });
+  Object.assign(state, createState(), { loading: true, sessionId, projectPath: projectPathFor(session), workspace: session.workspace, modelId: session.modelId || state.modelId, reasoningEffort: session.reasoningEffort || state.reasoningEffort, speedPreset:session.speedPreset || (session.reasoningEffort?'custom':state.speedPreset) });
   if(desktopBrowser && desktopBrowser.sessionId!==sessionId)desktopBrowser.selectSession(sessionId,session.browser);
   publish();
   let nativeHistoryMissing = false;
@@ -459,7 +476,8 @@ async function executeTurn(text, validated, hooks) {
   const executionMode = state.projectPath === null ? 'readonly' : state.executionMode;
   try {
     temp = await mkdtemp(path.join(app.getPath('temp'), 'muse-desktop-input-'));
-    const promptFile = path.join(temp, 'prompt.txt'); await writeFile(promptFile, text || 'Describe the attached image.');
+    const brief=state.projectPath?await readProjectBrief(state.projectPath):null;
+    const promptFile = path.join(temp, 'prompt.txt'); await writeFile(promptFile,[brief?.text.trim()?`Shared project brief (.mora/project-brief.md):\n${brief.text}\n\nCurrent request:`:'',text || 'Describe the attached image.'].filter(Boolean).join('\n'));
     const imagePaths = [];
     for (const [index, image] of validated.entries()) {
       const ext = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp' }[image.mediaType];
@@ -467,7 +485,7 @@ async function executeTurn(text, validated, hooks) {
     }
     const session = currentSession();
     if (!session.customTitle && session.title === 'New conversation') session.title = (text.trim() || 'Image conversation').slice(0,65);
-    session.modelId = state.modelId; session.reasoningEffort = state.reasoningEffort;
+    session.modelId = state.modelId; session.reasoningEffort = state.reasoningEffort;session.speedPreset=state.speedPreset || 'custom';
     await save();
     if (state.stopping) throw new Error('Stopped before execution.');
     if (executionMode === 'full') {
@@ -521,6 +539,7 @@ async function executeTurn(text, validated, hooks) {
             state.activity = 'Reviewing file changes'; publish();
             try {
               const changes = await compareProject(state.workspace, before);
+              if(changes.files.length && projectRunner?.state.root===state.projectPath)await projectRunner.refreshTests();
               const item = updateReview(changes, false);
               if (changes.files.length || changes.partial) {
                 await saveChangeSummary(app.getPath('userData'), state.sessionId, item);
@@ -544,7 +563,7 @@ async function executeTurn(text, validated, hooks) {
     state.lastOutcome = {status:outcome?.stopped?'interrupted':failed?'failed':'finished',turnId:state.activeTurnId,message:outcome?.stopped?'Stopped. Review completed changes before continuing.':failed?'Muse did not complete this request.':'Muse finished this request.'};
     return { stopped: !!outcome?.stopped, failed, admitted };
   } catch (error) { if (temp && !runner.child) await rm(temp, { recursive: true, force: true }).catch(() => {}); throw error; }
-  finally {if(checkpoint)await checkpointStore().seal(checkpoint.id).catch(error=>{state.queuePaused=true;report(new Error(`Checkpoint needs review: ${error.message}`));});}
+  finally {if(checkpoint)await checkpointStore().seal(checkpoint.id).then(()=>{if(state.lastOutcome?.turnId===state.activeTurnId)state.lastOutcome.checkpointId=checkpoint.id;}).catch(error=>{state.queuePaused=true;report(new Error(`Checkpoint needs review: ${error.message}`));});}
 }
 
 function handle(name, fn) {
@@ -567,6 +586,7 @@ else {
   try { preferences = JSON.parse(await readFile(prefsPath, 'utf8')); }
   catch (error) { if (error.code !== 'ENOENT') { await rename(prefsPath, `${prefsPath}.corrupt-${Date.now()}`).catch(() => {}); state.error = 'Settings were unreadable. A backup was kept.'; } }
   for (const key of ['workspace','modelId','reasoningEffort','executionMode','speedPreset']) if (typeof preferences[key] === 'string') state[key] = preferences[key];
+  Object.assign(state,initialEffort(preferences));
   if (!['readonly','full'].includes(state.executionMode)) state.executionMode = 'readonly';
   const library = await loadConversations(app.getPath('userData'), preferences);
   state.sessions = library.sessions;
@@ -624,6 +644,8 @@ else {
   handle('website-tester',websiteCommand);
   handle('tester',testerCommand);
   handle('project-work',projectCommand);
+  handle('project-brief',projectBriefCommand);
+  handle('setup',async()=>{assertIdle(state);return inspectSetup({root:state.projectPath,account:state.account,connection:state.connection,executable:preferences.executable});});
   handle('browser', (action, payload) => browser.command(action, payload));
   handle('stitch', stitchCommand);
   handle('get-state', () => state);
@@ -665,6 +687,7 @@ else {
     }
     reconcileModel();
     if (options.executionMode !== undefined) { if (!['readonly','full'].includes(options.executionMode)) throw new Error('Invalid execution mode.'); state.executionMode = options.executionMode; }
+    const session=currentSession();if(session)Object.assign(session,{modelId:state.modelId,reasoningEffort:state.reasoningEffort,speedPreset:state.speedPreset || 'custom'});
     await save(); publish(); return state;
   });
   handle('pick-images', async () => { const result = await dialog.showOpenDialog(window, { properties: ['openFile','multiSelections'], filters: [{ name: 'Images', extensions: ['png','jpg','jpeg','webp'] }] }); if (result.canceled) return []; const images = []; for (const filename of result.filePaths) { if ((await stat(filename)).size > 10*1024*1024) throw new Error('Each image must be 10 MB or smaller.'); const ext = path.extname(filename).toLowerCase(); images.push({ mediaType: ext === '.png' ? 'image/png' : ext === '.webp' ? 'image/webp' : 'image/jpeg', base64Data: (await readFile(filename)).toString('base64'), name: path.basename(filename) }); } validateImages(images); return images; });

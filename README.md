@@ -47,6 +47,8 @@ Choose your Muse executable, reconnect the engine, and configure your own Google
 | Test my app | Runs configured checks with actual results, plus local page-load checking and one explicit repair/recheck. |
 | AI Tester (experimental) | Tests a running local app with native Spark, retains assertions and screenshots, reproduces findings, and repairs explicitly selected confirmed issues. |
 | Checkpoints | Saves source before changes; previews selective restore, protects newer edits and retains recovery checkpoints. |
+| Project brief | Edit shared goals, decisions and constraints; project chats use the current local brief on each request. |
+| Setup readiness | Check Muse/account, Node, Git, package manager and project commands without automatic installation. |
 | Projects & general chat | Group conversations under local project folders, or ask general questions without attaching a project. |
 | Persistent conversations | Restore chats across restarts and upgrades; remove a conversation explicitly from the sidebar. |
 | Live activity | Show current work, public progress messages, actual commands, tool arguments, output and exit codes supplied by Muse. |
@@ -66,8 +68,15 @@ The concise agent-facing feature reference is [docs/features.md](docs/features.m
 
 Each conversation keeps its own Muse session and context. Conversations inside a
 project can read the same project files, but do not automatically read each other's
-messages. Record shared decisions in project documentation when another chat needs
-to continue the work. General chats run in a private workspace with Read only mode.
+messages. Use **Project brief** to keep shared goals and decisions in
+`.mora/project-brief.md`; project requests read its latest saved contents. General
+chats run in a private workspace with Read only mode.
+
+For a first app, use **Check setup**, create a project with the starter, describe the
+change in chat, then choose **Run my app**. Finished requests offer preview and source
+Undo actions. **Test my app** runs configured checks and optional `test:flows` or
+`test:e2e` assertions; a passing script covers only its assertions. AI exploration
+remains experimental. Fresh profiles use Balanced; saved effort choices remain.
 
 ### Live work and completion
 

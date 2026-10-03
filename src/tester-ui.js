@@ -28,7 +28,7 @@ export function setupTester(api,onError) {
   }
   button.addEventListener('click',()=>{
     if(dialog)return;dialog=el('dialog');dialog.className='tester-dialog';dialog.setAttribute('aria-label','AI Tester');
-    const heading=el('h2','AI Tester'),description=el('p','Check a local app, keep the evidence, and repair selected confirmed issues. Browser sessions reset between cases; server data can change. Use test data.');
+    const heading=el('h2','AI Tester'),description=el('p','Experimental AI exploration: coverage varies between runs. Use Test my app for repeatable configured checks. Keep evidence and repair selected confirmed issues. Browser sessions reset between cases; server data can change. Use test data.');
     const form=el('form'),label=el('label','What should work?'),request=el('textarea');request.maxLength=12000;request.rows=3;request.setAttribute('aria-label','What should work?');request.placeholder='Example: a signed-in customer can add an item and keep their cart after reload.';label.append(request);
     const start=el('button','Start report');start.type='submit';form.append(label,start);form.addEventListener('submit',async event=>{event.preventDefault();start.disabled=true;selected.clear();await command('start',{request:request.value});start.disabled=!!state.testerActive;});
     const controls=el('div');controls.className='tester-controls';stop=el('button','Stop testing');stop.addEventListener('click',()=>command('stop'));

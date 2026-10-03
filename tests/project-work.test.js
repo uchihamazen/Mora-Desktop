@@ -29,6 +29,18 @@ test('Test runs configured checks in order and retains real failure evidence',()
  await project(root,{typecheck:'node work.cjs',build:'node work.cjs',test:'node work.cjs'},"console.log(process.argv[2]);process.exit(process.argv[2]==='test'?2:0)");const worker=new ProjectRunner(()=>{},{command});await worker.test(root);
  assert.deepEqual(worker.state.tests.results.map(x=>[x.script,x.status]),[['typecheck','passed'],['build','passed'],['test','failed']]);assert.equal(worker.state.tests.results[2].code,2);assert.equal(worker.state.tests.status,'failed');assert.equal(worker.state.tests.interactions,'not checked');
 }));
+test('essential flow scripts are repeatable, failures stay failed and unconfigured coverage stays unknown',()=>fixture(async root=>{
+ await project(root,{test:'node work.cjs','test:flows':'node work.cjs'},"if(process.argv[2]==='test:flows'){const assert=require('node:assert/strict');assert.equal(require('./app.cjs').add(2,3),5);console.log('Essential addition assertion passed')}");
+ const worker=new ProjectRunner(()=>{},{command});
+ for(let i=0;i<3;i++){await writeFile(path.join(root,'app.cjs'),'exports.add=(a,b)=>a+b');await worker.test(root);assert.equal(worker.state.tests.interactions,'passed');assert.match(worker.state.tests.results.at(-1).output,/assertion passed/);assert.ok(worker.state.tests.finishedAt);
+ await writeFile(path.join(root,'app.cjs'),'exports.add=(a,b)=>a-b');await worker.test(root);assert.equal(worker.state.tests.interactions,'failed');assert.equal(worker.state.tests.status,'failed');}
+ await project(root,{test:'node work.cjs'},'');await worker.test(root);assert.equal(worker.state.tests.interactions,'not checked');
+}));
+test('source changes make previous successful checks historical, and invalid configuration settles as failed',()=>fixture(async root=>{
+ await project(root,{test:'node work.cjs'},'');const worker=new ProjectRunner(()=>{},{command});await worker.test(root);assert.equal(worker.state.tests.status,'passed');
+ await writeFile(path.join(root,'app.js'),'new source');assert.equal(typeof worker.refreshTests,'function');await worker.refreshTests();assert.equal(worker.state.tests.status,'stale');
+ await writeFile(path.join(root,'package.json'),'{broken');await assert.rejects(worker.test(root));assert.equal(worker.state.tests.status,'failed');assert.equal(worker.active,false);
+}));
 test('missing scripts and preview coverage are reported honestly',()=>fixture(async root=>{
  await project(root,{},'');const worker=new ProjectRunner(()=>{},{command});await worker.test(root);assert.equal(worker.state.tests.status,'not configured');await assert.rejects(worker.run(root),/start|dev/i);
  await project(root,{check:'node work.cjs'},'');await worker.test(root,{previewCheck:async()=>({status:'failed',message:'Page could not load'})});assert.equal(worker.state.tests.status,'failed');assert.equal(worker.state.tests.preview.status,'failed');

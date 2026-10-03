@@ -3,6 +3,7 @@ import {promisify} from 'node:util';
 import {access} from 'node:fs/promises';
 import path from 'node:path';
 import {projectFile,projectScripts} from './project.js';
+import {projectRevision} from './tester.js';
 
 const exec=promisify(execFile),pause=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 const clean=text=>String(text).replace(/\x1b\[[0-9;]*[A-Za-z]/g,'');
@@ -16,14 +17,18 @@ export function localURL(text) {
 export async function scriptCommand(root,manager,script) {
   if(!['npm','pnpm','yarn'].includes(manager) || !/^[a-zA-Z0-9_:-]{1,80}$/.test(script))throw new Error('Choose a configured project script.');
   await projectFile(root);
-  const env={...process.env,CI:'true',BROWSER:'none',FORCE_COLOR:'0'};
   try{await exec('node',['--version'],{windowsHide:true,timeout:5000});}catch{throw new Error('Install Node.js, then restart Mora so Run and Test can find it.');}
-  if(process.platform!=='win32')return {file:manager,args:['run',script],env};
+  return packageCommand(manager,script);
+}
+export async function packageCommand(manager,script=null) {
+  if(!['npm','pnpm','yarn'].includes(manager) || (script!==null&&!/^[a-zA-Z0-9_:-]{1,80}$/.test(script)))throw Error('Choose a configured package manager and script.');
+  const env={...process.env,CI:'true',BROWSER:'none',FORCE_COLOR:'0'},args=script===null?['--version']:['run',script];
+  if(process.platform!=='win32')return {file:manager,args,env};
   let command;
   try {command=(await exec('where.exe',[`${manager}.cmd`],{windowsHide:true,timeout:5000})).stdout.trim().split(/\r?\n/)[0];await access(command);}
   catch {throw new Error(`Install ${manager}, then restart Mora so it can run this project.`);}
   if(/["&|<>%^!\r\n]/.test(command))throw new Error('The package manager path contains unsupported characters.');
-  return {file:process.env.ComSpec || 'C:\\Windows\\System32\\cmd.exe',args:['/d','/s','/c',`""${command}" run ${script}"`],env,windowsVerbatimArguments:true};
+  return {file:process.env.ComSpec || 'C:\\Windows\\System32\\cmd.exe',args:['/d','/s','/c',`""${command}" ${args.join(' ')}"`],env,windowsVerbatimArguments:true};
 }
 export async function occupiedPorts() {
   if(process.platform!=='win32')return new Set();
@@ -91,8 +96,9 @@ export class ProjectRunner {
   async test(root,{previewCheck}={}) {
     if(this.active)throw new Error('A project command is already starting or running.');
     if(this.runChild && this.state.root!==root)throw new Error('Stop the other project before testing.');
-    this.active=true;this.cancelled=false;this.state.root=root;this.state.tests={status:'running',results:[],preview:{status:'not checked',message:'Run the app to check page loading.'},interactions:'not checked'};this.publish();
+    this.active=true;this.cancelled=false;this.state.root=root;this.state.tests={status:'running',startedAt:new Date().toISOString(),results:[],preview:{status:'not checked',message:'Run the app to check page loading.'},interactions:'not checked'};this.publish();
     try {
+      this.state.tests.revision=await projectRevision(root).catch(()=>null);
       const config=await projectScripts(root);
       for(const script of config.checks) {
         if(this.cancelled)break;
@@ -108,11 +114,19 @@ export class ProjectRunner {
         this.publish();
       }
       if(!this.cancelled && previewCheck)try{this.state.tests.preview=await previewCheck();}catch(error){this.state.tests.preview={status:'failed',message:error.message};}
-      const results=this.state.tests.results;
+      const results=this.state.tests.results,flow=results.find(item=>item.script===config.flowScript);
+      this.state.tests.interactions=flow?.status || 'not checked';this.state.tests.flowScript=config.flowScript;
       this.state.tests.status=this.cancelled?'stopped':results.some(x=>x.status==='failed') || this.state.tests.preview.status==='failed'?'failed':results.length?'passed':'not configured';
       this.state.tests.message=this.state.tests.status==='passed'?'Configured checks passed. App interactions need their own tests.':this.state.tests.status==='not configured'?'No check, typecheck, build or test scripts are configured.':this.state.tests.status==='stopped'?'Checks stopped.':'Some checks failed. Review their output.';
+      await this.refreshTests();
       return this.state.tests;
-    }finally{this.active=false;this.publish();}
+    }catch(error){this.state.tests.status='failed';this.state.tests.message=error.message;throw error;}
+    finally{this.state.tests.finishedAt=new Date().toISOString();this.active=false;this.publish();}
+  }
+  async refreshTests() {
+    const tests=this.state.tests;if(!tests.revision || ['not checked','not configured','stopped','stale'].includes(tests.status))return;
+    const current=await projectRevision(this.state.root).catch(()=>null);
+    if(current!==tests.revision){tests.previousStatus=tests.status;tests.status='stale';tests.message='Historical checks: source changed or its revision could not be verified. Run Test my app again.';this.publish();}
   }
   async stopTests(){this.cancelled=true;await this.terminate(this.testChild);}
   async shutdown(){await this.stopTests();await this.stopRun();}

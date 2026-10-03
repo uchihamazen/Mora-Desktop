@@ -21,6 +21,13 @@
 - Project paths and chat identity persist in the existing conversation index and backup; project entries remain after their last chat is deleted. Full access remains available in project chats.
 - Verify grouping/lifecycle/persistence/date-boundary tests, `scripts/frontend-smoke.js`, and `scripts/projects-smoke.js [EXE] --send` for two real general replies with context and enabled sending after restart; tests use temporary profiles.
 
+## Shared project brief
+- Project brief edits `.mora/project-brief.md`, shared by project chats and read before every project request. General chats never inherit it; native project instructions remain applicable.
+- Keep the goal, decisions, commands and constraints within 24,000 characters. Reading needs a project; saving requires Full access and idle work. Paths reject links and traversal.
+- Atomic, serialized saves compare the editor's revision and refuse newer external edits. Unsaved text stays in the dialog on failure; reload/close requires explicit discard when dirty.
+- The file is ordinary project source, included in eligible checkpoints; it does not share other chats' messages or native context.
+- Verify brief/lifecycle tests, frontend editing/discard checks and `scripts/product-loop-smoke.js [EXE] --send` with an isolated profile.
+
 ## Chat organization and conversation find
 - Search filters chat titles and project names/paths in Active or Archived views; it does not search message history. Pins sort first within their project while preserving the remaining order.
 - Each chat has keyboard-accessible Options for rename, pin, archive and restore. Archiving keeps its session, native history, draft, queue and project; current work must stop before its chat can be archived. Deletion remains separate.
@@ -132,8 +139,8 @@
 
 ## Formatted answers and streaming
 - Headings, lists, tables, quotes, links and fenced code render as safe DOM nodes; raw HTML stays literal and only HTTP(S) links can open externally. Code Copy and supported Stitch image previews remain available.
-- Streaming retains unchanged chat rows, image nodes, sidebar entries and tool expansion state; closed tool output renders only when opened.
-- Quick, Balanced and Thorough select supported efforts on the current model; explicit model/effort controls remain available, and the chosen preset persists without changing providers.
+- Streaming retains unchanged chat rows, image nodes, sidebar entries and tool expansion state; closed tool output renders only when opened. Long chats initially show 200 recent items; Load older adds 200, preserving all saved history. Find searches rendered text.
+- Quick, Balanced and Thorough select supported efforts on the current model. Fresh profiles choose Balanced; existing explicit efforts and per-chat selections remain unchanged across restart. Model/provider behavior remains native.
 - Verify Markdown/speed tests, frontend smoke and `scripts/performance-smoke.js` (optional baseline renderer file; fixture results only). The optional pinned `scripts/sdk-probe.js` checks the SDK handshake in isolation; migration still requires live-event, cancellation, durable-resume and approval checks.
 
 ## Stitch image previews
@@ -147,7 +154,7 @@
 - Each PC needs its own installed/signed-in Muse; full diff previews need Git. The desktop bundles its runtime. Optional workflow-defaults uses Node on PATH and separately installed skill libraries, without an author-specific path.
 - Setup includes only application source/metadata; the source ZIP includes code/tests/public docs/plugins, excluding Git history, internal development records, outputs, dependencies, backups and chat profiles. First publication uses a new repository; older local commits contain personal paths. Private runtime filenames are ignored. The unsigned package does not modify security settings.
 - A manual/tag-triggered Windows GitHub workflow tests and builds Setup plus SHA-256 checksum as downloadable artifacts; publishing a GitHub Release remains a separate action.
-- `scripts/clean-local-builds.ps1` removes obsolete builds while retaining the installed app, releases, dependencies and chat/profile backups; `-WhatIf` previews targets. Verify archive membership, Node tests, relocated builds and installer smoke; another PC's Muse login requires testing there.
+- `scripts/clean-local-builds.ps1` removes obsolete builds while retaining the installed app, releases, dependencies and chat/profile backups; `-WhatIf` previews targets. Verify archive membership, Node tests, relocated builds and installer smoke; native login remains account-specific.
 
 ## Public documentation and licensing
 - README covers features, per-chat context, setup, technology stack, workflows, privacy, limitations and contribution steps; source code uses the repository's MIT license.
@@ -160,29 +167,29 @@
 - Account discovery distinguishes signed-in, key-based, sign-in-required, missing-engine and unknown states without storing native credentials or account details. Existing engine login remains authoritative.
 - Sign in opens the installed engine device-code flow at a validated HTTPS Meta link, displays its temporary code and supports cancellation, expiry and denial; attempts expire after five minutes and clear the code on completion.
 - Uses installed Muse 1.4.1 experimental account methods; older or unavailable methods show terminal sign-in guidance. Onboarding stays visible when action is needed, and unauthenticated sending preserves the draft.
-- Project creation validates the parent/name and never replaces an existing folder. The optional starter has dev/check/build/test scripts and needs Node.js on PATH; opening existing projects remains available.
-- Verify account/project tests, rendered first-run fixtures and native journey. Existing sign-in plus native issuance/cancellation have live proof; a fresh person's browser approval requires that person to complete Meta login.
+- Check setup in Welcome or engine settings probes installed Muse, account status, Node/Git versions, the selected package manager and configured commands. Missing/unknown states give next actions; checks install nothing and preserve credentials/settings.
+- Project creation validates names and never replaces folders; the Node starter needs no packages. Verify account/project/setup tests, first-run fixtures and native product loop. Native issuance/cancellation have live proof; browser approval stays with the user.
 
 ## Checkpoints and restore
 - Full access Muse requests and Run/Test commands save bounded project source checkpoints in the local app profile; failed or incomplete snapshots block mutation. Manual save/list/delete uses Checkpoints.
 - Includes dirty and visible untracked source; excludes generated/secret files even if tracked, rejects links, and limits files to 2 MiB, snapshots to 32 MiB/5,000 files and stored checkpoints to 256 MiB per project. Checkpoints are not a backup of databases, dependencies or secrets.
 - Automatic Muse/Test snapshots seal post-work hashes; restore previews select only those changed paths and flag later edits. Manual/Run snapshots require file selection. Stale previews refuse writes; newer edits need explicit acknowledgement.
-- Restore requires idle agent and stopped project commands, saves a recovery checkpoint, changes selected files only and leaves Git history intact. A partial filesystem failure preserves recovery and reports it; deleting a chat does not delete project checkpoints.
+- Undo this request beside the latest completed/interrupted editable request opens its sealed checkpoint review, stopping the owned preview first. Restore requires idle work, saves recovery, changes selected files only and leaves Git history intact. Partial failure preserves recovery; chat deletion retains checkpoints.
 - Verify checkpoint/lifecycle tests and native journey for dirty originals, additions/deletions, exclusions, link/bounds protection, later edits, stale previews, partial failures and restart persistence.
 
 ## Run my app
-- Runs the configured dev/start/serve script in the selected Node project, waits for a reported localhost URL to respond, then opens the native preview. Stop/Restart manages its owned process tree only.
+- Runs the configured dev/start/serve script, waits for a reported localhost URL to respond, then opens the native preview. Open preview reopens it; finished requests offer Run / open preview. Stop/Restart manages owned processes only.
 - Requires Node.js and the package manager declared in package.json (npm by default) on PATH; dependencies must already be installed. Missing scripts/runtime/dependencies report a next action rather than installing automatically.
 - Records occupied Windows TCP ports before launch, refuses previewing an existing owner and never kills another app to free a port; startup is bounded to 30 seconds and retained output to 24,000 characters.
 - Running apps may stay open while Muse edits the same project. Stop Run before switching projects or restoring; closing Mora stops owned project processes. Servers that print no local URL need a supported script.
 - Verify real Windows starter, occupied-port/exit/deadline/output/cleanup tests and packaged native journey including browser interaction and restart.
 
 ## Test my app and Fix failures
-- Runs configured typecheck (or check), build and test scripts sequentially; each result includes real exit/output with a two-minute deadline and CI mode. Stop tests cancels owned work; absent scripts are not configured, never passed.
+- Runs typecheck (or check), build, test and optional test:flows (or test:e2e) scripts sequentially with real exit/output, a two-minute deadline and CI mode. Stop cancels owned work; absent checks never pass.
 - Saves a checkpoint around checks and prevents agent/project switching during the command. Run may remain active for page-load checking.
-- Page load checks the running local app and reported console errors. Interaction coverage remains explicitly not checked by Mora; configured project tests determine their own coverage. A green script result does not establish every app behavior.
+- Page loading and essential-flow script outcomes are separate; only configured assertions have coverage. Add essential tests prepares an editable chat request without sending it. Results record time/revision and become historical after source changes; opening results rechecks the revision.
 - Fix failures requires Full access, failed checks and an idle engine; sends one bounded repair request, then rechecks once on successful completion. Follow-ups remain paused and failed repairs never loop automatically.
-- Verify real check/build/test results, failure/deadline/cancel/missing-script/page-load fixtures, one-repair orchestration and native journey.
+- Verify real scripts, three repeatable healthy/faulty unit pairs, failure/deadline/cancel/stale/configuration checks, repair orchestration and native healthy/faulty browser flow. AI exploration remains experimental and incomplete.
 
 ## Website tester (experimental)
 - Website tester and `/tester [URL] [objective]` use the installed Muse account and a dedicated packaged Playwright browser without source or repair tools. Workflow/page/site modes save bounded states, controls, observed relationships and explicit coverage gaps.

@@ -31,6 +31,7 @@ function harness(overrides = {}) {
   const handlers = {};
   const context = vm.createContext({
     path, Buffer, setTimeout, clearTimeout, ExecRunner: Runner,accountState,AccountLogin,parseTesterCommand,parseWebsiteTesterCommand,reportForRevision,projectRevision,
+    readProjectBrief:async()=>({text:'',revision:null}),
     Checkpoints:class {async create(){return {id:"checkpoint"};}async seal(){}},
     createState, assertIdle, applyEvent, validateImages, projectPathFor, groupConversations, effortForPreset, applyExecRecord: () => {},
     uuid7: () => 'session', app: { getPath: () => 'C:/temp' },
@@ -58,6 +59,25 @@ function harness(overrides = {}) {
   return { ...subject, stop: handlers.stop };
 }
 const tick = () => new Promise(resolve => setImmediate(resolve));
+
+test('a completed editable request retains its sealed checkpoint for inline Undo',async()=>{
+ const h=harness();h.state.executionMode='full';await h.sendMessage({text:'Change the app'});
+ for(let i=0;i<100&&h.state.busy;i++)await tick();
+ assert.equal(h.state.lastOutcome.checkpointId,'checkpoint');
+ const readonly=harness();await readonly.sendMessage({text:'Explain the app'});
+ for(let i=0;i<100&&readonly.state.busy;i++)await tick();
+ assert.equal(readonly.state.lastOutcome.checkpointId,undefined);
+});
+
+test('each project turn reads the current shared brief; general chats never inherit it',async()=>{
+ let brief='Goal: blue shop',reads=0;const prompts=[];
+ const h=harness({readProjectBrief:async()=>{reads++;return {text:brief};},writeFile:async(file,text)=>{if(file.endsWith('prompt.txt'))prompts.push(text);}});
+ await h.sendMessage({text:'Build it'});for(let i=0;i<100&&h.state.busy;i++)await tick();
+ assert.match(prompts[0],/Goal: blue shop/);brief='Goal: green shop';
+ await h.sendMessage({text:'Continue'});for(let i=0;i<100&&h.state.busy;i++)await tick();assert.match(prompts[1],/Goal: green shop/);
+ h.state.projectPath=null;await h.sendMessage({text:'General question'});for(let i=0;i<100&&h.state.busy;i++)await tick();
+ assert.equal(prompts[2],'General question');assert.equal(reads,2);
+});
 
 test('late tester reservation blocks a queue resume waiting on persistence',async()=>{
  let release,entered;const gate=new Promise(r=>release=r),waiting=new Promise(r=>entered=r);let first=true;
