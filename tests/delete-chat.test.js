@@ -6,6 +6,7 @@ import { readFile } from 'node:fs/promises';
 import { EventEmitter } from 'node:events';
 import { createState, assertIdle, applyEvent } from '../src/state.js';
 import { validateImages } from '../src/images.js';
+import {HistoryWindow} from '../src/history-window.js';
 import {accountState,AccountLogin} from '../src/account.js';
 
 // Execute the real main-process orchestration with controlled filesystem I/O.
@@ -20,7 +21,7 @@ function harness(overrides = {}) {
   const rmCalls = [];
   const writes = [];
   const context = vm.createContext({
-    path, Buffer, setTimeout, clearTimeout,
+    path, Buffer, setTimeout, clearTimeout, HistoryWindow,
     ExecRunner: Runner, accountState,AccountLogin,
     Checkpoints:class {async create(){return {id:"checkpoint"};}async seal(){}},
     createState, assertIdle, applyEvent, validateImages,

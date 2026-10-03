@@ -84,16 +84,21 @@ export class DesktopBrowser {
   clearSelection() {this.epoch++;clearInterval(this.timer);this.timer=null;this.annotationToken=null;this.state.selection=null;this.state.annotating=false;}
   async cancel() {const token=this.annotationToken;this.clearSelection();if(token!=null)await this.script(`(${selectOnPage.toString()})('cancel',${token})`).catch(()=>{});this.publish();}
   async navigate(url) {
-    const target=browserURL(url);await this.initialize();await this.cancel();await this.layout();
-    await this.view.webContents.loadURL(target);return this.state;
+    const target=browserURL(url);
+    if(this.navigation?.url===target)return this.navigation.pending;
+    const navigation={url:target,pending:(async()=>{await this.initialize();await this.cancel();await this.layout();await this.view.webContents.loadURL(target);return this.state;})()};
+    this.navigation=navigation;
+    try{return await navigation.pending;}
+    finally{if(this.navigation===navigation)this.navigation=null;}
   }
   async annotate(mode,noteEditor=false) {
     if(noteEditor&&!this.canEditNotes())throw Error('Wait for the message to be sent before adding a note.');
     if(this.editing)throw Error('Finish the open note first.');
     if(!['element','region'].includes(mode) || this.state.loading || !this.state.open || !/^https?:/.test(this.state.url))throw new Error('Open a web page before annotating.');
-    this.clearSelection();const epoch=this.epoch;this.annotationToken=epoch;this.state.annotating=true;
+    this.clearSelection();const epoch=this.epoch;this.annotationToken=epoch;
     await this.script(`(${selectOnPage.toString()})(${JSON.stringify(mode)},${epoch})`);
     if(this.epoch!==epoch)return this.state;
+    this.state.annotating=true;
     let reading=false,last='';
     this.timer=setInterval(async()=>{
       if(reading)return;reading=true;

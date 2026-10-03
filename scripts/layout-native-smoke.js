@@ -1,3 +1,4 @@
+import {waitForCondition} from './electron-ui.js';
 import {mkdtemp,mkdir,readFile,writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
@@ -47,7 +48,7 @@ try{
   assert.equal((await nativeView()).visible,false,'Quick Actions Settings must hide the native page');
   await page.getByRole('button',{name:'Close settings',exact:true}).click();
   await page.evaluate(url=>window.muse.browserCommand('navigate',{url:url+'?history=second'}),url);
-  await page.waitForFunction(async()=>!(await window.muse.browserCommand('state')).loading);
+  await waitForCondition(page,async()=>!(await window.muse.browserCommand('state')).loading);
   await page.locator('#preview-menu > summary').click();await page.locator('#browser-history-trigger').click();
   assert.equal(await page.locator('#preview-menu').evaluate(node=>node.open),true);
   assert.equal((await nativeView()).visible,false,'History picker must hide the native page');
@@ -56,7 +57,7 @@ try{
   assert.equal(await page.evaluate(()=>document.activeElement.checkVisibility()),true);
   await page.locator('#browser-history-trigger').click();
   await page.locator('#browser-history-menu button[data-value="0"]').click();
-  await page.waitForFunction(async url=>{const state=await window.muse.browserCommand('state');return state.url===url&&!state.loading;},url);
+  await waitForCondition(page,async url=>{const state=await window.muse.browserCommand('state');return state.url===url&&!state.loading;},url);
   await page.locator('#preview-menu').waitFor({state:'visible'});assert.equal(await page.locator('#preview-menu').evaluate(node=>node.open),false);
   await page.locator('#preview-menu > summary').click();
   await page.keyboard.press('Control+k');await page.getByLabel('Search quick actions',{exact:true}).fill('Toggle navigation');await page.keyboard.press('Enter');

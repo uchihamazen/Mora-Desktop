@@ -98,7 +98,11 @@ export class WebsiteBrowser {
     await Promise.all(this.page.frames().map(frame=>this.enableTeaching(frame)));await this.page.bringToFront();
   }
   async stopTeaching({drain=false}={}){
-    if(drain)await this.teachingQueue;this.teaching=null;const epoch=++this.teachingEpoch;
+    if(drain){
+      await Promise.all((this.context?.pages()||[]).flatMap(page=>page.frames().map(frame=>frame.evaluate(async()=>{const recording=globalThis.__moraTeaching;recording?.stop();await recording?.flush?.();}).catch(()=>{}))));
+      await this.teachingQueue;
+    }
+    this.teaching=null;const epoch=++this.teachingEpoch;
     await Promise.all((this.context?.pages()||[]).flatMap(page=>page.frames().map(frame=>frame.evaluate(installWebsiteTeaching,{mode:'off',epoch}).catch(()=>{}))));
   }
   invalidate(){this.observation=null;this.policy.version++;this.policy.grants=[];}

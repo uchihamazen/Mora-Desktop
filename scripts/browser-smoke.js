@@ -1,3 +1,4 @@
+import {waitForCondition} from './electron-ui.js';
 import {clickControl,launchDesktop} from './electron-ui.js';
 import {createServer} from 'node:http';
 import {mkdtemp,writeFile} from 'node:fs/promises';
@@ -45,9 +46,9 @@ try {
   assert.ok(await panelWidth()>initialWidth+90,'Dragging left expands the browser');
   await page.waitForTimeout(120);assert.equal((await nativeView()).visible,true,'Preview returns after resize');
   const viewport=await page.locator('#browser-viewport').boundingBox(),native=(await nativeView()).bounds;assert.ok(Math.abs(viewport.x-native.x)<=1&&Math.abs(viewport.width-native.width)<=1,'Native browser follows the divider');
-  await page.evaluate(url=>{window.slowNavigation=window.muse.browserCommand('navigate',{url});},url+'/slow-resize');await page.waitForFunction(async()=>(await window.muse.browserCommand('state')).loading);
+  await page.evaluate(url=>{window.slowNavigation=window.muse.browserCommand('navigate',{url});},url+'/slow-resize');await waitForCondition(page,async()=>(await window.muse.browserCommand('state')).loading);
   const loadingDivider=await page.locator('#browser-resizer').boundingBox();await page.mouse.move(loadingDivider.x+3,loadingDivider.y+100);await page.mouse.down();await page.mouse.move(loadingDivider.x+70,loadingDivider.y+100,{steps:4});await page.mouse.up();
-  assert.equal((await nativeView()).visible,false,'Finishing a resize cannot reveal the oversized loading surface');await page.evaluate(()=>window.slowNavigation);await page.waitForFunction(async()=>!(await window.muse.browserCommand('state')).loading);await waitNativeVisible();assert.equal((await nativeView()).visible,true);
+  assert.equal((await nativeView()).visible,false,'Finishing a resize cannot reveal the oversized loading surface');await page.evaluate(()=>window.slowNavigation);await waitForCondition(page,async()=>!(await window.muse.browserCommand('state')).loading);await waitNativeVisible();assert.equal((await nativeView()).visible,true);
   await page.evaluate(url=>window.muse.browserCommand('navigate',{url}),url);await web.locator('#card').waitFor();
   const savedWidth=await panelWidth();await page.reload();await page.locator('#browser-panel').waitFor();
   assert.ok(Math.abs(await panelWidth()-savedWidth)<2,'Preview width survives reload');assert.equal(await page.locator('.sidebar').isVisible(),false);
@@ -198,6 +199,7 @@ try {
   await page.locator('#browser-mobile').click();
   await web.waitForFunction(()=>innerWidth===390);
   assert.equal(await web.locator('#card').evaluate(element=>getComputedStyle(element).color),'rgb(0, 128, 0)','Mobile must activate responsive CSS');
+  await page.evaluate(async()=>{const rect=document.getElementById('browser-viewport').getBoundingClientRect();await window.muse.browserCommand('bounds',{x:rect.x,y:rect.y,width:rect.width,height:rect.height});});
   await page.evaluate(()=>window.muse.browserCommand('annotate',{mode:'element'}));await clickWeb('#link');
   await page.locator('#browser-selection').filter({hasText:'#link'}).waitFor();
   await page.locator('#browser-desktop').click();
@@ -232,7 +234,7 @@ try {
   await page.waitForFunction(()=>document.querySelector('#attachments img')?.naturalWidth>0);await assertSelectedImage(scrolledCrop,'Scrolled Mobile element');
   await writeFile('artifacts/browser-selected-scrolled.png',Buffer.from((await page.locator('#attachments img').getAttribute('src')).split(',')[1],'base64'));
   await page.locator('#browser-url').fill(url+'/slow');await page.locator('#browser-url').press('Enter');
-  await page.waitForFunction(async()=>(await window.muse.browserCommand('state')).loading);
+  await waitForCondition(page,async()=>(await window.muse.browserCommand('state')).loading);
   assert.equal(await page.locator('#browser-desktop').isDisabled(),true,'Device changes must wait for the new page to load');
   await assert.rejects(page.evaluate(()=>window.muse.browserCommand('device',{mode:'desktop'})),/page.*load/i);
   await page.waitForFunction(()=>!document.getElementById('browser-mobile').disabled);

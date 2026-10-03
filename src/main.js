@@ -32,10 +32,14 @@ import {TesterSolver} from './tester-solver.js';
 import {checkStitch,configureStitch,readStitchSettings,stitchStatus} from './stitch.js';
 import {checkTrello,configureTrello,readTrelloSettings,trelloStatus} from './trello.js';
 import {restoreWindowBounds,CompletionSignals} from './desktop-workspace.js';
+import {HistoryWindow} from './history-window.js';
+import {discoverContextPerformanceArgs} from './context-policy.js';
 
 const directory = path.dirname(fileURLToPath(import.meta.url));
 let window, prefsPath, museHome, executable, connectionAttempt, quitting = false;
 const runner = new ExecRunner();
+const historyWindow=new HistoryWindow();
+let contextPerformanceArgs=[];
 const state = { ...createState(), connection: 'connecting', workspace: '', projectPath: null, projects: [], modelId: 'muse-spark-1.3-contributor', reasoningEffort: '', executionMode: 'readonly', models: [], sessions: [], sessionId: null, engineVersion: '', transport: 'exec' };
 let preferences = {};
 let lastProjectExport;
@@ -238,7 +242,7 @@ function reportNotice(kind,value){completionNotices?.report(state,kind,value);}
 function markCurrentRead(){const chat=currentSession();if(chat?.unread){chat.unread=false;save().catch(report);publish();}}
 let queueOperation = Promise.resolve(), queueReservation = 0;
 function publish() {
-  if (!updateTimer) updateTimer = setTimeout(() => { updateTimer = null; if (window && !window.isDestroyed()) window.webContents.send('muse:event', { type: 'state', state }); }, 30);
+  if (!updateTimer) updateTimer = setTimeout(() => { updateTimer = null; if (window && !window.isDestroyed()) window.webContents.send('muse:event', { type: 'state', state:historyWindow.project(state) }); }, 30);
 }
 function report(error) { state.error = error.message || String(error); publish(); }
 function save() {
@@ -304,6 +308,7 @@ async function connectEngine() {
     state.account={status:'checking',message:'Checking Muse account…'};
     try {executable=await discoverMuse(preferences.executable);}
     catch(error){state.account={status:'missing',message:'Install Muse Code or choose its executable.'};throw error;}
+    contextPerformanceArgs=await discoverContextPerformanceArgs(executable);
     const metadata = await client.connect({ executable, workspace: state.workspace, args:['serve','--no-session-log'], experimentalApi:true });
     const accountTimeout=client.timeoutMs;client.timeoutMs=3000;
     try {state.account=accountState(await client.request('account/read'));}
@@ -584,7 +589,7 @@ async function executeTurn(text, validated, hooks) {
       runner.on('record', receive);
       const receiveDetails = record => { applyNativeRecord(state, record); publish(); };
       runner.on('history-record', receiveDetails);
-      runner.run({ executable, workspace: state.workspace, sessionId: state.sessionId, promptFile, images: imagePaths, executionMode, modelId: state.modelId, reasoningEffort: state.reasoningEffort, museHome })
+      runner.run({ executable, workspace: state.workspace, sessionId: state.sessionId, promptFile, images: imagePaths, executionMode, modelId: state.modelId, reasoningEffort: state.reasoningEffort, museHome, extraArgs:contextPerformanceArgs })
         .then(async result => {
           outcome = result;
           await reviewWatcher?.close();
@@ -643,7 +648,7 @@ async function executeTurn(text, validated, hooks) {
 function handle(name, fn) {
   ipcMain.handle(`muse:${name}`, async (event, ...args) => {
     if (!window || event.sender !== window.webContents || event.senderFrame !== window.webContents.mainFrame) throw new Error('Untrusted request.');
-    try { return await fn(...args); } catch (error) { if (!['browser','stitch'].includes(name)) report(error); throw error; }
+    try { const result=await fn(...args);return result===state?historyWindow.project(state):result; } catch (error) { if (!['browser','stitch','load-older'].includes(name)) report(error); throw error; }
   });
 }
 
@@ -713,7 +718,7 @@ else {
   projectRunner=new ProjectRunner(work=>{
     state.projectWork=work;publish();
     if(work.run.status!=='ready')openedRunURL=null;
-    if(work.run.status==='ready' && openedRunURL!==work.run.url){openedRunURL=work.run.url;browser.command('open').then(()=>browser.navigate(work.run.url)).catch(report);}
+    if(work.run.status==='ready' && openedRunURL!==work.run.url){openedRunURL=work.run.url;browser.navigate(work.run.url).catch(report);}
   });
   state.projectWork=projectRunner.state;
   testerReports=new TesterReports(app.getPath('userData'));
@@ -730,6 +735,7 @@ else {
   handle('stitch', stitchCommand);
   handle('trello', trelloCommand);
   handle('get-state', () => state);
+  handle('load-older',sessionId=>historyWindow.older(state,sessionId));
   handle('checkpoints',checkpointCommand);
   handle('account',async action=>{
     assertIdle(state);

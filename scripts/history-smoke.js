@@ -1,12 +1,10 @@
-import { createRequire } from 'node:module';
+import {launchDesktop,waitForCondition} from './electron-ui.js';
 import { mkdtemp, mkdir, writeFile, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import assert from 'node:assert/strict';
 import { uuid7 } from '../src/msp.js';
 import { sessionLogPath } from '../src/runtime.js';
-const require = createRequire(import.meta.url);
-const { _electron } = require('./runtime-packages.cjs').runtimeRequire('playwright');
 const root = path.resolve('.');
 const profile = await mkdtemp(path.join(tmpdir(), 'muse-history-profile-'));
 const home = path.join(profile, 'native-history');
@@ -21,11 +19,10 @@ const prefs = path.join(profile,'preferences.json');
 await writeFile(prefs, JSON.stringify({workspace:root,museHome:home,executable:path.join(profile,'missing-engine.exe'),sessions:[{sessionId,title:'Saved conversation',workspace:root}],lastSessionId:sessionId}));
 const env = {...process.env,MUSE_DESKTOP_TEST_USER_DATA:profile}; delete env.ELECTRON_RUN_AS_NODE;
 const packaged = process.argv[2] && path.resolve(process.argv[2]);
-const executablePath = packaged || require('electron');
 async function launch(cwd) {
- const electron = await _electron.launch({executablePath,args:packaged?[]:[root],cwd,env});
+ const electron = await launchDesktop(packaged,env,{cwd,source:root});
  const page = await electron.firstWindow();
- await page.waitForFunction(async()=>{const s=await window.muse.getState();return s.connection==='disconnected'&&!s.loading;});
+ await waitForCondition(page,async()=>{const s=await window.muse.getState();return s.connection==='disconnected'&&!s.loading;});
  assert.equal(await electron.evaluate(({app})=>app.getPath('userData')),profile);
  return {electron,page};
 }

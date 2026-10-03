@@ -8,6 +8,7 @@ import {tmpdir} from 'node:os';
 import { EventEmitter } from 'node:events';
 import { createState, assertIdle, applyEvent } from '../src/state.js';
 import { validateImages } from '../src/images.js';
+import {HistoryWindow} from '../src/history-window.js';
 import {accountState,AccountLogin} from '../src/account.js';
 import * as projectsApi from '../src/projects.js';
 
@@ -24,7 +25,7 @@ function harness(overrides = {}) {
   const mkdirCalls = [];
   const writes = [];
   const context = vm.createContext({
-    path, Buffer, setTimeout, clearTimeout,
+    path, Buffer, setTimeout, clearTimeout, HistoryWindow,
     ExecRunner: Runner, accountState,AccountLogin,
     Checkpoints:class {async create(){return {id:"checkpoint"};}async seal(){}},
     createState, assertIdle, applyEvent, validateImages,
@@ -35,6 +36,7 @@ function harness(overrides = {}) {
     uuid7: () => 'new-session',
     MspClient: class { async connect() { return {}; } async request() { return {}; } async close() {} },
     discoverMuse: async () => 'C:/muse.exe',
+    discoverContextPerformanceArgs:async()=>[],
     resolveSessionLogPath: (sessionId, museHome) => path.join(museHome || 'C:/muse', sessionId, 'session.jsonl'),
     app: { getPath: () => 'C:/temp' },
     mkdir: async (...args) => { mkdirCalls.push(args); },

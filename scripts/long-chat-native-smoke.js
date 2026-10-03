@@ -1,0 +1,44 @@
+import {waitForCondition} from './electron-ui.js';
+import assert from 'node:assert/strict';
+import {mkdtemp,mkdir,writeFile,readFile} from 'node:fs/promises';
+import {tmpdir} from 'node:os';
+import path from 'node:path';
+import {uuid7} from '../src/msp.js';
+import {sessionLogPath,readHistory} from '../src/runtime.js';
+import {launchDesktop} from './electron-ui.js';
+import {discoverContextPerformanceArgs} from '../src/context-policy.js';
+import {discoverMuse} from '../src/msp.js';
+const profile=await mkdtemp(path.join(tmpdir(),'mora-long-chat-')),home=path.join(profile,'history'),sessionId=uuid7(),filename=sessionLogPath(sessionId,home);
+await mkdir(path.dirname(filename),{recursive:true});
+const records=[];
+for(let i=0;i<2500;i++)records.push({payload:{kind:'run',run_id:'turn-'+i,event:{kind:'started',prompt:'Question '+i}}},{payload:{kind:'run',run_id:'turn-'+i,event:{kind:'assistant_message_committed',message_id:'reply-'+i,text:'Reply '+i+' '+('Retained history text. '.repeat(100))}}});
+await writeFile(filename,records.map(record=>JSON.stringify(record)).join('\n')+'\n');
+await writeFile(path.join(profile,'preferences.json'),JSON.stringify({workspace:profile,museHome:home,executable:path.join(profile,'missing-engine.exe'),sessions:[{sessionId,title:'Long chat fixture',workspace:profile}],lastSessionId:sessionId}));
+const env={...process.env,MUSE_DESKTOP_TEST_USER_DATA:profile};delete env.ELECTRON_RUN_AS_NODE;
+const app=await launchDesktop(undefined,env);let result;
+try{
+  const page=app.windows().find(candidate=>candidate.url().endsWith('/index.html'));
+  await waitForCondition(page,async()=>{const state=await window.muse.getState();return state.connection==='disconnected'&&!state.loading;});
+  const state=await page.evaluate(()=>window.muse.getState()),full=await readHistory(sessionId,home);
+  assert.equal(full.length,5000);assert.equal(state.historyCount,5000);assert.equal(state.items.length,200);assert.equal(await page.locator('#messages > .message').count(),200);
+  const fullBytes=Buffer.byteLength(JSON.stringify(full)),snapshotBytes=Buffer.byteLength(JSON.stringify(state));assert.ok(snapshotBytes<fullBytes/15,'Native state IPC must avoid cloning the full saved transcript');
+  const measureIPC=()=>page.evaluate(async()=>{const start=performance.now();for(let i=0;i<5;i++)await window.muse.getState();return Math.round((performance.now()-start)*100)/100;});
+  await app.evaluate(({ipcMain},items)=>{globalThis.historyStateHandler=ipcMain._invokeHandlers.get('muse:get-state');ipcMain.removeHandler('muse:get-state');ipcMain.handle('muse:get-state',async(...args)=>({...await globalThis.historyStateHandler(...args),items}));},full);
+  let fullIPC;try{fullIPC=await measureIPC();}finally{await app.evaluate(({ipcMain})=>{ipcMain.removeHandler('muse:get-state');ipcMain.handle('muse:get-state',globalThis.historyStateHandler);delete globalThis.historyStateHandler;});}
+  const windowIPC=await measureIPC();
+  await page.locator('#load-older').scrollIntoViewIfNeeded();const anchor=await page.locator('#messages > .message').first().elementHandle(),before=(await anchor.boundingBox()).y;
+  await page.locator('#load-older').click();await page.waitForFunction(()=>document.querySelectorAll('#messages > .message').length===400);
+  await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
+  assert.ok(Math.abs((await anchor.boundingBox()).y-before)<3,'Loading older entries must preserve the current reading position');
+  assert.equal((await page.evaluate(()=>window.muse.getState())).historyWindowSize,400);
+  await page.keyboard.press('Control+f');await page.locator('#find-text').fill('Retained history text');assert.doesNotMatch(await page.locator('#find-count').textContent(),/No matches/);await page.keyboard.press('Escape');
+  await page.locator('#prompt').fill('Keep my next request');await page.evaluate(()=>window.flushMoraDraft());
+  await page.evaluate(()=>window.muse.newChat());assert.equal((await page.evaluate(()=>window.muse.getState())).historyWindowSize,200);
+  await assert.rejects(page.evaluate(id=>window.muse.loadOlderMessages(id),sessionId),/chat changed/i);assert.equal((await page.evaluate(()=>window.muse.getState())).error,'','Stale history requests must not mark the new chat as failed');
+  await page.evaluate(id=>window.muse.resumeChat(id),sessionId);await page.waitForFunction(()=>document.getElementById('prompt').value==='Keep my next request');
+  assert.equal((await page.evaluate(()=>window.muse.getState())).items.length,200);assert.equal((await readHistory(sessionId,home)).length,5000);
+  const contextArgs=await discoverContextPerformanceArgs(await discoverMuse());assert.ok(contextArgs.includes('--max-tool-output-bytes'),'Current installed engine exposes bounded tool output');
+  await mkdir('artifacts/long-chat-proof',{recursive:true});await page.screenshot({path:'artifacts/long-chat-proof/history.png'});
+  result={version:await app.evaluate(({app})=>app.getVersion()),rows:full.length,initialRows:state.items.length,fullBytes,snapshotBytes,reductionPercent:Math.round((1-snapshotBytes/fullBytes)*10000)/100,ipcFixture:{calls:5,fullHistoryMs:fullIPC,windowMs:windowIPC},loadOlder:400,scrollAnchor:true,conversationFind:true,draftRetained:true,staleOwnerProtection:true,fullNativeHistoryPreserved:true,installedEngineArgs:contextArgs,noModelRequests:true,noExecutableBuild:true};
+  await writeFile('artifacts/long-chat-proof/result.json',JSON.stringify(result,null,2));console.log('PASS native long-chat IPC, older-history anchor, find, switching/draft retention, full native history and read-only engine capabilities. '+JSON.stringify(result));
+}finally{await app.close();}

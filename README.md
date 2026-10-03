@@ -57,6 +57,7 @@ Choose your Muse executable, reconnect the engine, and configure your own Google
 | Native editing menu | Right-click editing actions, spelling suggestions and dictionary support. |
 | Trello board connection | Save and verify read-only board access with your own API key and token; no card or AI automation. |
 | Persistent conversations | Restore chats across restarts and upgrades; remove a conversation explicitly from the sidebar. |
+| Long chats | Send recent history to the interface, load older entries on demand, and use supported native context compaction/output limits for model requests. |
 | Live activity | Show current work, public progress messages, actual commands, tool arguments, output and exit codes supplied by Muse. |
 | Live file reviews | Keep a Live changes bar above the composer during edits, then a completed inline badge; open a colored diff preview. |
 | Request queue | Durable follow-ups with images, edit/remove controls and explicit pause/resume; Stop preserves pending work. |

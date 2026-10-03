@@ -32,7 +32,7 @@ try{
   assert.equal(await page.locator('#speed').count(),0,'Mora work presets should be removed from the composer');
   assert.ok(await page.locator('#project-toolbar button:visible').count()<=2,'Only primary project actions should occupy the header');
   assert.ok((await page.locator('#browser-viewport').boundingBox()).y<200,'Preview controls must leave room for the page');
-  assert.equal(await page.locator('.browser-annotation').isVisible(),false,'The empty preview action strip should be hidden');
+  assert.equal(await page.locator('.browser-annotation').isVisible(),true,'The fixed annotation footer must keep capture bounds stable');
   assert.equal(await page.locator('.browser-history-label').isVisible(),false,'History should be accessible from the preview menu');
   await page.locator('#workspace-menu > summary').click();
   await page.locator('#project-brief').click();

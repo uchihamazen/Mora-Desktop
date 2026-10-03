@@ -29,7 +29,7 @@ export function teachingObjective(teaching,expected){
 // This fixed page script can submit suggestions only. It has no desktop command API.
 export function installWebsiteTeaching({mode,token,epoch}) {
   if((globalThis.__moraTeaching?.epoch||0)>epoch)return;
-  globalThis.__moraTeaching?.stop();const listeners=[],state={epoch,stop:()=>{}};let enterTarget;globalThis.__moraTeaching=state;if(mode==='off')return;
+  globalThis.__moraTeaching?.stop();const listeners=[],pending=new Set(),state={epoch,stop:()=>{},flush:()=>Promise.all([...pending])};let enterTarget;globalThis.__moraTeaching=state;if(mode==='off')return;
   const overlay=document.createElement('div');overlay.setAttribute('data-mora-teaching','');overlay.style.cssText='position:fixed;z-index:2147483647;pointer-events:none;border:2px solid #0082fb;background:#0082fb14;display:none';document.documentElement.append(overlay);
   const selector=node=>{const parts=[];for(let e=node;e?.nodeType===1&&parts.length<8;e=e.parentElement){if(e.id){parts.unshift('#'+CSS.escape(e.id));break;}const siblings=[...(e.parentElement?.children||[])].filter(s=>s.localName===e.localName);parts.unshift(e.localName+(siblings.length>1?`:nth-of-type(${siblings.indexOf(e)+1})`:''));}return parts.join(' > ');};
   const control=event=>event.composedPath().find(e=>e.nodeType===1&&e.matches('button,input,select,textarea,a[href],output,[role=button],[role=checkbox],[role=tab],[role=status]'));
@@ -38,7 +38,8 @@ export function installWebsiteTeaching({mode,token,epoch}) {
     const labelled=(node?.getAttribute('aria-labelledby')||'').split(/\s+/).map(id=>document.getElementById(id)?.innerText||'').join(' ');
     const name=(node?.getAttribute('aria-label')||labelled||(node?.labels?[...node.labels].map(l=>l.textContent).join(' '):'')||node?.innerText||node?.name||node?.tagName||'').trim().slice(0,180);
     const snapshot=node&&['click','press'].includes(action)?{name,tag:node.localName,type:node.getAttribute('type')||'',role:node.getAttribute('role')||'',href:node.href||'',frameUrl:location.href}:undefined;
-    globalThis.__moraTeachingEvent({token,action,selector:node?selector(node):'',value,url:location.href,control:snapshot}).catch(()=>{});
+    const request=globalThis.__moraTeachingEvent({token,action,selector:node?selector(node):'',value,url:location.href,control:snapshot}).catch(()=>{});
+    pending.add(request);request.finally(()=>pending.delete(request));
   };
   const block=event=>{event.preventDefault();event.stopImmediatePropagation();};
   const click=event=>{if(!event.isTrusted)return;const node=control(event);if(mode==='pick'){block(event);if(node)send('pick',node);}else if(node){if(event.detail===0&&enterTarget&&(node===enterTarget||node.form&&node.form===enterTarget.form))return;if(!['textarea','select'].includes(node.localName)&&!(node.localName==='input'&&!['checkbox','radio','button','submit','reset'].includes(node.type)))send('click',node);}};

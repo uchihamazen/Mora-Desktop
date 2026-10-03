@@ -13,7 +13,7 @@ try{
   });
   await page.goto(`http://127.0.0.1:${server.address().port}`);await page.locator('#model option').waitFor({state:'attached'});
   assert.equal(await page.locator('#ui-preview-label').count(),0);
-  assert.equal(await page.locator('.browser-annotation').isVisible(),false);
+  assert.equal(await page.locator('.browser-annotation').isVisible(),true,'The fixed annotation footer keeps capture bounds stable');
   assert.match(await page.locator('#engine-detail').textContent(),/Sample data/);
   assert.equal(await page.locator('#browser-panel').isVisible(),true);
   for(const id of ['model','effort','execution-mode']){

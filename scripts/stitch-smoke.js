@@ -9,7 +9,8 @@ const {_electron}=require('./runtime-packages.cjs').runtimeRequire('playwright')
 const profile=await mkdtemp(path.join(tmpdir(),'muse-stitch-profile-')),configRoot=path.join(profile,'config'),configFile=path.join(configRoot,'muse','settings.json');
 await mkdir(path.dirname(configFile),{recursive:true});
 await writeFile(configFile,JSON.stringify({schema_version:1,provider:'meta',model:'muse-spark-1.3-contributor'}));
-await copyFile(path.join(process.env.XDG_CONFIG_HOME || path.join(homedir(),'.config'),'muse','auth.json'),path.join(configRoot,'muse','auth.json'));
+const realSend=process.argv.includes('--send');
+if(realSend)await copyFile(path.join(process.env.XDG_CONFIG_HOME || path.join(homedir(),'.config'),'muse','auth.json'),path.join(configRoot,'muse','auth.json'));
 const calls=[];let deny=false;
 const tools=['list_projects','generate_screen_from_text','edit_screens','stitch_probe'].map(name=>({name,description:name==='stitch_probe' ? 'Read-only connection test. Returns STITCH_NATIVE_MCP_OK. Call this tool to verify the native Stitch MCP connection.' : 'Fixture '+name,inputSchema:{type:'object',properties:{},additionalProperties:false}}));
 const server=createServer(async(req,res)=>{
@@ -22,7 +23,7 @@ const server=createServer(async(req,res)=>{
 });
 await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
 const localURL=`http://127.0.0.1:${server.address().port}/mcp`,env={...process.env,XDG_CONFIG_HOME:configRoot,MUSE_DESKTOP_TEST_USER_DATA:profile};delete env.ELECTRON_RUN_AS_NODE;
-const executable=process.argv[2];
+const executable=process.argv.slice(2).find(argument=>!argument.startsWith('--'));
 const app=await _electron.launch({executablePath:executable || require('electron'),args:executable ? [] : ['.'],cwd:process.cwd(),env});
 try{
   const page=await app.firstWindow();await page.locator('#settings-button').click();
@@ -47,6 +48,7 @@ try{
   deny=true;await page.locator('#stitch-test').click();await page.locator('#stitch-status').filter({hasText:'rejected'}).waitFor();
   assert.doesNotMatch(await page.locator('#stitch-status').textContent(),/test-only-key/);assert.equal((await page.evaluate(()=>window.muse.getState())).error,'');deny=false;
   await page.locator('#stitch-test').click();await page.locator('#stitch-status').filter({hasText:'Connected'}).waitFor();
+  if(realSend){
   config.mcpServers.stitch.url=localURL;await writeFile(configFile,JSON.stringify(config));
   await page.locator('#connection-badge').filter({hasText:'Connected'}).waitFor();
   await page.evaluate(()=>window.muse.setOptions({reasoningEffort:'minimal',executionMode:'readonly'}));
@@ -55,6 +57,7 @@ try{
   do{state=await page.evaluate(()=>window.muse.getState());if(!state.busy && state.items.some(item=>item.kind==='agentMessage' && item.text))break;await new Promise(resolve=>setTimeout(resolve,100));}while(Date.now()<deadline);
   assert.equal(state.busy,false);assert.equal(state.error,'');assert.ok(calls.some(item=>item.params?.name==='stitch_probe'),'The real Muse engine must invoke the configured MCP tool');
   assert.match(state.items.filter(item=>item.kind==='agentMessage').map(item=>item.text).join('\n'),/STITCH_NATIVE_MCP_OK/);
+  }
   await page.locator('#stitch-disconnect').click();await page.locator('#stitch-status').filter({hasText:'Not connected'}).waitFor();assert.equal(JSON.parse(await readFile(configFile,'utf8')).mcpServers.stitch,undefined);
-  console.log('PASS Stitch settings: connection verified, secret stays out of UI state/errors, test/disconnect work, real Muse invokes native MCP fixture tool');
+  console.log('PASS Stitch settings: fixture connection verified, secret stays out of UI state/errors, test/disconnect work'+(realSend?', real Muse invokes native MCP fixture tool':'; no model/provider request'));
 }finally{await app.close();server.closeAllConnections();await new Promise(resolve=>server.close(resolve));}

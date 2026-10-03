@@ -30,6 +30,7 @@ try {
   await page.screenshot({path:'artifacts/stitch-image-preview.png'});
   await page.locator('#browser-button').click();
   const viewVisible=()=>app.evaluate(({BrowserWindow})=>{const window=BrowserWindow.getAllWindows()[0];return window.contentView.children.find(child=>child.webContents && child.webContents!==window.webContents)?.getVisible();});
+  const readyDeadline=Date.now()+10000;while(!await viewVisible()&&Date.now()<readyDeadline)await page.waitForTimeout(30);
   assert.equal(await viewVisible(),true);
   await page.locator('.change-badge').click();
   await page.locator('.changes-panel').waitFor();

@@ -8,7 +8,8 @@ import {mkdtemp,mkdir,writeFile,readFile,readdir} from 'node:fs/promises';
 import path from 'node:path';
 import assert from 'node:assert/strict';
 import {chromium} from 'playwright';
-const require=createRequire(import.meta.url),supplied=process.argv[2],exe=supplied?path.resolve(supplied):require('electron'),version=JSON.parse(await readFile('package.json','utf8')).version;
+if(!process.argv.includes('--send')){console.log('SKIP real-engine website journey: pass --send to authorize provider use. Offline tester journeys cover local fixtures.');process.exit(0);}
+const require=createRequire(import.meta.url),supplied=process.argv.slice(2).find(arg=>!arg.startsWith('--')),exe=supplied?path.resolve(supplied):require('electron'),version=JSON.parse(await readFile('package.json','utf8')).version;
 const base=path.resolve('artifacts/build-temp');await mkdir(base,{recursive:true});const profile=await mkdtemp(path.join(base,'website-journey-'));
 const server=createServer((req,res)=>{res.setHeader('Content-Type','text/html');res.setHeader('Set-Cookie','session=fixture-session; HttpOnly; SameSite=Lax');res.end('<!doctype html><html lang="en"><title>Counter check</title><main><h1>Counter check</h1><button onclick="document.querySelector(\'output\').textContent=\'Count: 1\'">Increase</button><output aria-label="Counter value">Count: 0</output></main></html>');});await new Promise(r=>server.listen(0,'127.0.0.1',r));const url=`http://127.0.0.1:${server.address().port}`;
 let child,browser,page;
@@ -25,7 +26,7 @@ async function close(){if(child?.exitCode===null){await page?.evaluate(()=>windo
 try {
  await launch();assert.equal((await page.evaluate(()=>window.muse.getState())).projectPath,null);
  await clickControl(page,'website-tester');await page.getByLabel('Website URL',{exact:true}).fill(url);await page.getByLabel('Workflow and expected result',{exact:true}).fill('Click Increase exactly once. Then check that the page contains Count: 1. Finish after that check.');
- await page.getByLabel('What to test').selectOption('workflow');await page.getByRole('button',{name:'Open website',exact:true}).click();await page.waitForFunction(()=>document.querySelector('.website-dialog [role=status]').textContent.startsWith('Ready for you'),null,{timeout:30000});
+ await page.locator('#website-field-mode').selectOption('workflow');await page.getByRole('button',{name:'Open website',exact:true}).click();await page.waitForFunction(()=>document.querySelector('.website-dialog [role=status]').textContent.startsWith('Ready for you'),null,{timeout:30000});
  await assert.rejects(page.evaluate(()=>window.muse.websiteTesterCommand('solve',{issues:['BUG-001']})),/unavailable|repair/i);
  await page.getByRole('tab',{name:'Setup',exact:true}).click();await page.getByText('Account, screen size and website limits',{exact:true}).click();await page.getByRole('button',{name:'Save this login',exact:true}).click();await page.waitForFunction(()=>document.querySelector('.website-dialog [role=status]').textContent.includes('Login saved'));
  const files=await readdir(path.join(profile,'website-reports','logins'));assert.equal(files.length,1);assert.equal((await readFile(path.join(profile,'website-reports','logins',files[0]))).includes(Buffer.from('fixture-session')),false);

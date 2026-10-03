@@ -35,7 +35,7 @@ let updateProjects,updateProjectWork,updateTester,updateWebsiteTester,updateRead
 const messageRows=new Map();
 let visibleHistory=200,historyOwner;
 const older=document.createElement('button');older.id='load-older';older.className='load-older';older.hidden=true;$('messages').before(older);
-older.addEventListener('click',()=>{const area=$('scroll-area'),height=area.scrollHeight;visibleHistory+=200;renderMessages();conversationFind.update(state.sessionId);requestAnimationFrame(()=>{area.scrollTop+=area.scrollHeight-height;});});
+older.addEventListener('click',async()=>{const owner=state.sessionId,area=$('scroll-area'),anchor=$('messages').firstElementChild,top=anchor?.getBoundingClientRect().top;older.disabled=true;try{if(api.loadOlderMessages){const next=await api.loadOlderMessages(owner);if(state.sessionId!==owner)return;update(next);}else{visibleHistory+=200;renderMessages();conversationFind.update(state.sessionId);}requestAnimationFrame(()=>{if(state.sessionId===owner&&anchor?.isConnected)area.scrollTop+=anchor.getBoundingClientRect().top-top;});}catch(e){if(state.sessionId===owner)error(e);}finally{older.disabled=false;}});
 let stitchConfigured=false,stitchChanging=false;
 function refreshStitch(){if(!api.stitchCommand)return;for(const name of ['connect','test','disconnect'])$(`stitch-${name}`).disabled=stitchChanging || state.busy || state.loading || (name==='test' && !stitchConfigured && !$('stitch-key').value.trim()) || (name==='disconnect' && !stitchConfigured);}
 async function stitchAction(name,payload) {
@@ -190,15 +190,17 @@ function renderMessages() {
   liveReview.hidden=!live;liveReview.replaceChildren();
   if(live){liveReview.append(textNode('strong',live.files.length+' '+(live.files.length===1?'file':'files')+' changed'+(live.partial?' · partial':'')));changeCounts(liveReview,live.added,live.removed);liveReview.append(textNode('span','Live','change-live'));liveReview.onclick=()=>showChanges(live);}else liveReview.onclick=null;
   if (openReviewId) {
-    const review=state.items.find(item=>item.itemId===openReviewId);
+    const review=state.items.find(item=>item.itemId===openReviewId) || (state.lastOutcomeReview?.itemId===openReviewId&&state.lastOutcomeReview);
     if(!review)closeChanges();else if(JSON.stringify(review)!==openReviewSignature)showChanges(review,true);
   }
   const area=$('scroll-area'),nearBottom=area.scrollHeight-area.scrollTop-area.clientHeight<130;
   if(historyOwner!==state.sessionId){historyOwner=state.sessionId;visibleHistory=200;}
+  if(Number.isInteger(state.historyWindowSize))visibleHistory=state.historyWindowSize;
   const history=(state.items || []).filter(item=>!item.retracted&&item!==live);
-  older.hidden=history.length<=visibleHistory;older.textContent=`Load older messages (${Math.max(0,history.length-visibleHistory)} remaining)`;
+  const historyCount=state.historyCount??history.length;
+  older.hidden=historyCount<=visibleHistory;older.textContent=`Load older messages (${Math.max(0,historyCount-visibleHistory)} remaining)`;
   const rows=[...history.slice(-visibleHistory),...(state.pendingQueue || []).map(entry=>({...entry,itemId:'queue-'+entry.queueId,kind:'queued'}))];
-  if(state.lastOutcome && !state.busy)rows.push({...state.lastOutcome,itemId:'outcome-'+state.lastOutcome.turnId,kind:'outcome',previewReady:state.projectWork?.root===state.projectPath&&state.projectWork?.run?.status==='ready',tools:(state.items || []).filter(item=>item.turnId===state.lastOutcome.turnId && (item.kind==='toolCall' || item.kind==='userShell')),review:(state.items || []).find(item=>item.turnId===state.lastOutcome.turnId && item.kind==='fileChanges'),activeRequest:state.activeRequest});
+  if(state.lastOutcome && !state.busy)rows.push({...state.lastOutcome,itemId:'outcome-'+state.lastOutcome.turnId,kind:'outcome',previewReady:state.projectWork?.root===state.projectPath&&state.projectWork?.run?.status==='ready',tools:state.lastOutcomeOperations??(state.items || []).filter(item=>item.turnId===state.lastOutcome.turnId && (item.kind==='toolCall' || item.kind==='userShell')),review:state.lastOutcomeReview??(state.items || []).find(item=>item.turnId===state.lastOutcome.turnId && item.kind==='fileChanges'),activeRequest:state.activeRequest});
   const seen=new Set();let position=0;
   for(const item of rows) {
     if(!['fileChanges','activity','toolCall','userShell','agentMessage','userMessage','queued','outcome'].includes(item.kind))continue;
@@ -233,7 +235,7 @@ function renderMessages() {
         else {
           node.className='completion-card '+item.status;node.append(textNode('strong',item.status==='finished'?'Request finished':item.status==='interrupted'?'Request interrupted':'Request failed'),textNode('p',item.message));
           if(item.review)node.append(textNode('p',item.review.files.length+' files changed · +'+item.review.added+' / -'+item.review.removed+(item.review.partial?' · partial review':'')));
-          if(item.tools.length){const details=document.createElement('details');details.append(textNode('summary','Show '+item.tools.length+' operation outcomes'));for(const tool of item.tools)details.append(textNode('p',(tool.commandText || tool.description || tool.tool || 'Operation')+' · '+(tool.status || 'unknown')+(Number.isInteger(tool.exitCode)?' · exit '+tool.exitCode:'')));node.append(details);}
+          if(item.tools.length){const details=document.createElement('details');details.append(textNode('summary','Show '+item.tools.length+' operation outcomes'));details.addEventListener('toggle',()=>{details.querySelectorAll('p').forEach(row=>row.remove());if(details.open)for(const tool of node.currentItem.tools)details.append(textNode('p',(tool.commandText || tool.description || tool.tool || 'Operation')+' · '+(tool.status || 'unknown')+(Number.isInteger(tool.exitCode)?' · exit '+tool.exitCode:'')));});node.append(details);}
           if(item.activeRequest){const details=document.createElement('details');details.append(textNode('summary',item.activeRequest.phase==='admitted'?'Saved request · review before continuing':'Unsubmitted request'),textNode('p',item.activeRequest.text));node.append(details);if(item.activeRequest.phase==='preparing'){const recover=textNode('button','Recover as draft');recover.addEventListener('click',()=>{if($('prompt').value || attachments.length){error('Keep or clear the current draft first.');return;}$('prompt').value=item.activeRequest.text;attachments=item.activeRequest.images || [];renderAttachments();scheduleDraft();});node.append(recover);}}
           const controls=textNode('div','','request-actions');
           if(item.status!=='finished'){const continuing=textNode('button','Continue in chat');continuing.title='Keep your draft and write the next step';continuing.addEventListener('click',()=>$('prompt').focus());controls.append(continuing);}

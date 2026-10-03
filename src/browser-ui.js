@@ -46,6 +46,15 @@ export function setupBrowser(api,addCapture,{flushDraft,send}={}) {
       api.browserCommand('bounds',{x:rect.x,y:rect.y,width:rect.width,height:rect.height}).catch(showError);
     });
   }
+  async function syncBounds() {
+    // Expansion and device controls can change layout in the same frame as the
+    // next click. Apply that rectangle before starting a selection.
+    await new Promise(resolve=>requestAnimationFrame(resolve));
+    cancelAnimationFrame(resizeFrame);
+    if(!state.open)return;
+    const rect=$('browser-viewport').getBoundingClientRect();
+    await api.browserCommand('bounds',{x:rect.x,y:rect.y,width:rect.width,height:rect.height});
+  }
   function showError(error){$('browser-error').textContent=error.message || String(error);$('browser-error').hidden=false;}
   function update(next) {
     state=next;if(!state.open)for(const popup of $('browser-panel').querySelectorAll('[popover]:popover-open'))popup.hidePopover();
@@ -89,7 +98,7 @@ export function setupBrowser(api,addCapture,{flushDraft,send}={}) {
   for(const mode of ['desktop','mobile'])$(`browser-${mode}`).addEventListener('click',()=>command('device',{mode}));
   $('browser-address').addEventListener('submit',event=>{event.preventDefault();command('navigate',{url:$('browser-url').value});});
   for(const action of ['back','forward','reload'])$(`browser-${action}`).addEventListener('click',()=>command(action));
-  async function annotate(mode){try{await flushDraft?.();await command('annotate',{mode,noteEditor:true});}catch(error){showError(error);}}
+  async function annotate(mode){try{await flushDraft?.();await syncBounds();await command('annotate',{mode,noteEditor:true});}catch(error){showError(error);}}
   $('browser-annotate').addEventListener('click',()=>annotate('element'));
   $('browser-region').addEventListener('click',()=>annotate('region'));
   $('browser-send-notes').addEventListener('click',()=>{if(expanded)expand(false);send?.();});

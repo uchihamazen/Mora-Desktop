@@ -24,20 +24,20 @@ const browser=await chromium.launch({channel:'msedge',headless:true});
 const fixture=await mkdtemp(path.join(tmpdir(),'mora-performance-'));
 async function measure(useBaseline=false) {
   const page=await browser.newPage();
-  await page.addInitScript(({historyRows})=>{
+  await page.addInitScript(({historyRows,useBaseline})=>{
     const items=Array.from({length:historyRows},(_,i)=>({itemId:'history-'+i,kind:'agentMessage',status:'completed',text:'Saved reply '+i}));
     items.push({itemId:'tool',kind:'toolCall',status:'completed',visibleOutput:'Tool output\n'.repeat(10000)});
     items.push({itemId:'stream',kind:'agentMessage',status:'inProgress',text:'Starting'});
     const sessions=Array.from({length:20},(_,i)=>({sessionId:'chat-'+i,title:'Chat '+i,projectPath:null,workspace:'C:\\Fixture'}));
-    let callback;
+    let callback,view;
     const state={sessionId:'chat-0',items,sessions,projects:[],draft:{text:'',images:[]},models:[],connection:'ready',busy:true,pendingQueue:[],projectPath:null};
-    window.fixture={state,emit:text=>{items.at(-1).text=text;callback({type:'state',state});}};
-    window.muse={getState:async()=>state,onEvent:cb=>{callback=cb;},copyText:async()=>{}};
-  },{historyRows});
+    window.fixture={state,emit:text=>{items.at(-1).text=text;callback({type:'state',state:view?view.project(state):state});}};
+    window.muse={getState:async()=>{if(!useBaseline)view=new (await import('/history-window.js')).HistoryWindow();return view?view.project(state):state;},onEvent:cb=>{callback=cb;},copyText:async()=>{},loadOlderMessages:async id=>view.older(state,id)};
+  },{historyRows,useBaseline});
   // Choose the renderer before the module request; both versions use the same fixture.
   if(useBaseline)await page.route('**/renderer.js',route=>route.fulfill({contentType:'application/javascript',body:baseline}));
   await page.goto(`http://127.0.0.1:${server.address().port}/`);
-  await page.waitForFunction(count=>document.querySelectorAll('#messages > *').length===count,useBaseline?historyRows+2:Math.min(200,historyRows+2));
+  await page.waitForFunction(count=>document.querySelectorAll('#messages > *').length===count,Math.min(200,historyRows+2));
   const result=await page.evaluate(async(historyRows)=>{
     let rowInsertions=0,sidebarInsertions=0;
     const rowObserver=new MutationObserver(records=>{for(const record of records)rowInsertions+=record.addedNodes.length;});
@@ -52,6 +52,9 @@ async function measure(useBaseline=false) {
     rowObserver.disconnect();sidebarObserver.disconnect();
     return {updates:100,historyRows,rowInsertions,sidebarInsertions,collapsedOutputBytes,savedRowRetained:saved===document.querySelector('#messages').firstElementChild,elapsedMs};
   },historyRows);
+  await page.evaluate(()=>{window.fixture.state.busy=false;window.fixture.state.lastOutcome={turnId:'outcome',status:'finished',message:'Completed fixture'};window.fixture.state.items.unshift(...Array.from({length:5000},(_,i)=>({itemId:'outcome-'+i,turnId:'outcome',kind:'toolCall',status:'completed',description:'Operation '+i})));window.fixture.emit('Finished');});
+  result.collapsedOutcomeRows=await page.locator('.completion-card details:not([open]) > p').count();
+  if(!useBaseline){await page.locator('.completion-card details > summary').click();await page.waitForFunction(()=>document.querySelectorAll('.completion-card details > p').length===5000);result.expandedOutcomeRows=await page.locator('.completion-card details > p').count();await page.locator('.completion-card details > summary').click();await page.waitForFunction(()=>!document.querySelector('.completion-card details > p'));}
   await page.close();return result;
 }
 try {
@@ -59,6 +62,7 @@ try {
   const after=await measure();
   assert.equal(after.rowInsertions,0);assert.equal(after.sidebarInsertions,0);
   assert.equal(after.collapsedOutputBytes,0);assert.equal(after.savedRowRetained,true);
+  assert.equal(after.collapsedOutcomeRows,0,'Collapsed completion summaries must defer old operation rows');
   for(let i=0;i<100;i++)await writeFile(path.join(fixture,`${i}.txt`),'Before\n');
   const original=await snapshotProject(fixture);
   await writeFile(path.join(fixture,'3.txt'),'Changed\n');

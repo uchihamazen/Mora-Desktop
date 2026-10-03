@@ -1,3 +1,4 @@
+import {waitForCondition} from './electron-ui.js';
 import {mkdtemp,mkdir,readFile,writeFile,stat} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
@@ -10,7 +11,7 @@ const env={...process.env,MUSE_DESKTOP_TEST_USER_DATA:profile};delete env.ELECTR
 let desktop,page;
 try{
   desktop=await launchDesktop(undefined,env);await desktop.firstWindow();page=desktop.windows().find(page=>page.url().endsWith('/index.html'));
-  await page.waitForFunction(async()=>{const state=await window.muse.getState();return state.connection==='ready'&&!state.loading;},null,{timeout:45000});
+  await waitForCondition(page,async()=>{const state=await window.muse.getState();return state.connection==='ready'&&!state.loading;},null,{timeout:45000});
   const errors=[];page.on('pageerror',error=>errors.push(error.message));
   // All Trello traffic is replaced inside this isolated process. No provider request occurs.
   await desktop.evaluate(({Menu})=>{
