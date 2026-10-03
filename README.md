@@ -43,7 +43,9 @@ Choose your Muse executable, reconnect the engine, and configure your own Google
 | Chat workspace | Saved drafts, safe Markdown headings/lists/tables, copyable code, images and automatic text direction. |
 | Image attachments | Pick or paste PNG, JPEG and WebP images into the main chat. |
 | Muse sign-in | Uses the existing engine login or opens native Meta browser sign-in, with cancellation and clear account status. |
-| Run my app | Starts your configured local app, waits for readiness and opens its preview; supports Stop/Restart. |
+| Run my app | Starts a configured Node app or plain HTML/CSS/JS website, waits for readiness and opens its preview; supports Stop/Restart. |
+| Export project | Saves eligible source and run instructions in a local ZIP, with a SHA-256 checksum. Review your code before sharing. |
+| Recovery actions | Offers relevant next steps beside errors; Continue in chat preserves your draft and sends nothing automatically. |
 | Test my app | Runs configured checks with actual results, plus local page-load checking and one explicit repair/recheck. |
 | AI Tester (experimental) | Tests a running local app with native Spark, retains assertions and screenshots, reproduces findings, and repairs explicitly selected confirmed issues. |
 | Checkpoints | Saves source before changes; previews selective restore, protects newer edits and retains recovery checkpoints. |
@@ -102,7 +104,7 @@ screenshots and generated replies do not establish that tests passed.
 | Windows 10/11 x64 | Required | Required for Windows packaging and desktop checks |
 | Muse engine | Installed and signed in on that PC | Required for live engine checks |
 | Git for Windows | Required for full diff previews | Required for repository work and diff tests |
-| Node.js 24+ | Required on PATH for Run/Test; desktop UI runtime is bundled | Required on PATH |
+| Node.js 24+ | Required on PATH for Node projects; plain websites use the bundled runtime | Required on PATH |
 | Package manager | npm, pnpm or yarn on PATH as declared by your project | pnpm 11.19.0 on PATH |
 | Stitch account/key | Only for Stitch features | Only for live Stitch features |
 
@@ -129,7 +131,7 @@ security settings. Upgrades and uninstall preserve the local chat profile.
 
 ### Build, run, check and restore
 
-1. Create or open a project. The starter runs without additional packages; existing projects need their dependencies installed.
+1. Create or open a project. Choose a Node app, plain HTML/CSS/JS website or empty folder. Plain websites need no Node installation; Node projects need their dependencies installed.
 2. Choose **Full access** when you want Muse to edit files. A complete source checkpoint is saved before each request.
 3. Select **Run my app** to see the local app in the preview. Use browser annotations to describe changes.
 4. Select **Test my app** for configured checks and page loading. Expand **Show results** for outputs. Interactions still need suitable project tests.

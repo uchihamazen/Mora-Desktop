@@ -17,6 +17,10 @@ export async function inspectSetup({root,account,connection,executable},{run=exe
   const checks=[muse,{id:'account',title:'Muse account',status:ready?'ready':account?.status==='required'?'missing':'unknown',detail:account?.message || (ready?'Your account is ready.':'Check sign-in in engine settings.')},node,git];
   if(root)try{
     const scripts=await readScripts(root);let manager;
+    if(scripts.manager==='static'){
+      Object.assign(node,{status:'ready',title:'Website runtime',detail:'Mora uses its own runtime for this plain website. No Node.js or package manager installation is needed.'});
+      checks.push({id:'commands',title:'Project commands',status:'ready',detail:'Run: plain website preview. No behavior tests are configured; page loading is a separate check.'});return checks;
+    }
     try{const settings=await packageSettings(scripts.manager);const result=await run(settings.file,settings.args,{...options,env:settings.env,windowsVerbatimArguments:settings.windowsVerbatimArguments});manager={status:'ready',detail:result.stdout.trim().slice(0,200)};}catch{manager={status:'missing',detail:`Install ${scripts.manager}, then restart Mora. This project selects ${scripts.manager}.`};}
     checks.push({id:'manager',title:`Package manager (${scripts.manager})`,...manager},{id:'commands',title:'Project commands',status:scripts.start?'ready':'unknown',detail:`Run: ${scripts.start || 'not configured'} · Checks: ${scripts.checks.join(', ') || 'not configured'}. Add scripts in package.json or describe your app in chat.`});
   }catch(error){checks.push({id:'commands',title:'Project commands',status:'unknown',detail:error.message});}

@@ -22,6 +22,9 @@ try{
   let callback;window.smoke={projectActions:[],restores:[],accountActions:[],projectsCreated:[],stopCalls:0,failDraft:false,sent:[],copied:'',deleted:[],created:[],emit:next=>{state={...state,...next};callback?.({type:'state',state});}};
   window.muse={projectCommand:async action=>{window.smoke.projectActions.push(action);},checkpointCommand:async(action,payload)=>{if(action==='list')return [{id:'cp1',label:'Before request',fileCount:1,createdAt:new Date().toISOString(),manual:false}];if(action==='preview')return {token:'token',checkpoint:{label:'Before request',manual:false},changes:[{path:'app.js',status:'restore original',conflict:true}]};if(action==='restore'){window.smoke.restores.push(payload);return {restored:1};}},chooseProjectParent:async()=> 'C:\\Projects',createProject:async payload=>{window.smoke.projectsCreated.push(payload);return state;},accountCommand:async action=>{window.smoke.accountActions.push(action);window.smoke.emit({account:action==='login'?{status:'pending',message:'Approve the code',userCode:'DEMO-CODE'}:{status:'required',message:'Sign in required'}});},getState:async()=>state,onEvent:cb=>{callback=cb;return()=>{}},copyText:async text=>{window.smoke.copied=text},setOptions:async options=>{state={...state,...options};return state},pickImages:async()=>[{mediaType:'image/png',base64Data:png,name:'image.png'}],newChat:async projectPath=>{window.smoke.created.push(projectPath);return state},resumeChat:async()=>state,deleteChat:async id=>{window.smoke.deleted.push(id);return state},chooseWorkspace:async()=>state,chooseMuse:async()=>state,connect:async()=>state,stopTurn:async()=>{window.smoke.stopCalls++;window.smoke.emit({busy:false,stopping:false,queuePaused:true});},sendMessage:async value=>{window.smoke.sent.push(value);return{accepted:true}},saveDraft:async value=>{if(window.smoke.failDraft)throw new Error('Disk save failed');window.smoke.draft=value;},queueCommand:async action=>{if(action==='clear')window.smoke.emit({pendingQueue:[]});return state;}};
   window.smoke.testerCalls=[];
+  window.smoke.reconnects=0;window.muse.connect=async()=>{window.smoke.reconnects++;window.smoke.emit({connection:'ready',error:''});return state;};
+  window.muse.exportProject=async()=>{if(window.smoke.exportFails)throw Error('Source limits exceeded.');return {destination:'C:\\Exports\\App.zip',fileCount:2,sha256:'a'.repeat(64)};};
+  window.muse.revealProjectExport=async()=>{window.smoke.revealed=true;};
   window.muse.inspectSetup=async()=>[{id:'muse',title:'Muse engine',status:'ready',detail:'Connected'},{id:'node',title:'Node.js',status:'missing',detail:'Install Node.js, then restart Mora.'}];
   window.smoke.brief={text:'Goal: build a local shop\r\n',revision:'brief-1'};
   window.muse.projectBriefCommand=async(action,payload)=>{if(action==='read')return window.smoke.brief;window.smoke.brief={text:payload.text,revision:'brief-2'};return window.smoke.brief;};
@@ -41,6 +44,13 @@ try{
  await page.locator('#welcome-setup').click();await page.getByRole('dialog',{name:'Setup readiness',exact:true}).waitFor();
  assert.match(await page.locator('.setup-checks').textContent(),/Node.js.*missing.*Install Node.js/);
  await page.getByRole('button',{name:'Close setup',exact:true}).click();
+ await page.evaluate(()=>window.smoke.emit({connection:'disconnected',error:'The engine disconnected.'}));
+ assert.equal(await page.locator('#recovery-reconnect').count(),1,'A disconnected engine needs an explicit recovery action');
+ await page.locator('#recovery-reconnect').click();await page.waitForFunction(()=>window.smoke.reconnects===1);
+ await page.evaluate(()=>window.smoke.emit({error:'Node is unavailable.'}));await page.locator('#recovery-setup').click();await page.getByRole('dialog',{name:'Setup readiness',exact:true}).waitFor();await page.getByRole('button',{name:'Close setup',exact:true}).click();
+ await page.evaluate(()=>window.smoke.emit({error:'',lastOutcome:{status:'interrupted',turnId:'recovery-test',message:'Request interrupted.'}}));
+ await page.locator('#prompt').fill('Keep this draft');await page.getByRole('button',{name:'Continue in chat',exact:true}).click();assert.equal(await page.locator('#prompt').inputValue(),'Keep this draft');assert.equal(await page.evaluate(()=>document.activeElement.id),'prompt');assert.equal(await page.evaluate(()=>window.smoke.sent.length),0);
+ await page.evaluate(()=>window.smoke.emit({lastOutcome:null}));await page.locator('#prompt').fill('');
  assert.equal(await page.locator('#sidebar-toggle').count(),1,'The navigation needs a persistent show/hide control');
  await page.locator('#sidebar-toggle').click();assert.equal(await page.locator('.sidebar').isVisible(),false);
  await page.locator('#welcome-setup').click();await page.getByRole('button',{name:'Open engine settings',exact:true}).click();await page.locator('.setup-dialog').waitFor({state:'detached'});
@@ -77,6 +87,7 @@ try{
  assert.equal(await page.locator('.brand strong').textContent(),'Mora');
  await page.waitForFunction(()=>[...document.querySelectorAll('.brand-mark,.welcome-emblem')].every(img=>img.complete&&img.naturalWidth>0));
  await page.evaluate(()=>window.smoke.emit({sessionId:'missing-history',error:'The original engine log is missing.',historyMissing:true}));
+ assert.equal(await page.locator('#recovery-new-chat').isVisible(),true);await page.evaluate(()=>window.smoke.emit({busy:true}));assert.equal(await page.locator('#recovery-new-chat').isDisabled(),true);await page.evaluate(()=>window.smoke.emit({busy:false}));
  await page.locator('#dismiss-error').click();
  await page.evaluate(()=>window.smoke.emit({engineVersion:'state update'}));
  assert.equal(await page.locator('#error-banner').isVisible(),false);
@@ -269,7 +280,12 @@ try{
  await page.getByRole('button',{name:'Create project',exact:true}).click();
  await page.waitForFunction(()=>window.smoke.projectsCreated.length===1);
  assert.equal(await page.evaluate(()=>window.smoke.projectsCreated[0].name),'First app');
+ await page.locator('#create-project').click();await page.getByRole('textbox',{name:'Project name',exact:true}).fill('Plain site');await page.getByLabel('Project starter',{exact:true}).selectOption('static');await page.getByRole('button',{name:'Choose parent folder',exact:true}).click();await page.getByRole('button',{name:'Create project',exact:true}).click();await page.waitForFunction(()=>window.smoke.projectsCreated.length===2);assert.equal(await page.evaluate(()=>window.smoke.projectsCreated[1].starter),'static');
  await page.evaluate(()=>window.smoke.emit({projectPath:'C:\\Projects\\First app',projectWork:{root:'C:\\Projects\\First app',run:{status:'ready',url:'http://localhost:3000'},tests:{status:'failed',message:'Tests failed',results:[{script:'test',status:'failed',output:'failure'}]}},executionMode:'readonly'}));
+ assert.equal(await page.locator('#error-banner').isVisible(),true,'Failed project checks must offer recovery without an engine error');assert.equal(await page.locator('#recovery-results').isVisible(),true);await page.locator('#recovery-results').click();assert.equal(await page.locator('#project-results').isVisible(),true);await page.locator('#recovery-results').click();assert.equal(await page.locator('#project-results').isVisible(),true);await page.locator('#project-output').click();
+ await page.evaluate(()=>window.smoke.emit({projectPath:'C:\\Projects\\Other'}));assert.equal(await page.locator('#recovery-results').isVisible(),false,'Recovery output must belong to the selected project');await page.evaluate(()=>window.smoke.emit({projectPath:'C:\\Projects\\First app',error:''}));
+ await page.locator('#export-project').click();await page.getByText('SHA-256: '+'a'.repeat(64),{exact:true}).waitFor();await page.getByRole('button',{name:'Copy checksum',exact:true}).click();assert.equal(await page.evaluate(()=>window.smoke.copied),'a'.repeat(64));await page.getByRole('button',{name:'Show ZIP in folder',exact:true}).click();assert.equal(await page.evaluate(()=>window.smoke.revealed),true);await page.getByRole('button',{name:'Close export',exact:true}).click();assert.equal(await page.locator('#export-project').evaluate(e=>e===document.activeElement),true);
+ await page.evaluate(()=>window.smoke.exportFails=true);await page.locator('#export-project').click();await page.getByText('Source limits exceeded.',{exact:true}).waitFor();assert.equal(await page.getByRole('button',{name:'Copy checksum',exact:true}).isVisible(),false);await page.getByRole('button',{name:'Close export',exact:true}).click();await page.evaluate(()=>window.smoke.exportFails=false);
  await page.locator('#run-project').waitFor({state:'hidden'});assert.equal(await page.locator('#fix-tests').isDisabled(),true);
  await page.locator('#project-brief').click();await page.getByLabel('Shared project brief',{exact:true}).waitFor();
  assert.equal(await page.getByRole('button',{name:'Save brief',exact:true}).isDisabled(),true);

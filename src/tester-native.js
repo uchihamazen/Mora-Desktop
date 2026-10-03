@@ -42,7 +42,9 @@ export class TesterNative {
   async decide(prompt,{image,allowedActions=this.schema.properties.action.enum,timeoutMs=this.decisionTimeoutMs}={}) {
     if(this.stopped)throw Error('Testing stopped.');
     const promptFile=path.join(this.workspace,'request.txt');await writeFile(promptFile,prompt);
-    await writeFile(this.schemaFile,JSON.stringify({...this.schema,properties:{...this.schema.properties,action:{type:'string',enum:allowedActions}}}));
+    const review=allowedActions.length===1&&allowedActions[0]==='review'&&this.schema.properties.supported;
+    const fields=review?['action','supported','note']:Object.keys(this.schema.properties);
+    await writeFile(this.schemaFile,JSON.stringify({...this.schema,properties:{...Object.fromEntries(fields.map(key=>[key,this.schema.properties[key]])),action:{type:'string',enum:allowedActions}},required:review?fields:this.schema.required}));
     if(this.stopped)throw Error('Testing stopped.');
     let forbidden=false,timedOut=false;
     const observe=record=>{if(record.payload?.event?.task_kind?.startsWith('tool.')){forbidden=true;this.runner.stop().catch(()=>{});}};

@@ -37,6 +37,11 @@ test('control identities survive new observation references and values but disti
  assert.equal(api.controlKey(a),api.controlKey({...a,id:'e9',value:'new'}));
  assert.notEqual(api.controlKey(a),api.controlKey({...a,frameUrl:'https://site.example/frame'}));
 });
+test('breadth discovery gives an unvisited navigation destination priority over repeated interactions',()=>{
+ const map=api.createDiscovery(),scope={entryUrl:'https://site.example/',navigationOrigins:['https://site.example'],includePaths:[],excludePaths:[]};
+ const state=api.observeState(map,obs({controls:[{id:'e1',name:'Add item',tag:'button'},{id:'e2',name:'Settings',tag:'a',href:'https://site.example/settings'}]}));
+ assert.equal(api.nextDiscovery(map,scope,state.stateId).item?.name,'Settings');
+});
 
 test('page discovery stays on the chosen path and includes native toggles',()=>{
  const scope={entryUrl:'https://site.example/cart',navigationOrigins:['https://site.example'],includePaths:[],excludePaths:[]},map=api.createDiscovery();

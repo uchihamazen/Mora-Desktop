@@ -12,6 +12,7 @@ import {loadWork, saveWork, deleteWork, validateDraft} from './work.js';
 import {effortForPreset,initialEffort} from './speed.js';
 import {accountState,AccountLogin} from './account.js';
 import {createProject} from './project.js';
+import {exportProject} from './project-export.js';
 import {readProjectBrief,saveProjectBrief} from './project-brief.js';
 import {inspectSetup} from './setup.js';
 import {Checkpoints} from './checkpoints.js';
@@ -35,6 +36,7 @@ let window, prefsPath, museHome, executable, connectionAttempt, quitting = false
 const runner = new ExecRunner();
 const state = { ...createState(), connection: 'connecting', workspace: '', projectPath: null, projects: [], modelId: 'muse-spark-1.3-contributor', reasoningEffort: 'max', executionMode: 'readonly', models: [], sessions: [], sessionId: null, engineVersion: '', transport: 'exec' };
 let preferences = {};
+let lastProjectExport;
 let projectRunner, desktopBrowser, drainCompletion, projectOperation=false, projectCancelled=false, repairInProgress=false;
 let testerReports,testerRun,testerCompletion,testerEpoch=0;
 let websiteReports,websiteRun,websiteCommandBusy=false;
@@ -168,6 +170,17 @@ async function projectBriefCommand(action,payload={}) {
   try{return await saveProjectBrief(state.projectPath,payload);}
   finally{projectOperation=false;state.projectOperation=false;publish();}
 }
+async function exportProjectCommand(){
+  assertIdle(state);const root=state.projectPath;
+  if(!root)throw Error('Open a project before exporting its source.');
+  if(projectOperation||repairInProgress||projectRunner?.active||state.testerActive||state.websiteActive)throw Error('Wait for current work before exporting.');
+  projectOperation=true;state.projectOperation=true;publish();
+  try{
+    const choice=await dialog.showSaveDialog(window,{title:'Export project source',defaultPath:path.join(app.getPath('desktop'),path.basename(root)+'-source.zip'),filters:[{name:'ZIP archive',extensions:['zip']}]});
+    if(choice.canceled)return null;
+    const result=await exportProject(root,choice.filePath);lastProjectExport=result.destination;return result;
+  }finally{projectOperation=false;state.projectOperation=false;publish();}
+}
 async function repairFailures() {
   assertIdle(state);if(projectOperation || repairInProgress)throw new Error('Wait for the current project command.');
   if(state.executionMode!=='full' || !state.projectPath)throw new Error('Choose Full access before asking Muse to fix project files.');
@@ -262,7 +275,7 @@ async function connectEngine() {
     state.account={status:'checking',message:'Checking Muse account…'};
     try {executable=await discoverMuse(preferences.executable);}
     catch(error){state.account={status:'missing',message:'Install Muse Code or choose its executable.'};throw error;}
-    const metadata = await client.connect({ executable, workspace: state.workspace, experimentalApi:true });
+    const metadata = await client.connect({ executable, workspace: state.workspace, args:['serve','--no-session-log'], experimentalApi:true });
     const accountTimeout=client.timeoutMs;client.timeoutMs=3000;
     try {state.account=accountState(await client.request('account/read'));}
     catch {state.account=accountState(null);}
@@ -276,6 +289,7 @@ async function connectEngine() {
     reconcileModel();
     await save();
     state.connection = 'ready';
+    publish();
   } catch (error) { state.connection = 'disconnected'; report(error); }
   finally { await client.close(); publish(); }
   return state;
@@ -645,6 +659,8 @@ else {
   handle('tester',testerCommand);
   handle('project-work',projectCommand);
   handle('project-brief',projectBriefCommand);
+  handle('export-project',exportProjectCommand);
+  handle('reveal-project-export',()=>{if(!lastProjectExport)throw Error('Export a project first.');shell.showItemInFolder(lastProjectExport);});
   handle('setup',async()=>{assertIdle(state);return inspectSetup({root:state.projectPath,account:state.account,connection:state.connection,executable:preferences.executable});});
   handle('browser', (action, payload) => browser.command(action, payload));
   handle('stitch', stitchCommand);
@@ -661,7 +677,7 @@ else {
     await login.start({executable:target,workspace:state.workspace});return state.account;
   });
   handle('project-parent',async()=>{assertIdle(state);const result=await dialog.showOpenDialog(window,{properties:['openDirectory','createDirectory'],title:'Choose where to create your project'});return result.canceled?null:result.filePaths[0];});
-  handle('create-project',async payload=>{assertIdle(state);const folder=await createProject(payload?.parent,payload?.name,{starter:payload?.starter!==false});return newChat(folder);});
+  handle('create-project',async payload=>{assertIdle(state);const folder=await createProject(payload?.parent,payload?.name,{starter:payload?.starter??true});return newChat(folder);});
   handle('connect', connect);
   handle('new-chat', newChat);
   handle('resume-chat', resumeChat);
@@ -696,11 +712,12 @@ else {
   await restoreWork('new');
   // Restore chat ownership before the renderer can open a native browser view.
   if (preferences.lastSessionId && state.sessions.some(s => s.sessionId === preferences.lastSessionId)) await resumeChat(preferences.lastSessionId).catch(report);
+  const engineReady=connect();
   await window.loadFile(path.join(directory, 'index.html'));
   // Loading saved work can postpone the first paint of a hidden native view.
   if(!window.isVisible()) window.show();
   publish();
-  await connect();
+  await engineReady;
   app.on('before-quit', event => { if (!quitting && runner.child) { event.preventDefault(); quitting = true; runner.stop().finally(() => app.quit()); } });
   app.on('window-all-closed', () => {Promise.allSettled([login.cancel(),projectRunner.shutdown(),runner.stop()]).then(()=>app.quit());});
   }).catch(error => { dialog.showErrorBox('Mora Desktop could not start', error.message); app.quit(); });

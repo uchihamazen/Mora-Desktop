@@ -59,7 +59,7 @@ export class WebsiteRun {
     await this.browser.stopTeaching?.();this.current(preparingEpoch);
     if(request!==undefined){if(typeof request!=='string'||!request.trim()||request.length>12000)throw Error('Describe the expected workflow in at most 12000 characters.');if(redactText(request)!==this.report.request)this.invalidateCases('The testing objective changed.');this.report.request=redactText(request);}
     this.report.options=websiteRunOptions(options,{...this.defaults(),...this.report.options});this.report.discovery||=createDiscovery();this.report.cases||=[];this.report.accessibility||=[];
-    const epoch=++this.epoch;this.browser.manual=false;this.modelUnavailable=false;this.report.status='running';this.report.message='Discovering behavior and checking expected outcomes…';delete this.report.pending;
+    const epoch=++this.epoch;this.browser.manual=false;this.modelUnavailable=false;this.reviewUnavailable=false;this.report.status='running';this.report.message='Discovering behavior and checking expected outcomes…';delete this.report.pending;
     this.report.metrics={startedMs:Date.now(),actions:0,decisions:0,modelMs:0,checked:0,elapsedMs:0};this.scanned=new Set();this.planned=new Map();this.deepPlanned=new Set();this.phase='breadth';await this.save();if(epoch!==this.epoch)return this.report;
     const model=this.makeModel();this.model=model;
     this.completion=this.loop(epoch).catch(async error=>{
@@ -75,9 +75,10 @@ export class WebsiteRun {
   context(observation){return {observation,scope:this.report.scope,request:this.report.request,stateId:stateFingerprint(observation)};}
   async observe(epoch){this.current(epoch);const observation=await this.browser.observe();this.current(epoch);observeState(this.report.discovery,observation);this.report.blockedOrigins=observation.blockedOrigins||[];return observation;}
   async decide(prompt,epoch,settings){
-    this.current(epoch);if(this.modelUnavailable)return null;this.budget(epoch,{decision:true});this.report.metrics.decisions++;const start=Date.now();
+    const review=settings?.allowedActions?.length===1&&settings.allowedActions[0]==='review';
+    this.current(epoch);if(this.modelUnavailable&&(!review||this.reviewUnavailable))return null;this.budget(epoch,{decision:true});this.report.metrics.decisions++;const start=Date.now();
     try{const result=await this.model.decide(prompt,{...settings,timeoutMs:Math.max(1,Math.min(90000,settings?.timeoutMs??90000,this.report.options.maxMs-(Date.now()-this.report.metrics.startedMs)))});this.current(epoch);return result;}
-    catch(error){this.current(epoch);if(error.code!=='MORA_DECISION_TIMEOUT')throw error;this.modelUnavailable=true;this.gap('AI planning timed out. Already validated cases can run; new plans and expectation reviews remain untested.');await this.save();return null;}
+    catch(error){this.current(epoch);if(error.code!=='MORA_DECISION_TIMEOUT')throw error;this.modelUnavailable=true;if(review)this.reviewUnavailable=true;this.gap(review?'AI expectation review timed out. Unsupported failures remain unconfirmed; no further AI planning or reviews will run.':'AI planning timed out. Already validated cases can run and their failures can receive independent expectation reviews within the remaining budget. New plans remain untested.');await this.save();return null;}
     finally{this.report.metrics.modelMs+=Date.now()-start;}
   }
   prompt(observation) {

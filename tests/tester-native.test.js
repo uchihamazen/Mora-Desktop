@@ -1,9 +1,16 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtemp} from 'node:fs/promises';
+import {mkdtemp,readFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {TesterNative,createWebsiteObserver} from '../src/tester-native.js';
+import {websiteDecisionSchema} from '../src/website-run.js';
+
+test('website expectation reviews request only their own output fields, keeping the planning schema intact',async()=>{
+ const native=new TesterNative('unused',{schema:websiteDecisionSchema});native.workspace=await mkdtemp(path.join(tmpdir(),'mora-native-review-'));native.schemaFile=path.join(native.workspace,'schema.json');
+ native.runner.run=async()=>{const schema=JSON.parse(await readFile(native.schemaFile,'utf8'));assert.deepEqual(Object.keys(schema.properties).sort(),['action','note','supported']);assert.deepEqual(schema.properties.action.enum,['review']);assert.deepEqual(schema.required.sort(),['action','note','supported']);return {code:0,terminal:{terminal:'completed',text:JSON.stringify({action:'review',supported:true,note:'Explicit rule'})}};};native.runner.stop=async()=>{};
+ assert.equal((await native.decide('Review only the original requirement',{allowedActions:['review']})).supported,true);assert.ok(websiteDecisionSchema.properties.cases);
+});
 test('website observer exposes no repair method or project initialization arguments',async()=>{
  const calls=[],native={initialize:async(...args)=>calls.push(args),decide:async()=>({action:'finish'}),stop:async()=>{},close:async()=>{}};
  const observer=createWebsiteObserver('unused',{native});

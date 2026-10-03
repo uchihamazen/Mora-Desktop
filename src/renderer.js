@@ -26,6 +26,7 @@ setSidebar(sidebarCollapsed);
 $('sidebar-toggle').addEventListener('click',()=>setSidebar(!sidebarCollapsed));
 const dismissedErrors = new Set();
 let state = { items: [], sessions: [], models: [], busy: false, connection: 'connecting' };
+let projectFailureNotice='';
 let attachments = [], sending = false, lastSignature = '', startedAt = 0;
 let draftOwner, draftTimer, draftWrites=Promise.resolve();
 let updateProjects,updateProjectWork,updateTester,updateWebsiteTester,updateReadiness;
@@ -49,9 +50,23 @@ async function stitchAction(name,payload) {
 let openReviewId = null, selectedReviewPath = null, openReviewSignature = '';
 const icon = name => { const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); const use = document.createElementNS('http://www.w3.org/2000/svg', 'use'); use.setAttribute('href', `#i-${name}`); svg.append(use); return svg; };
 const textNode = (tag, text, className) => { const node = document.createElement(tag); node.textContent = text; if (className) node.className = className; return node; };
-function error(error) { $('error-text').textContent = (error?.message || String(error)).replace(/^Error invoking remote method '[^']+': Error: /, ''); $('error-banner').hidden = false; }
+function error(error) { $('error-text').textContent = (error?.message || String(error)).replace(/^Error invoking remote method '[^']+': Error: /, ''); $('error-banner').hidden = false; refreshRecovery(); }
 const errorKey = message => JSON.stringify([state.sessionId, message]);
 async function action(fn, {flush=true}={}) { try { if(flush && !state.workUnavailable)await flushDraft(); const result = await fn(); if (result?.connection) update(result); return result; } catch (e) { error(e); } }
+const recovery=textNode('div','','recovery-actions');$('error-banner').append(recovery);
+for(const [id,label,run] of [
+  ['reconnect','Reconnect engine',()=>action(()=>api.connect())],
+  ['signin','Sign in to Muse',()=>action(()=>api.accountCommand('login'))],
+  ['setup','Check setup',()=>$('welcome-setup').click()],
+  ['results','Show run / test results',()=>{if($('project-results').hidden)$('project-output').click();$('project-output').focus();}],
+  ['new-chat','Start a new chat',()=>action(()=>api.newChat(state.projectPath))],
+]){const button=textNode('button',label);button.id='recovery-'+id;button.addEventListener('click',run);recovery.append(button);}
+function refreshRecovery(){
+  const work=state.projectWork?.root===state.projectPath?state.projectWork:null;
+  const available={reconnect:state.connection==='disconnected'&&api.connect,signin:state.account?.status==='required'&&api.accountCommand,setup:api.inspectSetup,results:work&&(work.run?.status==='failed'||work.tests?.status==='failed'),'new-chat':state.historyMissing&&api.newChat};
+  const busy=state.busy||state.loading||state.projectOperation||state.projectRepair||state.testerActive||state.websiteActive||state.connection==='connecting';
+  for(const [id,show] of Object.entries(available)){const button=$('recovery-'+id);button.hidden=!show;button.disabled=!!busy;}
+}
 
 function showImage(source,alt) {
   document.querySelector('.image-viewer')?.close();
@@ -186,12 +201,11 @@ function renderMessages() {
           if(item.review)node.append(textNode('p',item.review.files.length+' files changed · +'+item.review.added+' / -'+item.review.removed+(item.review.partial?' · partial review':'')));
           if(item.tools.length){const details=document.createElement('details');details.append(textNode('summary','Show '+item.tools.length+' operation outcomes'));for(const tool of item.tools)details.append(textNode('p',(tool.commandText || tool.description || tool.tool || 'Operation')+' · '+(tool.status || 'unknown')+(Number.isInteger(tool.exitCode)?' · exit '+tool.exitCode:'')));node.append(details);}
           if(item.activeRequest){const details=document.createElement('details');details.append(textNode('summary',item.activeRequest.phase==='admitted'?'Saved request · review before continuing':'Unsubmitted request'),textNode('p',item.activeRequest.text));node.append(details);if(item.activeRequest.phase==='preparing'){const recover=textNode('button','Recover as draft');recover.addEventListener('click',()=>{if($('prompt').value || attachments.length){error('Keep or clear the current draft first.');return;}$('prompt').value=item.activeRequest.text;attachments=item.activeRequest.images || [];renderAttachments();scheduleDraft();});node.append(recover);}}
-          if(state.projectPath) {
-            const controls=textNode('div','','request-actions');
-            if(item.status==='finished'){const preview=textNode('button','Run / open preview');preview.addEventListener('click',()=>action(()=>api.projectCommand(state.projectWork?.root===state.projectPath && state.projectWork.run.status==='ready'?'preview':'run')));controls.append(preview);}
-            if(item.checkpointId){const undo=textNode('button','Undo this request');undo.title='Review source files to restore; stops the running preview first';undo.addEventListener('click',()=>action(()=>updateProjectWork.reviewCheckpoint(node.currentItem.checkpointId)));controls.append(undo);}
-            node.append(controls);
-          }
+          const controls=textNode('div','','request-actions');
+          if(item.status!=='finished'){const continuing=textNode('button','Continue in chat');continuing.title='Keep your draft and write the next step';continuing.addEventListener('click',()=>$('prompt').focus());controls.append(continuing);}
+          if(state.projectPath&&item.status==='finished'){const preview=textNode('button','Run / open preview');preview.addEventListener('click',()=>action(()=>api.projectCommand(state.projectWork?.root===state.projectPath && state.projectWork.run.status==='ready'?'preview':'run')));controls.append(preview);}
+          if(state.projectPath&&item.checkpointId){const undo=textNode('button','Undo this request');undo.title='Review source files to restore; stops the running preview first';undo.addEventListener('click',()=>action(()=>updateProjectWork.reviewCheckpoint(node.currentItem.checkpointId)));controls.append(undo);}
+          if(controls.children.length)node.append(controls);
         }
       }
       record.images=item.images;
@@ -224,7 +238,7 @@ function update(next) {
   if (next.sessionId === state.sessionId && state.error && state.error !== next.error) dismissedErrors.delete(errorKey(state.error));
   if (next.sessionId !== state.sessionId) closeChanges();
   if (next.sessionId !== state.sessionId || (state.error && !next.error)) $('error-banner').hidden = true;
-  const wasBusy = state.busy; state = next;
+  const wasBusy = state.busy,previousFailureKey=errorKey(projectFailureNotice); state = next;
   updateProjects?.(state);
   updateProjectWork?.(state);
   updateTester?.(state);
@@ -252,7 +266,11 @@ function update(next) {
   const ready = state.connection === 'ready';
   $('connection-badge').className = `connection-badge ${state.connection}`; $('connection-badge').textContent = ready ? 'Connected' : state.connection === 'connecting' ? 'Connecting' : 'Disconnected';
   $('connection-dot').className = `connection-dot ${state.connection}`; $('engine-label').textContent = ready ? `Muse Code ${state.engineVersion || ''}` : 'Muse disconnected'; $('engine-detail').textContent = ready ? 'Runs on your installed engine' : 'Reconnect in Engine settings';
-  if (state.error && !dismissedErrors.has(errorKey(state.error))) error(state.error);
+  const work=state.projectWork?.root===state.projectPath?state.projectWork:null;
+  const failure=work?.run?.status==='failed'?work.run.message||'Your app could not start. Show results for details.':work?.tests?.status==='failed'?work.tests.message||'Project checks failed. Show results for details.':'';
+  if(projectFailureNotice!==failure){dismissedErrors.delete(previousFailureKey);if($('error-text').textContent===projectFailureNotice)$('error-banner').hidden=true;projectFailureNotice=failure;}
+  const notice=state.error||failure;if(notice&&!dismissedErrors.has(errorKey(notice)))error(notice);
+  refreshRecovery();
   $('welcome').hidden = !!state.items?.length || state.busy;
   $('working').hidden = !state.busy && !state.loading; $('working-label').textContent = state.loading ? 'Opening conversation…' : state.stopping ? 'Stopping Muse…' : state.finishing ? 'Reply ready · finishing final checks' : state.activity || 'Muse is working on it';
   if (state.busy && !wasBusy) { startedAt = Date.now(); $('elapsed').textContent = '0s'; }

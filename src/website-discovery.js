@@ -72,7 +72,9 @@ export function nextDiscovery(map,scope,currentStateId,{pageOnly=false,revealedO
   const samePage=value=>{const entry=new URL(scope.entryUrl),url=new URL(value);return entry.origin===url.origin&&entry.pathname===url.pathname;};
   const transition=map.transitions.filter(t=>t.afterId===currentStateId&&t.beforeId!==currentStateId).at(-1),before=map.states.find(s=>s.id===transition?.beforeId);
   const items=map.frontier.filter(item=>item.actionable&&item.status==='unexplored'&&allowedNavigation(scope,item.href||item.url)&&(!pageOnly||samePage(item.url)&&samePage(item.href||item.url))&&(!revealedOnly||before&&item.stateId===currentStateId&&!before.controlKeys.includes(item.targetKey)));
-  for(const item of items.sort((a,b)=>Number(b.stateId===currentStateId)-Number(a.stateId===currentStateId))) {
+  const roles=new Map(map.states.map(state=>[state.id,state.roleId]));
+  const unvisitedNavigation=item=>item.family==='navigation'&&item.href&&!map.states.some(state=>state.url===stateURL(item.href)&&state.roleId===roles.get(item.stateId));
+  for(const item of items.sort((a,b)=>Number(b.stateId===currentStateId)-Number(a.stateId===currentStateId)||Number(!!unvisitedNavigation(b))-Number(!!unvisitedNavigation(a)))) {
     const attempts=map.transitions.filter(t=>t.targetKey===item.targetKey).reduce((sum,t)=>sum+t.count,0);
     if(attempts>=(item.family==='pagination'?map.maxVisitsPerPath:2))continue;
     const destination=new URL(item.href||item.url),visited=new Set(map.states.filter(s=>s.pathKey===destination.origin+destination.pathname).map(s=>s.url));

@@ -10,12 +10,12 @@
 ## Conversation retention
 - All normal launches, including Windows Search, use `%APPDATA%\Muse Desktop`; builds and workspace changes retain conversations until explicit deletion.
 - A separate conversation index and its latest atomic backup protect the sidebar from settings resets; existing preferences migrate automatically without importing unrelated native/test sessions.
-- Saved messages load before engine connection; native log lookup follows local calendar folders and locates retained UTC/other-day logs by validated session ID. A damaged index with no readable backup stops startup and preserves files.
+- Saved chat ownership loads before the renderer; engine initialization overlaps renderer loading. Metadata-only discovery uses a memory-only Muse host and publishes verified readiness before cleanup; ordinary chat requests keep native journals. A damaged index preserves files and stops startup.
 - Per-chat drafts, image/annotation attachments, pending requests and active receipts use separate atomic files with latest backups; interrupted work stays paused, and admitted requests are never replayed automatically. Native logs remain authoritative for conversation context.
 - Verify persistence/recovery/deletion tests and `scripts/history-smoke.js`: restart from another working folder, restore native messages, and keep the real profile untouched.
 
 ## Projects and general chats
-- Sidebar groups conversations under collapsible project folders, with a + for a new chat in that project; Add/Open project chooses a local folder. New project creates a named folder and optionally a dependency-free Node web starter, refusing existing targets and linked parent paths. New conversation / Ctrl N starts a general chat for questions and images.
+- Sidebar groups conversations under collapsible project folders, with a + for a new chat in that project; Add/Open project chooses a local folder. New project offers Node, plain HTML/CSS/JS or empty starters, refusing existing targets and linked parent paths. New conversation / Ctrl N starts a general chat for questions and images.
 - Existing chats keep their IDs, messages, and saved workspace; absent project identity uses the legacy workspace. Full Windows paths distinguish folders, including projects with the same name.
 - Explicit null project identity keeps general chats separate on reopen; the engine uses a private profile folder and Read only, without inheriting the previously selected project or its Full access setting. This is not a filesystem sandbox.
 - Project paths and chat identity persist in the existing conversation index and backup; project entries remain after their last chat is deleted. Full access remains available in project chats.
@@ -167,7 +167,7 @@
 - Account discovery distinguishes signed-in, key-based, sign-in-required, missing-engine and unknown states without storing native credentials or account details. Existing engine login remains authoritative.
 - Sign in opens the installed engine device-code flow at a validated HTTPS Meta link, displays its temporary code and supports cancellation, expiry and denial; attempts expire after five minutes and clear the code on completion.
 - Uses installed Muse 1.4.1 experimental account methods; older or unavailable methods show terminal sign-in guidance. Onboarding stays visible when action is needed, and unauthenticated sending preserves the draft.
-- Check setup in Welcome or engine settings probes installed Muse, account status, Node/Git versions, the selected package manager and configured commands. Missing/unknown states give next actions; checks install nothing and preserve credentials/settings.
+- Check setup in Welcome or engine settings probes installed Muse, account status, Node/Git versions, the selected package manager and configured commands. Plain websites report Mora's bundled runtime instead of requiring Node or a package manager. Checks install nothing and preserve credentials/settings.
 - Project creation validates names and never replaces folders; the Node starter needs no packages. Verify account/project/setup tests, first-run fixtures and native product loop. Native issuance/cancellation have live proof; browser approval stays with the user.
 
 ## Checkpoints and restore
@@ -178,11 +178,24 @@
 - Verify checkpoint/lifecycle tests and native journey for dirty originals, additions/deletions, exclusions, link/bounds protection, later edits, stale previews, partial failures and restart persistence.
 
 ## Run my app
-- Runs the configured dev/start/serve script, waits for a reported localhost URL to respond, then opens the native preview. Open preview reopens it; finished requests offer Run / open preview. Stop/Restart manages owned processes only.
-- Requires Node.js and the package manager declared in package.json (npm by default) on PATH; dependencies must already be installed. Missing scripts/runtime/dependencies report a next action rather than installing automatically.
+- Runs the configured dev/start/serve script or a plain website with index.html and no package.json, waits for a localhost URL to respond, then opens the native preview. Open preview reopens it; finished requests offer Run / open preview. Stop/Restart manages owned processes only.
+- Node projects require Node.js and their declared package manager (npm by default) on PATH, with dependencies already installed. Plain HTML/CSS/JS uses Mora's bundled runtime on a loopback-only random port; file serving rejects links, traversal, common secrets and hidden paths. Other project runtimes remain unsupported.
 - Records occupied Windows TCP ports before launch, refuses previewing an existing owner and never kills another app to free a port; startup is bounded to 30 seconds and retained output to 24,000 characters.
 - Running apps may stay open while Muse edits the same project. Stop Run before switching projects or restoring; closing Mora stops owned project processes. Servers that print no local URL need a supported script.
 - Verify real Windows starter, occupied-port/exit/deadline/output/cleanup tests and packaged native journey including browser interaction and restart.
+
+## Recovery actions
+- Error messages offer relevant Reconnect, Sign in, Check setup, Show results or Start a new chat actions. Results belong to the selected project; missing native history retains the protected original chat.
+- Failed/interrupted requests offer Continue in chat, focusing the composer while preserving its draft and attachments. Recovery never sends or retries a request automatically.
+- Actions wait for current work; account and setup checks preserve the existing login/settings. Source Undo remains a separate, reviewed checkpoint action.
+- Verify frontend recovery, busy guards, selected-project results and retained drafts; lifecycle tests retain interrupted requests and native history protection.
+
+## Project source export
+- Export project saves a ZIP of eligible project source plus run instructions, returning its SHA-256 checksum with Copy and Show in folder actions. It uses the Windows save dialog and does not upload anything.
+- Reuses source snapshot exclusions for dependencies, generated output and common secrets, additionally omitting local chat/tool data, runtime databases and archives. Filename rules cannot identify every inline credential; review code before sharing.
+- Requires idle project work; refuses linked or incomplete captures and limits source to 5,000 files, 2 MiB per file and 32 MiB total. ZIP creation uses bundled Windows libraries; the destination changes only after successful creation.
+- Instructions distinguish bundled plain-website preview from Node/package-manager setup and configured test assertions. Unsupported runtimes are not made runnable by export.
+- Verify actual ZIP bytes/membership/checksum, refusal preserving existing destinations, save-dialog ownership/cancellation and `scripts/project-portability-smoke.js [EXE]` for native export/reopen preview.
 
 ## Test my app and Fix failures
 - Runs typecheck (or check), build, test and optional test:flows (or test:e2e) scripts sequentially with real exit/output, a two-minute deadline and CI mode. Stop cancels owned work; absent checks never pass.
@@ -196,7 +209,7 @@
 - Grounded cases prioritize normal flows, new-page planning and newly revealed controls/ready cases before leaving their state. Bounded discovery retains queued checks; invalid plans get one correction with a 30-second cap. Starting checks must match before execution/replay; older cases retain whole-state matching. Reproduction requires fresh approval. Select controls or demonstrate up to eight actions with an expected outcome; demonstrations grant no permission.
 - Separate navigation/resource origins and path scopes constrain traversal. Sign in manually; encrypted login storage is per site/account. Provider text filters common secrets, local screenshots mask inputs, and report backups preserve evidence and uncertain interruptions. Use test accounts: arbitrary personal content may remain.
 - Persistent Setup/Overview/Tests/Findings/Explore/Evidence/Teach/Reports navigation separates setup from results. Budgets, inline errors, exact approvals and run controls remain accessible; case/feature/history filters, expected/actual details and evidence links support investigation. Keyboard focus survives report updates and compact windows reflow. Counts distinguish discovered controls, checked cases and remaining gaps.
-- Planning timeouts finish validated cases, leave unavailable plans/reviews unconfirmed and report paused; budget takeover waits for cleanup and records failures as uncertain. Exports retain setup/evidence; reopening observes afresh. Verify controller/policy/case/recovery/export/browser/UI checks and three native healthy/faulty pairs; the completed/full-coverage gate remains unmet. Other roles need logins; service workers, downloads, canvas and drag-and-drop are unsupported; resets cannot undo live data.
+- Planning timeouts leave new plans untested; validated cases can still receive independent failure reviews and replay within the original budget. A review timeout stops further AI calls and leaves failures unconfirmed. Discovery prioritizes unvisited navigation; budget cleanup/uncertainty stays explicit. Native repeatability remains experimental; other roles need logins, unsupported interactions remain gaps and resets cannot undo live data.
 
 ## Project tester reports (experimental)
 - Project tester and `/project-tester report` use native Spark with isolated skills/reminders disabled and no native tools; Mora executes generic actions in a dedicated visible browser, restricted to the running localhost origin. Account reuse is temporary; normal cleanup removes its credential copy without changing global settings.

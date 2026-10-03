@@ -2,6 +2,7 @@ import {spawn,execFile} from 'node:child_process';
 import {promisify} from 'node:util';
 import {access} from 'node:fs/promises';
 import path from 'node:path';
+import {fileURLToPath} from 'node:url';
 import {projectFile,projectScripts} from './project.js';
 import {projectRevision} from './tester.js';
 
@@ -15,6 +16,7 @@ export function localURL(text) {
   return null;
 }
 export async function scriptCommand(root,manager,script) {
+  if(manager==='static'&&script==='static'){await projectFile(root,'index.html');return {file:process.execPath,args:[fileURLToPath(new URL('./static-server.cjs',import.meta.url))],env:{...process.env,ELECTRON_RUN_AS_NODE:'1'}};}
   if(!['npm','pnpm','yarn'].includes(manager) || !/^[a-zA-Z0-9_:-]{1,80}$/.test(script))throw new Error('Choose a configured project script.');
   await projectFile(root);
   try{await exec('node',['--version'],{windowsHide:true,timeout:5000});}catch{throw new Error('Install Node.js, then restart Mora so Run and Test can find it.');}
@@ -57,7 +59,7 @@ export class ProjectRunner {
     if(this.active || this.runChild)throw new Error('Stop the current Run or Test first.');
     this.active=true;const attempt=this.runAttempt=Symbol('run');
     try {
-      const config=await projectScripts(root);if(!config.start)throw new Error('Add a dev, start or serve script to package.json before running this app.');
+      const config=await projectScripts(root);if(!config.start)throw new Error('Add a dev, start or serve script to package.json, or open a plain website with index.html.');
       const settings=await this.command(root,config.manager,config.start),occupied=await this.occupied();
       if(this.runAttempt!==attempt)return this.state;
       this.state.root=root;this.state.run={status:'starting',script:config.start,output:'',message:'Starting your app…',url:null};this.publish();

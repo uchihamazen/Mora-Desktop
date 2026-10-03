@@ -15,11 +15,12 @@ export async function projectFile(root,name='') {
   return absolute;
 }
 export async function createProject(parent,name,{starter=true}={}) {
+  if(![true,false,'static'].includes(starter))throw new Error('Choose a Node starter, plain website or empty project.');
   if(typeof name!=='string' || !/^[\p{L}\p{N}][\p{L}\p{N} _-]{0,63}$/u.test(name) || /^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/i.test(name))throw new Error('Use a project name with letters, numbers, spaces, hyphens or underscores.');
   const root=await projectFile(parent,name);
   if(!(await lstat(parent)).isDirectory())throw new Error('Choose a parent folder.');
   try {await mkdir(root);}catch(error){if(error.code==='EEXIST')throw new Error('A folder with this name already exists. Open it or choose another name.');throw error;}
-  if(starter)for(const name of ['package.json','gitignore.txt','index.html','server.js','build.js','src/app.js','tests/app.test.js']) {
+  if(starter)for(const name of starter==='static'?['gitignore.txt','index.html','src/app.js']:['package.json','gitignore.txt','index.html','server.js','build.js','src/app.js','tests/app.test.js']) {
     const target=path.join(root,name==='gitignore.txt'?'.gitignore':name);
     await mkdir(path.dirname(target),{recursive:true});
     await writeFile(target,await readFile(fileURLToPath(new URL(`./starter/${name}`,import.meta.url))),{flag:'wx'});
@@ -28,7 +29,11 @@ export async function createProject(parent,name,{starter=true}={}) {
 }
 export async function projectScripts(root) {
   const filename=await projectFile(root,'package.json');let text;
-  try {text=await readFile(filename,'utf8');}catch(error){if(error.code==='ENOENT')return {start:null,checks:[],scripts:{},manager:'npm'};throw error;}
+  try {text=await readFile(filename,'utf8');}catch(error){
+    if(error.code!=='ENOENT')throw error;
+    try{if((await lstat(await projectFile(root,'index.html'))).isFile())return {start:'static',checks:[],scripts:{},manager:'static',flowScript:null};}catch(missing){if(missing.code!=='ENOENT')throw missing;}
+    return {start:null,checks:[],scripts:{},manager:'npm'};
+  }
   if(text.length>512000)throw new Error('Project package.json is too large.');
   const pkg=JSON.parse(text),scripts={};
   for(const [name,value] of Object.entries(pkg.scripts || {}))if(/^[a-zA-Z0-9_:-]{1,80}$/.test(name) && typeof value==='string' && value.trim() && value.length<=8000)scripts[name]=value;

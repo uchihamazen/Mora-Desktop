@@ -9,6 +9,8 @@ contextBridge.exposeInMainWorld('muse', {
   projectCommand: action => ipcRenderer.invoke('muse:project-work',action),
   projectBriefCommand: (action,payload) => ipcRenderer.invoke('muse:project-brief',action,payload),
   inspectSetup: () => ipcRenderer.invoke('muse:setup'),
+  exportProject: () => ipcRenderer.invoke('muse:export-project'),
+  revealProjectExport: () => ipcRenderer.invoke('muse:reveal-project-export'),
   testerCommand: (action,payload) => ipcRenderer.invoke('muse:tester',action,payload),
   websiteTesterCommand: (action,payload) => ipcRenderer.invoke('muse:website-tester',action,payload),
   newChat: (projectPath = null) => ipcRenderer.invoke('muse:new-chat', projectPath),

@@ -50,7 +50,7 @@ function harness(overrides = {}) {
   const body = source.slice(source.indexOf('const directory ='), source.indexOf('\nfunction handle('))
     .replace(/^const directory =[^\n]+/, 'const directory = "C:/Projects/example/src";');
   vm.runInContext(body + '\n' + source.split('\n').find(line => line.includes("handle('stop',")) +
-    '\nglobalThis.subject = {state, runner, sendMessage, resumeChat, newChat, save, connect, queueCommand, saveDraft, projectCommand, checkpointCommand, setProjectRunner:value=>{projectRunner=value;}};', context);
+    '\nglobalThis.subject = {state, runner, sendMessage, resumeChat, newChat, save, connect, queueCommand, saveDraft, projectCommand, checkpointCommand, exportProjectCommand, setProjectRunner:value=>{projectRunner=value;},setWindow:value=>{window=value;}};', context);
   const subject = context.subject;
   subject.state.connection = 'ready';
   subject.state.sessionId = 'session';
@@ -59,6 +59,21 @@ function harness(overrides = {}) {
   return { ...subject, stop: handlers.stop };
 }
 const tick = () => new Promise(resolve => setImmediate(resolve));
+
+test('project export reserves project ownership during the save dialog and releases it on cancellation or failure',async()=>{
+ for(const fail of [false,true]){
+  let release,entered;const gate=new Promise(r=>release=r),waiting=new Promise(r=>entered=r);
+  const h=harness({dialog:{showSaveDialog:async()=>{entered();await gate;return fail?{filePath:'C:/export.zip'}:{canceled:true};}},exportProject:async()=>{throw Error('Export failed');}});
+  const pending=h.exportProjectCommand();await waiting;assert.equal(h.state.projectOperation,true);await assert.rejects(h.newChat(null),/project|command|checks/i);
+  release();if(fail)await assert.rejects(pending,/Export failed/);else assert.equal(await pending,null);assert.equal(h.state.projectOperation,false);
+ }
+});
+
+test('project export refuses active tester work before opening the save dialog',async()=>{
+ let opens=0;const h=harness({dialog:{showSaveDialog:async()=>{opens++;return {canceled:true};}}});
+ for(const flag of ['testerActive','websiteActive']){h.state[flag]=true;await assert.rejects(h.exportProjectCommand(),/work|test/i);h.state[flag]=false;}
+ assert.equal(opens,0);
+});
 
 test('a completed editable request retains its sealed checkpoint for inline Undo',async()=>{
  const h=harness();h.state.executionMode='full';await h.sendMessage({text:'Change the app'});
@@ -104,6 +119,30 @@ test('concurrent reconnects share discovery and reconcile fallback reasoning eff
   assert.equal(attempts, 1);
   assert.equal(subject.state.modelId, 'replacement');
   assert.equal(subject.state.reasoningEffort, 'high');
+});
+test('validated engine readiness reaches the UI before slow discovery-process cleanup finishes',async()=>{
+ let release,closing;const cleanup=new Promise(resolve=>release=resolve),entered=new Promise(resolve=>closing=resolve),published=[];
+ const h=harness({discoverMuse:async()=> 'C:/engine.exe',MspClient:class {
+  async connect(){await new Promise(resolve=>setTimeout(resolve,60));return {serverInfo:{version:'fixture'}};}
+  async request(method){return method==='account/read'?{account:{type:'meta'}}:{models:[{modelId:'fixture',variants:['medium']}]};}
+  async close(){closing();await cleanup;}
+ }});
+ h.setWindow({isDestroyed:()=>false,webContents:{send:(_name,event)=>published.push(structuredClone(event.state))}});
+ const connecting=h.connect();await entered;await new Promise(resolve=>setTimeout(resolve,45));
+ try{assert.equal(published.at(-1).connection,'ready');assert.equal(published.at(-1).models[0].modelId,'fixture');}
+ finally{release();await connecting;}
+});
+test('metadata discovery skips session journals while editable requests keep their native logging',async()=>{
+ let metadataOptions,turnOptions;
+ class LoggedRunner extends EventEmitter{child=null;async run(options){turnOptions=options;this.emit('record',{payload:{kind:'command_accepted',command_id:'logged-turn'}});return {code:0,terminal:{terminal:'completed'}};}async stop(){}}
+ const h=harness({ExecRunner:LoggedRunner,discoverMuse:async()=> 'C:/engine.exe',MspClient:class{
+  async connect(options){metadataOptions=options;return {serverInfo:{version:'fixture'}};}
+  async request(method){return method==='account/read'?{account:{type:'meta'}}:{models:[{modelId:'fixture',variants:['medium']}]};}
+  async close(){}
+ }});
+ await h.connect();assert.deepEqual(Array.from(metadataOptions.args||[]),['serve','--no-session-log']);
+ h.state.executionMode='full';await h.sendMessage({text:'Change the app'});for(let i=0;i<100&&h.state.busy;i++)await tick();
+ assert.equal((turnOptions.extraArgs||[]).includes('--no-session-log'),false);assert.ok(turnOptions.sessionId);
 });
 
 test('invalid model discovery is recoverable without replacing the saved model', async () => {

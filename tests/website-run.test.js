@@ -151,6 +151,29 @@ test('unavailable expectation review never confirms an observed failure',async()
  run.onChange=report=>{if(report.pending&&run.pending)setImmediate(()=>run.approve(report.pending.id,true));};
  await run.start(undefined,{accessibility:false});await run.completion;assert.equal(run.report.status,'paused');assert.equal(run.report.cases[0].status,'needs clarification');assert.equal(run.report.findings.length,0);
 });
+test('a planning correction timeout still allows an independent review and reproduction of a validated failure',async()=>{
+ const {run,browser}=await setup([]);let calls=0;
+ browser.perform=async step=>({status:step.action==='assert'?'failed':'ok',actual:'Wrong'});
+ run.makeModel=()=>({initialize:async()=>{},close:async()=>{},decide:async(_prompt,options)=>{
+  calls++;if(calls===1)return {action:'plan',cases:[plannedCase(),{...plannedCase(),title:'Invalid',steps:[{action:'click',target:'Save'}]}]};
+  if(calls===2)throw Object.assign(Error('Planning timed out'),{code:'MORA_DECISION_TIMEOUT'});
+  assert.deepEqual(options.allowedActions,['review']);return {action:'review',supported:true,note:'The original user rule supports the outcome.'};
+ }});
+ run.onChange=report=>{if(report.pending&&run.pending)setImmediate(()=>run.approve(report.pending.id,true));};
+ await run.start(undefined,{accessibility:false});await run.completion;
+ assert.equal(calls,3);assert.equal(run.report.status,'paused');assert.equal(run.report.cases[0].status,'reproduced finding');assert.equal(run.report.findings[0].confidence,'reproduced');
+});
+test('a failed independent review leaves later failures unconfirmed without more model calls',async()=>{
+ const {run,browser}=await setup([]);let calls=0;
+ browser.perform=async step=>({status:step.action==='assert'?'failed':'ok',actual:'Wrong'});
+ run.makeModel=()=>({initialize:async()=>{},close:async()=>{},decide:async()=>{
+  if(++calls===1)return {action:'plan',cases:[plannedCase(),{...plannedCase(),title:'Second outcome',steps:[{action:'assert',check:'text',expected:'Ready'}]}]};
+  throw Object.assign(Error('Review timed out'),{code:'MORA_DECISION_TIMEOUT'});
+ }});
+ run.onChange=report=>{if(report.pending&&run.pending)setImmediate(()=>run.approve(report.pending.id,true));};
+ await run.start(undefined,{accessibility:false});await run.completion;
+ assert.equal(calls,2);assert.equal(run.report.status,'paused');assert.equal(run.report.findings.length,0);assert.ok(run.report.cases.every(c=>c.status==='needs clarification'));assert.match(run.report.gaps.join(' '),/expectation review timed out/i);
+});
 test('unsafe native failures halt before queued actions rather than using timeout recovery',async()=>{
  const {run,performed}=await setup([]);let calls=0;
  run.makeModel=()=>({initialize:async()=>{},close:async()=>{},decide:async()=>{if(++calls===1)return {action:'plan',cases:[plannedCase(),{...plannedCase(),steps:[{action:'click',target:'Save'}]}]};throw Error('Native tester attempted an unavailable tool');}});

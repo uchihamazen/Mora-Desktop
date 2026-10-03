@@ -9,6 +9,7 @@ import {launchDesktop} from './electron-ui.js';
 const require=createRequire(import.meta.url),profile=await mkdtemp(path.join(tmpdir(),'mora-product-loop-'));
 const reservation=createServer();reservation.listen(0,'127.0.0.1');await once(reservation,'listening');const port=reservation.address().port;await new Promise(resolve=>reservation.close(resolve));
 const packaged=process.argv.slice(2).find(arg=>!arg.startsWith('--')),send=process.argv.includes('--send');
+const output=path.resolve(process.env.MORA_PRODUCT_PROOF_OUTPUT||'artifacts');
 const env={...process.env,PORT:String(port),MUSE_DESKTOP_TEST_USER_DATA:profile};delete env.ELECTRON_RUN_AS_NODE;
 let app,page,project,chat;const metrics={};
 async function state(){return page.evaluate(()=>window.muse.getState());}
@@ -29,8 +30,8 @@ try {
  const native=nativeURLs.find(w=>/^http:\/\/(?:localhost|127\.0\.0\.1):/.test(w.url));assert.ok(native,'Preview missing');assert.ok(native.url.includes(String(port)));
  await page.locator('#test-project').click();await until(s=>s.projectWork?.tests.status==='passed'&&!s.projectOperation);assert.equal((await state()).projectWork.tests.interactions,'passed');
  await page.locator('#project-output').click();await page.getByText(/Only assertions in this script are covered/).waitFor();
- await mkdir('artifacts',{recursive:true});await page.screenshot({path:'artifacts/product-loop-checks.png'});
- const previewPNG=await app.evaluate(async({BrowserWindow},url)=>{const view=BrowserWindow.getAllWindows()[0].contentView.children.find(v=>v.webContents?.getURL()===url);return (await view.webContents.capturePage()).toPNG().toString('base64');},native.url);await writeFile('artifacts/product-loop-preview.png',Buffer.from(previewPNG,'base64'));
+ await mkdir(output,{recursive:true});await page.screenshot({path:path.join(output,'product-loop-checks.png')});
+ const previewPNG=await app.evaluate(async({BrowserWindow},url)=>{const view=BrowserWindow.getAllWindows()[0].contentView.children.find(v=>v.webContents?.getURL()===url);return (await view.webContents.capturePage()).toPNG().toString('base64');},native.url);await writeFile(path.join(output,'product-loop-preview.png'),Buffer.from(previewPNG,'base64'));
  const source=await readFile(path.join(project,'src','app.js'),'utf8');await writeFile(path.join(project,'src','app.js'),source.replace('return value+1','return value+2'));await page.locator('#test-project').click();await until(s=>s.projectWork?.tests.status==='failed'&&!s.projectOperation);assert.equal((await state()).projectWork.tests.interactions,'failed');
  await writeFile(path.join(project,'src','app.js'),source);await page.locator('#test-project').click();await until(s=>s.projectWork?.tests.status==='passed'&&!s.projectOperation);
  await page.locator('#stop-project').click();await until(s=>s.projectWork?.run.status==='stopped');
@@ -39,5 +40,5 @@ try {
  await page.evaluate(()=>window.muse.setOptions({speedPreset:'thorough'}));await app.close();app=null;await launch();assert.equal((await state()).speedPreset,'thorough');
  await page.locator('#project-brief').click();assert.match(await page.getByLabel('Shared project brief',{exact:true}).inputValue(),/BLUE-SHOP-42/);await page.getByRole('button',{name:'Close brief'}).click();
  await new Promise(resolve=>setTimeout(resolve,1000));metrics.processSnapshot=await app.evaluate(({app})=>app.getAppMetrics().map(({type,cpu,memory})=>({type,cpuPercent:cpu.percentCPUUsage,workingSetKB:memory.workingSetSize})));
- await writeFile('artifacts/product-loop-native.json',JSON.stringify({profile,project,packaged:!!packaged,realEngineEditAndUndo:send,metrics},null,2));console.log(JSON.stringify({profile,project,metrics},null,2));console.log('PASS native product loop: setup, shared brief, preview, healthy/faulty flow checks, effort persistence'+(send?', actual engine edit and selective Undo':''));
+ await writeFile(path.join(output,'product-loop-native.json'),JSON.stringify({profile,project,packaged:!!packaged,realEngineEditAndUndo:send,metrics},null,2));console.log(JSON.stringify({profile,project,metrics},null,2));console.log('PASS native product loop: setup, shared brief, preview, healthy/faulty flow checks, effort persistence'+(send?', actual engine edit and selective Undo':''));
 }finally{await app?.close();}
