@@ -121,7 +121,7 @@
 ## Workspace layout
 - Projects, conversation and preview share a calm three-column workspace. Run/Test/Preview stay in the header; the workspace menu retains restart/stop, results, checkpoints, brief, export and testers. Ctrl+K remains available.
 - The navigation button beside the project selector shows or hides the left sidebar; Ctrl+B works while the Mora interface has focus. The choice persists locally, and hiding a focused sidebar returns focus to the toggle.
-- The composer shows model, work preset and access; advanced chat options retain explicit reasoning effort. Native model IDs and existing saved choices remain unchanged; friendly labels and model-ID tooltips improve readability.
+- The composer shows model, its supported native reasoning levels and access directly. Native model IDs and saved effort choices remain unchanged; friendly labels and model-ID tooltips improve readability.
 - Preview history, new tabs, region selection and captures live in its menu; multiple tabs remain visible. Add to chat appears for a selection; the footer keeps a fixed height to preserve page geometry. Narrow headers wrap; menus/dialogs and resizing share native-preview occlusion and preserve keyboard focus.
 - Verify frontend, `scripts/layout-smoke.js`, `scripts/layout-native-smoke.js [EXE]` and browser smoke for menus, five renderer sizes down to 860px, the native preview's 1080px minimum, trusted pointer input, captures, expansion and resize cancellation. Desktop preview retains its existing scaled viewport; sample pages can appear smaller than the surrounding interface.
 
@@ -142,8 +142,8 @@
 ## Formatted answers and streaming
 - Headings, lists, tables, quotes, links and fenced code render as safe DOM nodes; raw HTML stays literal and only HTTP(S) links can open externally. Code Copy and supported Stitch image previews remain available.
 - Streaming retains unchanged chat rows, image nodes, sidebar entries and tool expansion state; closed tool output renders only when opened. Long chats initially show 200 recent items; Load older adds 200, preserving all saved history. Find searches rendered text.
-- Quick, Balanced and Thorough select supported efforts on the current model. Fresh profiles choose Balanced; existing explicit efforts and per-chat selections remain unchanged across restart. Model/provider behavior remains native.
-- Verify Markdown/speed tests, frontend smoke and `scripts/performance-smoke.js` (optional baseline renderer file; fixture results only). The optional pinned `scripts/sdk-probe.js` checks the SDK handshake in isolation; migration still requires live-event, cancellation, durable-resume and approval checks.
+- The reasoning selector uses the selected model's supported levels directly. Saved efforts survive restart; unsupported or unset efforts use a supported native default or the first supported level. Old work-preset metadata is ignored; models without choices show disabled Not available and omit the effort argument.
+- Verify Markdown/lifecycle tests, frontend/layout/native smoke and `scripts/performance-smoke.js` (optional baseline renderer file; fixture results only). The optional pinned `scripts/sdk-probe.js` checks the SDK handshake in isolation; migration still requires live-event, cancellation, durable-resume and approval checks.
 
 ## Stitch image previews
 - Stitch image URLs in plain text or Markdown display directly in chat, including saved replies; click to enlarge and Escape to close. The embedded browser hides while the image viewer is open.

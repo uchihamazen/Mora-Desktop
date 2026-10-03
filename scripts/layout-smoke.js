@@ -28,7 +28,8 @@ try{
   assert.equal(await page.locator('#model').inputValue(),'muse-spark-1.3-contributor');
   await page.evaluate(()=>window.layout.emit({models:[{modelId:'muse-spark-1.3-contributor',displayLabel:'muse-spark-1.3-contributor',variants:['low','medium','high']}]}));
   assert.match(await page.locator('#model option:checked').textContent(),/Muse Spark 1.3/,'An engine-provided label identical to the identifier should also be readable');
-  assert.equal(await page.locator('#effort').isVisible(),false,'Reasoning effort belongs in advanced composer options, not beside the work preset');
+  assert.equal(await page.locator('#effort').isVisible(),true,'The model reasoning effort should be visible beside the model');
+  assert.equal(await page.locator('#speed').count(),0,'Mora work presets should be removed from the composer');
   assert.ok(await page.locator('#project-toolbar button:visible').count()<=2,'Only primary project actions should occupy the header');
   assert.ok((await page.locator('#browser-viewport').boundingBox()).y<200,'Preview controls must leave room for the page');
   assert.ok((await page.locator('.browser-annotation').boundingBox()).height<=70,'The empty selection hint should be compact');
@@ -41,9 +42,11 @@ try{
   assert.equal(await page.evaluate(()=>document.activeElement===document.querySelector('#workspace-menu > summary')),true,'Closing a menu action should return focus to its visible trigger');
   await page.locator('#workspace-menu > summary').click();await page.keyboard.press('Escape');
   assert.equal(await page.locator('#workspace-menu').getAttribute('open'),null);
-  await page.locator('#composer-options > summary').click();
   await page.locator('#effort').selectOption('high');
   await page.waitForFunction(()=>window.layout.calls.some(([type,value])=>type==='options'&&value.reasoningEffort==='high'));
+  await page.evaluate(()=>window.layout.emit({models:[{modelId:'muse-spark-1.3-contributor',variants:[]}]}));
+  assert.equal(await page.locator('#effort').isDisabled(),true);assert.equal(await page.locator('#effort').inputValue(),'');assert.equal(await page.locator('#effort option:checked').textContent(),'Not available');
+  await page.evaluate(()=>window.layout.emit({models:[{modelId:'muse-spark-1.3-contributor',variants:['low','medium','high']}],reasoningEffort:'high'}));
   await page.locator('#preview-menu > summary').click();
   assert.equal(await page.locator('.browser-history-label').isVisible(),true);
   await page.locator('#browser-before').click();

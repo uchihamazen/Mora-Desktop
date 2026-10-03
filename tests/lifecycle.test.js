@@ -9,7 +9,6 @@ import { validateImages } from '../src/images.js';
 import { snapshotProject, compareProject } from '../src/changes.js';
 import * as changesApi from '../src/changes.js';
 import { projectPathFor, groupConversations } from '../src/projects.js';
-import {effortForPreset} from '../src/speed.js';
 import {accountState,AccountLogin} from '../src/account.js';
 import {parseTesterCommand,reportForRevision,projectRevision} from '../src/tester.js';
 import {parseWebsiteTesterCommand} from '../src/website-tester.js';
@@ -33,7 +32,7 @@ function harness(overrides = {}) {
     path, Buffer, setTimeout, clearTimeout, ExecRunner: Runner,accountState,AccountLogin,parseTesterCommand,parseWebsiteTesterCommand,reportForRevision,projectRevision,
     readProjectBrief:async()=>({text:'',revision:null}),
     Checkpoints:class {async create(){return {id:"checkpoint"};}async seal(){}},
-    createState, assertIdle, applyEvent, validateImages, projectPathFor, groupConversations, effortForPreset, applyExecRecord: () => {},
+    createState, assertIdle, applyEvent, validateImages, projectPathFor, groupConversations, applyExecRecord: () => {},
     uuid7: () => 'session', app: { getPath: () => 'C:/temp' },
     mkdir: async () => {}, stat: async () => ({isDirectory:()=>true}),
     mkdtemp: async () => 'C:/temp/muse-desktop-input-test',
@@ -50,7 +49,7 @@ function harness(overrides = {}) {
   const body = source.slice(source.indexOf('const directory ='), source.indexOf('\nfunction handle('))
     .replace(/^const directory =[^\n]+/, 'const directory = "C:/Projects/example/src";');
   vm.runInContext(body + '\n' + source.split('\n').find(line => line.includes("handle('stop',")) +
-    '\nglobalThis.subject = {state, runner, sendMessage, resumeChat, newChat, save, connect, queueCommand, saveDraft, projectCommand, checkpointCommand, exportProjectCommand, setProjectRunner:value=>{projectRunner=value;},setWindow:value=>{window=value;}};', context);
+    '\nglobalThis.subject = {state, runner, sendMessage, resumeChat, newChat, save, connect, reconcileModel, queueCommand, saveDraft, projectCommand, checkpointCommand, exportProjectCommand, setProjectRunner:value=>{projectRunner=value;},setWindow:value=>{window=value;}};', context);
   const subject = context.subject;
   subject.state.connection = 'ready';
   subject.state.sessionId = 'session';
@@ -59,6 +58,19 @@ function harness(overrides = {}) {
   return { ...subject, stop: handlers.stop };
 }
 const tick = () => new Promise(resolve => setImmediate(resolve));
+
+test('legacy work presets never override an explicitly saved native reasoning effort',()=>{
+ const h=harness();Object.assign(h.state,{modelId:'native',models:[{modelId:'native',variants:['low','medium','high'],defaultReasoningEffort:'medium'}],reasoningEffort:'high',speedPreset:'quick'});
+ h.reconcileModel();assert.equal(h.state.reasoningEffort,'high');
+});
+
+test('new or unsupported effort uses the selected model default and preserves supported choices',()=>{
+ const h=harness();Object.assign(h.state,{modelId:'native',models:[{modelId:'native',variants:['low','medium','high'],defaultReasoningEffort:'medium'}],reasoningEffort:'',speedPreset:'thorough'});
+ h.reconcileModel();assert.equal(h.state.reasoningEffort,'medium');
+ h.state.reasoningEffort='max';h.reconcileModel();assert.equal(h.state.reasoningEffort,'medium');
+ h.state.reasoningEffort='low';h.reconcileModel();assert.equal(h.state.reasoningEffort,'low');
+ h.state.models[0].variants=[];h.reconcileModel();assert.equal(h.state.reasoningEffort,'');
+});
 
 test('project export reserves project ownership during the save dialog and releases it on cancellation or failure',async()=>{
  for(const fail of [false,true]){

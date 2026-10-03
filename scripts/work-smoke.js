@@ -61,7 +61,7 @@ try {
   await page.waitForFunction(()=>document.querySelector('#connection-badge').textContent==='Connected');
   const created=await page.evaluate(project=>window.muse.newChat(project),project);
   await page.locator(`.session-row[data-session-id="${created.sessionId}"]`).waitFor();
-  await page.evaluate(()=>window.muse.setOptions({speedPreset:'quick'}));
+  const chosenEffort=await page.evaluate(async()=>{const state=await window.muse.getState(),efforts=state.models.find(model=>model.modelId===state.modelId).variants,effort=efforts.includes('low')?'low':efforts[0];await window.muse.setOptions({reasoningEffort:effort});return effort;});
   await page.evaluate(()=>{const timeout=window.setTimeout;window.setTimeout=(fn,delay,...args)=>timeout(fn,delay===200?20000:delay,...args);});
   await page.locator('#prompt').fill('Draft survives an immediate close');
   assert.equal((await loadWork(profile,created.sessionId)).draft.text,'');
@@ -83,7 +83,7 @@ try {
   assert.match(await page.locator('.completion-card').textContent(),/Request interrupted/);
   const state=await page.evaluate(()=>window.muse.getState());
   assert.equal(state.busy,false);assert.equal(state.historyMissing,false);
-  assert.equal(state.speedPreset,'quick');assert.equal(await page.locator('#speed').inputValue(),'quick');
+  assert.equal(state.reasoningEffort,chosenEffort);assert.equal(await page.locator('#effort').inputValue(),chosenEffort);
   await page.getByRole('button',{name:'Edit',exact:true}).click();
   await page.getByRole('textbox',{name:'Edit queued message'}).fill('Edited follow-up');
   await page.getByRole('button',{name:'Save queued message',exact:true}).click();

@@ -69,7 +69,7 @@ try {
  await writeFile(path.join(root,'dirty.txt'),'original dirty work');
  let checkpoint;
  if(send){
-  await page.evaluate(()=>window.muse.setOptions({executionMode:'full',speedPreset:'quick'}));
+  await page.evaluate(async()=>{const state=await window.muse.getState(),efforts=state.models.find(model=>model.modelId===state.modelId).variants;await window.muse.setOptions({executionMode:'full',reasoningEffort:efforts.includes('low')?'low':efforts[0]});});
   await page.evaluate(()=>window.muse.sendMessage({text:"Change only the starter index.html heading to Built with Muse. Preserve the counter, all other files and dirty.txt. Do not install packages or start servers.",images:[]}));
   await untilState(page,s=>!s.busy,240000);
   const state=await page.evaluate(()=>window.muse.getState());assert.equal(state.lastOutcome.status,'finished');assert.match(await readFile(path.join(root,'index.html'),'utf8'),/Built with Muse/);

@@ -292,9 +292,10 @@ function update(next) {
   fillSelect($('model'), (state.models || []).map(model => ({ value: model.modelId, label: model.displayLabel && model.displayLabel !== model.modelId ? model.displayLabel : model.modelId.replace(/[-_]/g,' ').replace(/\b[a-z]/g,letter=>letter.toUpperCase()) })), state.modelId);
   $('model').title=state.modelId || '';
   const model = state.models?.find(model => model.modelId === state.modelId);
-  fillSelect($('effort'), (Array.isArray(model?.variants) ? model.variants : ['max']).map(value => ({ value, label: value[0].toUpperCase() + value.slice(1) })), state.reasoningEffort);
+  const efforts=Array.isArray(model?.variants)?model.variants:[];
+  fillSelect($('effort'), efforts.length?efforts.map(value => ({ value, label:value==='xhigh'?'Extra high':value[0].toUpperCase()+value.slice(1) })):[{value:'',label:'Not available'}], efforts.length?state.reasoningEffort:'');
+  $('effort').disabled=state.busy || state.loading || sending || !efforts.length || state.connection!=='ready';
   $('execution-mode').value = state.executionMode || 'readonly';
-  $('speed').value = state.speedPreset || 'custom'; $('speed').disabled = state.busy || state.loading || sending || !model?.variants?.length || state.connection!=='ready';
   $('completion-sound').checked=state.completionSound!==false;
   updateLibrary(state,sending);updateQuickActions();
   renderMessages(); conversationFind.update(state.sessionId);refreshSend();refreshStitch();
@@ -352,7 +353,6 @@ $('add-project').addEventListener('click', () => action(() => api.chooseWorkspac
 $('workspace-button').addEventListener('click', () => action(() => api.chooseWorkspace()));
 $('model').addEventListener('change', () => action(() => api.setOptions({ modelId: $('model').value })));
 $('effort').addEventListener('change', () => action(() => api.setOptions({ reasoningEffort: $('effort').value })));
-$('speed').addEventListener('change', () => action(() => api.setOptions({ speedPreset: $('speed').value })));
 $('execution-mode').addEventListener('change', () => action(() => api.setOptions({ executionMode: $('execution-mode').value })));
 $('settings-button').addEventListener('click', () => { $('settings-panel').hidden = !$('settings-panel').hidden; });
 for(const [id,name] of [['sign-in','login'],['cancel-sign-in','cancel'],['refresh-account','refresh'],['install-muse','install']])$(id).addEventListener('click',()=>action(()=>api.accountCommand(name)));

@@ -9,7 +9,6 @@ import { createState, assertIdle, applyEvent } from './state.js';
 import { snapshotProject, compareProject, watchProjectChanges, saveChangeSummary, loadChangeSummaries, deleteChangeSummaries } from './changes.js';
 import { profilePath, loadConversations, saveConversations } from './persistence.js';
 import {loadWork, saveWork, deleteWork, validateDraft} from './work.js';
-import {effortForPreset,initialEffort} from './speed.js';
 import {accountState,AccountLogin} from './account.js';
 import {createProject} from './project.js';
 import {exportProject} from './project-export.js';
@@ -34,7 +33,7 @@ import {restoreWindowBounds,CompletionSignals} from './desktop-workspace.js';
 const directory = path.dirname(fileURLToPath(import.meta.url));
 let window, prefsPath, museHome, executable, connectionAttempt, quitting = false;
 const runner = new ExecRunner();
-const state = { ...createState(), connection: 'connecting', workspace: '', projectPath: null, projects: [], modelId: 'muse-spark-1.3-contributor', reasoningEffort: 'max', executionMode: 'readonly', models: [], sessions: [], sessionId: null, engineVersion: '', transport: 'exec' };
+const state = { ...createState(), connection: 'connecting', workspace: '', projectPath: null, projects: [], modelId: 'muse-spark-1.3-contributor', reasoningEffort: '', executionMode: 'readonly', models: [], sessions: [], sessionId: null, engineVersion: '', transport: 'exec' };
 let preferences = {};
 let lastProjectExport;
 let projectRunner, desktopBrowser, drainCompletion, projectOperation=false, projectCancelled=false, repairInProgress=false;
@@ -222,7 +221,7 @@ function publish() {
 }
 function report(error) { state.error = error.message || String(error); publish(); }
 function save() {
-  preferences = { ...preferences, workspace: state.workspace, projectPath: state.projectPath, projects: state.projects, modelId: state.modelId, reasoningEffort: state.reasoningEffort, speedPreset: state.speedPreset || 'custom', executionMode: state.executionMode, lastSessionId: state.sessionId, sessions: state.sessions };
+  preferences = { ...preferences, workspace: state.workspace, projectPath: state.projectPath, projects: state.projects, modelId: state.modelId, reasoningEffort: state.reasoningEffort, executionMode: state.executionMode, lastSessionId: state.sessionId, sessions: state.sessions };
   const snapshot = JSON.stringify(preferences, null, 2);
   const temp = `${prefsPath}.tmp`;
   const operation = saveQueue.then(async () => { await saveConversations(app.getPath('userData'), JSON.parse(snapshot)); await writeFile(temp, snapshot); await rename(temp, prefsPath); });
@@ -263,7 +262,7 @@ async function connect() {
 function reconcileModel() {
   if (!state.models.some(model => model.modelId === state.modelId)) state.modelId = state.models.find(model => model.isDefault)?.modelId || state.models[0]?.modelId || state.modelId;
   const model = state.models.find(model => model.modelId === state.modelId);
-  if(['quick','balanced','thorough'].includes(state.speedPreset) && model?.variants?.length) state.reasoningEffort = effortForPreset(model,state.speedPreset);
+  if(model&&!model.variants?.length)state.reasoningEffort='';
   if (model?.variants?.length && !model.variants.includes(state.reasoningEffort)) state.reasoningEffort = model.variants.includes(model.defaultReasoningEffort) ? model.defaultReasoningEffort : model.variants[0];
 }
 async function connectEngine() {
@@ -308,7 +307,7 @@ async function newChat(projectPath = state.projectPath) {
   state.sessionId = uuid7(); Object.assign(state, createState());
   desktopBrowser?.selectSession(state.sessionId);
   state.loading = true;
-  state.sessions.unshift({ sessionId: state.sessionId, title: 'New conversation', hasMessages: false, projectPath, workspace: state.workspace, modelId: state.modelId, reasoningEffort: state.reasoningEffort, speedPreset:state.speedPreset || 'custom', createdAt: new Date().toISOString() });
+  state.sessions.unshift({ sessionId: state.sessionId, title: 'New conversation', hasMessages: false, projectPath, workspace: state.workspace, modelId: state.modelId, reasoningEffort: state.reasoningEffort, createdAt: new Date().toISOString() });
   state.projects = groupConversations(state.sessions, state.projects).slice(1).map(group => group.projectPath);
   await restoreWork(state.sessionId);
   await save(); return state;
@@ -322,7 +321,7 @@ async function resumeChat(sessionId) {
   state.loading = true; publish();
   try {
   if(!state.workUnavailable) await persistWork();
-  Object.assign(state, createState(), { loading: true, sessionId, projectPath: projectPathFor(session), workspace: session.workspace, modelId: session.modelId || state.modelId, reasoningEffort: session.reasoningEffort || state.reasoningEffort, speedPreset:session.speedPreset || (session.reasoningEffort?'custom':state.speedPreset) });
+  Object.assign(state, createState(), { loading: true, sessionId, projectPath: projectPathFor(session), workspace: session.workspace, modelId: session.modelId || state.modelId, reasoningEffort: session.reasoningEffort || state.reasoningEffort });
   if(desktopBrowser && desktopBrowser.sessionId!==sessionId)desktopBrowser.selectSession(sessionId,session.browser);
   publish();
   let nativeHistoryMissing = false;
@@ -499,7 +498,7 @@ async function executeTurn(text, validated, hooks) {
     }
     const session = currentSession();
     if (!session.customTitle && session.title === 'New conversation') session.title = (text.trim() || 'Image conversation').slice(0,65);
-    session.modelId = state.modelId; session.reasoningEffort = state.reasoningEffort;session.speedPreset=state.speedPreset || 'custom';
+    session.modelId = state.modelId; session.reasoningEffort = state.reasoningEffort;
     await save();
     if (state.stopping) throw new Error('Stopped before execution.');
     if (executionMode === 'full') {
@@ -599,8 +598,7 @@ else {
   await mkdir(app.getPath('userData'), { recursive: true });
   try { preferences = JSON.parse(await readFile(prefsPath, 'utf8')); }
   catch (error) { if (error.code !== 'ENOENT') { await rename(prefsPath, `${prefsPath}.corrupt-${Date.now()}`).catch(() => {}); state.error = 'Settings were unreadable. A backup was kept.'; } }
-  for (const key of ['workspace','modelId','reasoningEffort','executionMode','speedPreset']) if (typeof preferences[key] === 'string') state[key] = preferences[key];
-  Object.assign(state,initialEffort(preferences));
+  for (const key of ['workspace','modelId','reasoningEffort','executionMode']) if (typeof preferences[key] === 'string') state[key] = preferences[key];
   if (!['readonly','full'].includes(state.executionMode)) state.executionMode = 'readonly';
   const library = await loadConversations(app.getPath('userData'), preferences);
   state.sessions = library.sessions;
@@ -696,14 +694,9 @@ else {
     if (options.modelId !== undefined) { if (!state.models.some(m => m.modelId === options.modelId)) throw new Error('Choose an available Muse model.'); state.modelId = options.modelId; }
     const model = state.models.find(m => m.modelId === state.modelId);
     if (options.reasoningEffort !== undefined) { if (!Array.isArray(model?.variants) || !model.variants.includes(options.reasoningEffort)) throw new Error('Choose a supported reasoning effort.'); state.reasoningEffort = options.reasoningEffort; }
-    if(options.reasoningEffort !== undefined) state.speedPreset = 'custom';
-    if(options.speedPreset !== undefined) {
-      if(!['custom','quick','balanced','thorough'].includes(options.speedPreset))throw new Error('Choose Quick, Balanced, Thorough, or Custom.');
-      state.speedPreset = options.speedPreset;
-    }
     reconcileModel();
     if (options.executionMode !== undefined) { if (!['readonly','full'].includes(options.executionMode)) throw new Error('Invalid execution mode.'); state.executionMode = options.executionMode; }
-    const session=currentSession();if(session)Object.assign(session,{modelId:state.modelId,reasoningEffort:state.reasoningEffort,speedPreset:state.speedPreset || 'custom'});
+    const session=currentSession();if(session)Object.assign(session,{modelId:state.modelId,reasoningEffort:state.reasoningEffort});
     await save(); publish(); return state;
   });
   handle('pick-images', async () => { const result = await dialog.showOpenDialog(window, { properties: ['openFile','multiSelections'], filters: [{ name: 'Images', extensions: ['png','jpg','jpeg','webp'] }] }); if (result.canceled) return []; const images = []; for (const filename of result.filePaths) { if ((await stat(filename)).size > 10*1024*1024) throw new Error('Each image must be 10 MB or smaller.'); const ext = path.extname(filename).toLowerCase(); images.push({ mediaType: ext === '.png' ? 'image/png' : ext === '.webp' ? 'image/webp' : 'image/jpeg', base64Data: (await readFile(filename)).toString('base64'), name: path.basename(filename) }); } validateImages(images); return images; });

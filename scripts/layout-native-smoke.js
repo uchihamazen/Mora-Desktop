@@ -1,4 +1,4 @@
-import {mkdtemp,mkdir,writeFile} from 'node:fs/promises';
+import {mkdtemp,mkdir,readFile,writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import assert from 'node:assert/strict';
@@ -15,7 +15,10 @@ try{
   const created=await page.evaluate(parent=>window.muse.createProject({parent,name:'Counter app',starter:'static'}),profile),root=created.projectPath;
   await page.evaluate(async()=>{const state=await window.muse.getState();await window.muse.chatMetadata(state.sessionId,'rename','Plan the first version');});
   for(const title of ['Fix the mobile layout','Make the counter easier to use'])await page.evaluate(async({root,title})=>{const state=await window.muse.newChat(root);await window.muse.chatMetadata(state.sessionId,'rename',title);},{root,title});
-  await page.evaluate(()=>window.muse.setOptions({executionMode:'full',speedPreset:'balanced'}));await page.locator('#run-project').click();
+  const modelState=await page.evaluate(()=>window.muse.getState()),efforts=modelState.models.find(model=>model.modelId===modelState.modelId).variants;
+  assert.equal(await page.locator('#speed').count(),0);assert.deepEqual(await page.locator('#effort option').evaluateAll(options=>options.map(option=>option.value)),efforts);
+  const effort=efforts.includes('high')?'high':efforts[0];await page.locator('#effort').selectOption(effort);await until(state=>state.reasoningEffort===effort);
+  await page.evaluate(()=>window.muse.setOptions({executionMode:'full'}));await page.locator('#run-project').click();
   const state=await until(s=>s.projectWork?.run.status==='ready'),url=state.projectWork.run.url;
   const end=Date.now()+15000;let web;
   while(Date.now()<end){web=app.windows().find(p=>p.url()===url);if(web&&!await page.evaluate(async()=> (await window.muse.browserCommand('state')).loading))break;await new Promise(r=>setTimeout(r,100));}
@@ -47,6 +50,10 @@ try{
   await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0].setSize(1080,760));await page.waitForTimeout(200);
   await clickControl(page,'stop-project');await until(s=>s.projectWork.run.status==='stopped');
   await page.locator('#workspace-menu > summary').click();assert.equal(await page.locator('#run-project').isVisible(),true);await page.keyboard.press('Escape');
-  await writeFile(path.join(output,'native-result.json'),JSON.stringify({profile,screenshot,nativePreview:path.join(output,'native-preview.png'),trustedCounterClick:true,menuOcclusion:true,keyboardDialog:true,comparison:true,minimumStoppedHeader:true,visualConversation:'display-only fixture',version:await app.evaluate(({app})=>app.getVersion())},null,2));
-  console.log('PASS native layout: real counter pointer, menus, keyboard dialog, comparison, 1080px stopped header. '+(screenshot||''));
+  await app.close();app=null;
+  const legacyPreferences=JSON.parse(await readFile(path.join(profile,'preferences.json'),'utf8'));legacyPreferences.speedPreset='quick';await writeFile(path.join(profile,'preferences.json'),JSON.stringify(legacyPreferences));
+  app=await launchDesktop(process.argv[2],env);await app.firstWindow();page=app.windows().find(p=>p.url().endsWith('/index.html'));
+  await until(state=>state.connection==='ready'&&!state.loading);assert.equal((await page.evaluate(()=>window.muse.getState())).reasoningEffort,effort);assert.equal(await page.locator('#effort').inputValue(),effort);
+  await writeFile(path.join(output,'native-result.json'),JSON.stringify({profile,screenshot,nativePreview:path.join(output,'native-preview.png'),reasoningEffort:effort,effortPersistence:true,trustedCounterClick:true,menuOcclusion:true,keyboardDialog:true,comparison:true,minimumStoppedHeader:true,visualConversation:'display-only fixture',version:await app.evaluate(({app})=>app.getVersion())},null,2));
+  console.log('PASS native layout: direct reasoning levels and restart persistence, real counter pointer, menus, keyboard dialog, comparison, 1080px stopped header. '+screenshot);
 }finally{await app?.close();}
