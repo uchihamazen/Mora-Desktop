@@ -82,16 +82,22 @@ main{background:#111419}
 .composer-footnote,.browser-open .composer-footnote{font-size:10px;color:#9ca5b6;margin-top:8px}.composer-footnote kbd{color:#b1bbcd}
 .browser-panel{background:#171b22;border-left:1px solid var(--line)}
 .browser-resizer{flex-basis:5px;background:#171b22}.browser-resizer::after{left:1px;width:1px;background:#2c3340}
-.browser-heading{height:68px;flex-shrink:0;padding:0 14px;border-bottom:1px solid var(--line);gap:9px}
-.browser-heading strong{font-size:15px}.browser-heading #browser-title{font-size:12px}
-.browser-heading>#browser-expand{font-size:11px;padding:5px 7px;border:0;background:none;color:#aebbd0}
-.browser-address{padding:12px 12px 8px;gap:4px;flex-shrink:0}.browser-address input{font-size:13px;padding:8px;background:#11161e;border-color:#3b4555}
-.browser-address button{background:#252c38;font-size:15px;padding:5px 8px}
-.browser-address button[type=submit]{font-size:12px}
-.browser-tools{padding:0 12px 12px;gap:6px;flex-shrink:0;flex-wrap:nowrap}
-.browser-tools button{font-size:12px;padding:8px 10px;color:#b9c8dd;border-color:#3d4b60}
-.browser-tools #browser-annotate{margin-left:auto;white-space:nowrap}
+/* Keep preview navigation and actions on one row, including resized panels. */
+.browser-heading,.browser-expanded .browser-heading{height:52px;flex-shrink:0;padding:0 8px;border-bottom:1px solid var(--line);gap:5px;container-type:inline-size}
+.browser-heading strong{font-size:13px;flex-shrink:0}
+.browser-heading .browser-address{flex:1;min-width:0;padding:0;gap:3px;align-items:center}
+.browser-address input{width:0;font-size:12px;height:30px;padding:5px 7px;background:#11161e;border-color:#3b4555}
+.browser-address button{height:30px;padding:4px 6px;background:#252c38;font-size:15px;flex-shrink:0}
+.browser-address button[type=submit]{font-size:11px}
+.browser-heading .browser-tools{padding:0;gap:5px;flex-shrink:0;flex-wrap:nowrap}
+.browser-tools button{height:30px;font-size:11px;padding:5px 6px;color:#b9c8dd;border-color:#3d4b60;display:flex;align-items:center;justify-content:center}
+.browser-tools .browser-devices button{width:30px;padding:5px}
+.browser-tools #browser-annotate{white-space:nowrap}
+.browser-heading>#browser-expand{display:flex;align-items:center;justify-content:center;width:28px;height:30px;padding:4px;border:0;background:none;color:#aebbd0;flex-shrink:0}
+.browser-heading #preview-menu{flex-shrink:0}
+.browser-heading #preview-menu>summary{padding:4px;width:24px;text-align:center}
 .browser-size{display:none}
+@container (max-width:480px){.browser-heading strong{display:none}.browser-tools #browser-annotate{font-size:10px;padding:5px 4px}.browser-address button{padding:4px}.browser-heading .browser-tools{gap:3px}}
 .browser-tabs-bar{padding:7px 12px;background:#171b22;flex-shrink:0}
 .browser-annotation,.browser-expanded .browser-annotation{height:52px;padding:9px 14px;display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:center;gap:8px;flex-shrink:0}
 .browser-annotation>div{font:12px/1.5 "Segoe UI",sans-serif;color:#b3c2d8}

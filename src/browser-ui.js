@@ -37,7 +37,7 @@ export function setupBrowser(api,addCapture,{flushDraft,send}={}) {
     const width=fitWidth();preferredWidth=event.key==='Home'?390:event.key==='End'?Number(divider.getAttribute('aria-valuemax')):width+(event.key==='ArrowLeft'?1:-1)*(event.shiftKey?80:20);preferredWidth=fitWidth();saveWidth();bounds();
   });
   divider.addEventListener('dblclick',()=>{preferredWidth=null;saveWidth();fitWidth();bounds();});
-  function expand(value){finishResize(false);expanded=value;document.body.classList.toggle('browser-expanded',expanded);$('browser-expand').textContent=expanded ? 'Back to chat' : 'Expand';$('browser-expand').setAttribute('aria-label',expanded ? 'Back to chat' : 'Expand browser');$('browser-expand').setAttribute('aria-pressed',String(expanded));fitWidth();bounds();}
+  function expand(value){finishResize(false);expanded=value;document.body.classList.toggle('browser-expanded',expanded);$('browser-expand').title=expanded ? 'Back to chat' : 'Expand browser';$('browser-expand').setAttribute('aria-label',expanded ? 'Back to chat' : 'Expand browser');$('browser-expand').setAttribute('aria-pressed',String(expanded));fitWidth();bounds();}
   function bounds() {
     cancelAnimationFrame(resizeFrame);
     resizeFrame=requestAnimationFrame(()=>{

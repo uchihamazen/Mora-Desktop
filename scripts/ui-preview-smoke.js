@@ -10,6 +10,20 @@ try{
   await page.goto(`http://127.0.0.1:${server.address().port}`);await page.locator('#model option').waitFor({state:'attached'});
   assert.match(await page.locator('#ui-preview-label').textContent(),/Sample data/);
   assert.equal(await page.locator('#browser-panel').isVisible(),true);
+  for(const width of [680,500,390]){
+    await page.locator('#browser-panel').evaluate((node,width)=>node.style.setProperty('--browser-width',width+'px'),width);
+    const layout=await page.locator('.browser-heading').evaluate(header=>{
+      const controls=[...header.querySelectorAll('form button, input, .browser-tools button, #browser-expand, summary')],bounds=header.getBoundingClientRect();
+      return {height:bounds.height,overflow:header.scrollWidth>header.clientWidth,centers:controls.map(node=>{const rect=node.getBoundingClientRect();return rect.y+rect.height/2;})};
+    });
+    assert.equal(layout.height,52);assert.equal(layout.overflow,false,`Toolbar must fit ${width}px`);
+    assert.ok(Math.max(...layout.centers)-Math.min(...layout.centers)<2,`Controls must share one row at ${width}px`);
+  }
+  await page.locator('#browser-panel').evaluate(node=>node.style.removeProperty('--browser-width'));
+  await page.getByRole('button',{name:'Mobile',exact:true}).click();assert.equal(await page.locator('#browser-mobile').getAttribute('aria-pressed'),'true');
+  await page.getByRole('button',{name:'Desktop',exact:true}).click();assert.equal(await page.locator('#browser-desktop').getAttribute('aria-pressed'),'true');
+  await page.getByRole('button',{name:'Expand browser',exact:true}).click();assert.equal(await page.locator('#browser-expand svg').count(),1);
+  await page.getByRole('button',{name:'Back to chat',exact:true}).click();
   assert.equal(await page.locator('#model').inputValue(),'preview-model');
   await page.locator('#effort').selectOption('high');assert.equal((await page.evaluate(()=>window.muse.getState())).reasoningEffort,'high');
   await page.locator('#prompt').fill('Make the layout clearer');await page.locator('#send-button').click();
