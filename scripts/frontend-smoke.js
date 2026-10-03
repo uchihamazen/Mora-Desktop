@@ -173,8 +173,10 @@ try{
  await page.evaluate(()=>window.smoke.emit({busy:true,items:[{itemId:'b',kind:'toolCall',revision:1,status:'inProgress',tool:'powershell',visibleOutput:'FILE_OK'}]}));
  assert.equal(await page.locator('#workspace-button').isDisabled(),true);
  assert.equal(await page.locator('#model').isDisabled(),true);
+ assert.match(await page.locator('.tool-card pre').textContent(),/FILE_OK/,'A running tool should show its output');
+ await page.locator('.tool-card summary').click();await page.locator('.tool-card pre').waitFor({state:'detached'});
  await page.locator('.tool-card summary').click();
- assert.match(await page.locator('.tool-card pre').textContent(),/FILE_OK/);
+ assert.match(await page.locator('.tool-card pre').textContent(),/FILE_OK/,'Reopening a tool should restore its output');
  await page.evaluate(()=>window.smoke.emit({busy:true,finishing:true,items:[{itemId:'answer',kind:'agentMessage',status:'inProgress',text:'The reply is ready'}]}));
  assert.match(await page.locator('#working-label').textContent(),/Reply ready/);
  assert.equal(await page.locator('#prompt').isEnabled(),true);

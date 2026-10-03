@@ -48,7 +48,8 @@ export function setupBrowser(api,addCapture,{flushDraft,send}={}) {
   }
   function showError(error){$('browser-error').textContent=error.message || String(error);$('browser-error').hidden=false;}
   function update(next) {
-    state=next;$('browser-panel').hidden=!state.open;document.body.classList.toggle('browser-open',state.open);
+    state=next;if(!state.open)for(const popup of $('browser-panel').querySelectorAll('[popover]:popover-open'))popup.hidePopover();
+    $('browser-panel').hidden=!state.open;document.body.classList.toggle('browser-open',state.open);
     if(!state.open)finishResize(false);fitWidth();
     if(!state.open && expanded)expand(false);
     for(const mode of ['desktop','mobile']){const button=$(`browser-${mode}`);button.setAttribute('aria-pressed',String((state.deviceMode || 'desktop')===mode));button.disabled=state.loading || state.deviceReady===false;}

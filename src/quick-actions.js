@@ -10,7 +10,7 @@ export function setupQuickActions(api,{find,sidebar}) {
     {label:'Run my app',id:'run-project'}, {label:'Test my app',id:'test-project'},
     {label:'Stop Muse request',id:'stop-button'}, {label:'Open or close browser',id:'browser-button'},
     {label:'Website tester',id:'website-tester'}, {label:'Project checkpoints',id:'checkpoints'},
-    {label:'Engine settings',run:()=>{sidebar(false);$('settings-panel').hidden=false;$('settings-button').focus();}},
+    {label:'Engine settings',id:'settings-button'},
   ];
   const dialog=make('dialog','');dialog.className='quick-dialog';dialog.setAttribute('aria-labelledby','quick-heading');
   const heading=make('h2','Quick actions and shortcuts');heading.id='quick-heading';const input=make('input','');input.type='search';input.setAttribute('aria-label','Search quick actions');input.placeholder='Search actions…';

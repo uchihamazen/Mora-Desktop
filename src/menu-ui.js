@@ -7,16 +7,16 @@ export function setupWorkspaceMenus(api) {
   const menus=[...document.querySelectorAll('[data-workspace-menu]')];
   const trigger=menu=>menu.querySelector('summary');
   function updatePreview(){api.browserCommand?.('occlude',{hidden:previewOccluded()}).catch(()=>{});}
-  function close(menu,restore=false){menu.open=false;if(restore)trigger(menu).focus();}
+  function close(menu,restore=false){for(const popup of menu.querySelectorAll('[popover]:popover-open'))popup.hidePopover();menu.open=false;if(restore)trigger(menu).focus();}
   for(const menu of menus){
     trigger(menu).setAttribute('aria-expanded','false');
     menu.addEventListener('toggle',()=>{
       trigger(menu).setAttribute('aria-expanded',String(menu.open));
-      if(menu.open)for(const other of menus)if(other!==menu)close(other);
+      if(menu.open){for(const other of menus)if(other!==menu)close(other);}else close(menu);
       updatePreview();
     });
     menu.addEventListener('click',event=>{
-      if(!event.target.closest('.menu-content button'))return;
+      if(!event.target.closest('.menu-content button') || event.target.closest('.select-trigger'))return;
       const restore=menu.contains(document.activeElement);close(menu,restore);updatePreview();
     });
     menu.addEventListener('change',()=>{close(menu,true);updatePreview();});
@@ -24,7 +24,7 @@ export function setupWorkspaceMenus(api) {
   }
   document.addEventListener('pointerdown',event=>{for(const menu of menus)if(menu.open&&!menu.contains(event.target))close(menu);});
   document.addEventListener('keydown',event=>{
-    if(event.key!=='Escape'||document.querySelector('dialog[open]'))return;
+    if(event.defaultPrevented||event.key!=='Escape'||document.querySelector('dialog[open]'))return;
     const menu=menus.find(value=>value.open);if(menu){event.preventDefault();close(menu,true);updatePreview();}
   });
 }
@@ -68,7 +68,7 @@ export function setupSelectMenus(api) {
       const menu=document.createElement('div');menu.id=(select.id || trigger.id)+'-menu';menu.className='select-menu';menu.setAttribute('popover','auto');menu.setAttribute('role','menu');menu.setAttribute('aria-label',label+' options');trigger.setAttribute('aria-controls',menu.id);
       trigger.setAttribute('popovertarget',menu.id);
       const heading=document.createElement('div');heading.className='mode-menu-heading';heading.textContent=label;menu.append(heading);
-      select.classList.add('mode-native');select.tabIndex=-1;select.setAttribute('aria-hidden','true');select.before(trigger);(select.closest('dialog') || document.body).append(menu);
+      select.classList.add('mode-native');select.tabIndex=-1;select.setAttribute('aria-hidden','true');select.before(trigger);(select.closest('dialog,[data-workspace-menu]') || document.body).append(menu);
       const record={select,trigger,menu};records.set(select,record);
       record.observer=new MutationObserver(()=>sync(record));record.observer.observe(select,{childList:true,subtree:true,characterData:true,attributes:true,attributeFilter:['disabled','hidden','title','selected']});
       select.addEventListener('change',()=>sync(record));

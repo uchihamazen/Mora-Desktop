@@ -7,6 +7,10 @@ const server=createPreviewServer();await new Promise(resolve=>server.listen(0,'1
 const browser=await chromium.launch({channel:'msedge',headless:true});
 try{
   const page=await browser.newPage({viewport:{width:1440,height:1000}}),errors=[];page.on('pageerror',error=>errors.push(error.message));page.on('console',message=>{if(message.type()==='error')errors.push(message.text());});
+  await page.route('**/preview-bridge.js',async route=>{
+    const response=await route.fetch(),body=await response.text();assert.ok(body.includes('history:{entries:[]}'),'History fixture must match the sample bridge');
+    await route.fulfill({response,body:body.replace('history:{entries:[]}',"history:{entries:[{title:'Earlier page',url:location.origin+'/demo'}]}")});
+  });
   await page.goto(`http://127.0.0.1:${server.address().port}`);await page.locator('#model option').waitFor({state:'attached'});
   assert.equal(await page.locator('#ui-preview-label').count(),0);
   assert.equal(await page.locator('.browser-annotation').isVisible(),false);
@@ -31,6 +35,20 @@ try{
   assert.equal((await page.evaluate(()=>window.muse.getState())).executionMode,'readonly');
   await page.locator('#execution-mode-trigger').click();await page.locator('#prompt').click({position:{x:10,y:10}});
   assert.equal(await page.locator('#execution-mode-menu').isVisible(),false,'Clicking outside should dismiss the access menu');
+  await page.locator('#preview-menu summary').click();await page.locator('#browser-history-trigger').click();
+  assert.equal(await page.locator('#preview-menu').evaluate(node=>node.open),true,'History options must remain inside the open preview menu');
+  await page.keyboard.press('Escape');
+  assert.equal(await page.evaluate(()=>document.activeElement.id),'browser-history-trigger');
+  assert.equal(await page.evaluate(()=>document.activeElement.checkVisibility()),true,'History dismissal must restore a visible trigger');
+  await page.keyboard.press('Escape');assert.equal(await page.locator('#preview-menu').evaluate(node=>node.open),false);
+  await page.locator('#preview-menu summary').click();await page.locator('#browser-history-trigger').click();
+  await page.locator('#preview-menu').evaluate(node=>node.open=false);
+  await page.waitForFunction(()=>!document.getElementById('browser-history-menu').matches(':popover-open'),{},{timeout:5000});
+  await page.locator('#preview-menu summary').click();await page.locator('#browser-history-trigger').click();
+  await page.evaluate(()=>window.muse.browserCommand('close'));
+  await page.waitForFunction(()=>!document.getElementById('browser-history-menu').matches(':popover-open'),{},{timeout:5000});
+  await page.evaluate(()=>window.muse.browserCommand('open'));
+  await page.locator('#preview-menu').evaluate(node=>node.open=false);
   const chatLayout=await page.evaluate(()=>{
     const user=document.querySelector('.message.user .message-content'),assistant=document.querySelector('.message.assistant');
     return {userBackground:getComputedStyle(user).backgroundColor,rail:getComputedStyle(assistant).borderLeftWidth,userLabel:getComputedStyle(document.querySelector('.message.user .message-label')).display};
@@ -42,6 +60,10 @@ try{
   assert.equal(await page.evaluate(()=>document.activeElement.id),'sidebar-toggle');
   await page.locator('#sidebar-toggle').click();assert.equal(await page.locator('#navigation-sidebar').isVisible(),true);
   const settingsAnchor=await page.locator('#settings-button').boundingBox();
+  await page.keyboard.press('Control+k');await page.getByRole('searchbox',{name:'Search quick actions'}).fill('Engine settings');
+  await page.getByRole('button',{name:'Engine settings',exact:true}).click();
+  assert.equal(await page.locator('#settings-panel').evaluate(node=>node.open),true,'Engine settings in Quick actions must open the Settings dialog');
+  await page.getByRole('button',{name:'Close settings',exact:true}).click();
   await page.locator('#settings-button').click();
   await page.getByRole('dialog',{name:'Settings',exact:true}).waitFor();
   assert.deepEqual(await page.locator('#settings-button').boundingBox(),settingsAnchor,'Opening settings must not move its sidebar anchor');

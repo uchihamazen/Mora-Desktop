@@ -41,6 +41,24 @@ try{
   const screenshot=path.join(output,'native-shell.png');
   await page.locator('#preview-menu > summary').click();await page.waitForTimeout(100);assert.equal((await nativeView()).visible,false,'The menu must remain above the native page');
   await writeFile(path.join(output,'native-menu.png'),Buffer.from(await app.evaluate(async({BrowserWindow})=>(await BrowserWindow.getAllWindows()[0].capturePage()).toPNG().toString('base64')),'base64'));
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('Control+k');await page.getByLabel('Search quick actions',{exact:true}).fill('Engine settings');await page.keyboard.press('Enter');
+  await page.getByRole('dialog',{name:'Settings',exact:true}).waitFor();
+  assert.equal((await nativeView()).visible,false,'Quick Actions Settings must hide the native page');
+  await page.getByRole('button',{name:'Close settings',exact:true}).click();
+  await page.evaluate(url=>window.muse.browserCommand('navigate',{url:url+'?history=second'}),url);
+  await page.waitForFunction(async()=>!(await window.muse.browserCommand('state')).loading);
+  await page.locator('#preview-menu > summary').click();await page.locator('#browser-history-trigger').click();
+  assert.equal(await page.locator('#preview-menu').evaluate(node=>node.open),true);
+  assert.equal((await nativeView()).visible,false,'History picker must hide the native page');
+  await page.keyboard.press('Escape');
+  assert.equal(await page.evaluate(()=>document.activeElement.id),'browser-history-trigger');
+  assert.equal(await page.evaluate(()=>document.activeElement.checkVisibility()),true);
+  await page.locator('#browser-history-trigger').click();
+  await page.locator('#browser-history-menu button[data-value="0"]').click();
+  await page.waitForFunction(async url=>{const state=await window.muse.browserCommand('state');return state.url===url&&!state.loading;},url);
+  await page.locator('#preview-menu').waitFor({state:'visible'});assert.equal(await page.locator('#preview-menu').evaluate(node=>node.open),false);
+  await page.locator('#preview-menu > summary').click();
   await page.keyboard.press('Control+k');await page.getByLabel('Search quick actions',{exact:true}).fill('Toggle navigation');await page.keyboard.press('Enter');
   await page.locator('.quick-dialog').waitFor({state:'hidden'});assert.equal(await page.locator('#preview-menu').getAttribute('open'),null);await page.waitForTimeout(100);assert.equal((await nativeView()).visible,true,'The native page should return after the menu and dialog close');
   await page.keyboard.press('Control+b');
@@ -54,6 +72,6 @@ try{
   const legacyPreferences=JSON.parse(await readFile(path.join(profile,'preferences.json'),'utf8'));legacyPreferences.speedPreset='quick';await writeFile(path.join(profile,'preferences.json'),JSON.stringify(legacyPreferences));
   app=await launchDesktop(process.argv[2],env);await app.firstWindow();page=app.windows().find(p=>p.url().endsWith('/index.html'));
   await until(state=>state.connection==='ready'&&!state.loading);assert.equal((await page.evaluate(()=>window.muse.getState())).reasoningEffort,effort);assert.equal(await page.locator('#effort').inputValue(),effort);
-  await writeFile(path.join(output,'native-result.json'),JSON.stringify({profile,screenshot,nativePreview:path.join(output,'native-preview.png'),reasoningEffort:effort,effortPersistence:true,trustedCounterClick:true,menuOcclusion:true,keyboardDialog:true,comparison:true,minimumStoppedHeader:true,visualConversation:'display-only fixture',version:await app.evaluate(({app})=>app.getVersion())},null,2));
-  console.log('PASS native layout: direct reasoning levels and restart persistence, real counter pointer, menus, keyboard dialog, comparison, 1080px stopped header. '+screenshot);
+  await writeFile(path.join(output,'native-result.json'),JSON.stringify({profile,screenshot,nativePreview:path.join(output,'native-preview.png'),reasoningEffort:effort,effortPersistence:true,trustedCounterClick:true,menuOcclusion:true,quickSettings:true,historyPickerFocus:true,keyboardDialog:true,comparison:true,minimumStoppedHeader:true,visualConversation:'display-only fixture',version:await app.evaluate(({app})=>app.getVersion())},null,2));
+  console.log('PASS native layout: direct reasoning levels and restart persistence, real counter pointer, menus, Quick Actions Settings, History picker and keyboard focus, comparison, 1080px stopped header. '+screenshot);
 }finally{await app?.close();}
