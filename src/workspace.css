@@ -166,7 +166,7 @@ main{background:#111419}
 .message.user{justify-content:flex-end;padding:0;margin:8px 0 28px}
 .message.user>.avatar,.message.assistant>.avatar{display:none}
 .message.user .message-label{display:none}
-.message.user .message-content{flex:0 1 auto;max-width:85%;min-width:0;background:#12466d;border:1px solid #2475a6;border-radius:14px;padding:12px 16px;color:#eff7ff}
+.message.user .message-content{flex:0 1 auto;max-width:85%;min-width:0;background:#142c43;border:1px solid #295472;border-radius:14px;padding:12px 16px;color:#eff7ff}
 .message.user .message-body{color:#eff7ff;font-size:15px;line-height:1.6}
 .message.user .message-body>:last-child{margin-bottom:0}
 .message.user .message-images:empty{display:none}
