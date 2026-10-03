@@ -64,8 +64,8 @@
 - Verify with `node scripts/activity-smoke.js` and the existing lifecycle tests.
 
 ## Branding
-- Mora Desktop uses the shared blue folded-ribbon monogram on a navy tile in the sidebar, welcome screen, assistant avatars and favicon; matching Windows ICO frames supply the window and future packaged application icon.
-- Local PNG artwork, an SVG wrapper and a multi-size ICO require no runtime image service or new app dependency; update all three assets together.
+- Mora Desktop uses the original white geometric M on a rounded blue tile in the sidebar, welcome screen, assistant avatars and favicon; matching Windows ICO frames supply the window and future packaged application icon.
+- Local SVG artwork and a multi-size ICO require no runtime image service or new app dependency; update both assets together.
 - The icon is MIT-licensed; `src/assets/README.md` records its source. Engine settings and README identify the app as an independent Muse Code interface without Meta endorsement.
 - Keep the legacy profile folder, installer app ID, and internal test/IPC identifiers stable so branding changes do not reset existing chats or engine integration.
 - Verify rendered images in the local preview; inspect the embedded EXE icon after an explicitly requested build.
