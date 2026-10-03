@@ -343,7 +343,7 @@ async function send() {
   } catch (e) { error(e); }
   finally { sending = false; update(await api.getState()); if (!state.busy) $('prompt').focus(); }
 }
-$('prompt').addEventListener('input', () => { $('prompt').style.height = 'auto'; $('prompt').style.height = `${Math.min(200,Math.max(79,$('prompt').scrollHeight))}px`; refreshSend();scheduleDraft(); });
+$('prompt').addEventListener('input', () => { const prompt=$('prompt'),minimum=parseFloat(getComputedStyle(prompt).minHeight);prompt.style.height='auto';prompt.style.height=`${Math.min(200,Math.max(minimum,prompt.scrollHeight))}px`; refreshSend();scheduleDraft(); });
 $('prompt').addEventListener('keydown', event => { if (event.key === 'Enter' && !event.shiftKey && !event.isComposing && event.keyCode !== 229) { event.preventDefault(); send(); } });
 $('prompt').addEventListener('paste', event => {
   const files = [...event.clipboardData.items].filter(item => item.kind === 'file' && item.type.startsWith('image/')).map(item => item.getAsFile());

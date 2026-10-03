@@ -53,8 +53,15 @@ try{
   await page.getByRole('button',{name:'Back to chat',exact:true}).click();
   assert.equal(await page.locator('#model').inputValue(),'preview-model');
   await page.locator('#effort').selectOption('high');assert.equal((await page.evaluate(()=>window.muse.getState())).reasoningEffort,'high');
-  await page.locator('#prompt').fill('Make the layout clearer');await page.locator('#send-button').click();
+  const emptyPromptHeight=(await page.locator('#prompt').boundingBox()).height;
+  await page.locator('#prompt').fill(Array(12).fill('A longer message line').join('\n'));
+  assert.ok((await page.locator('#prompt').boundingBox()).height>emptyPromptHeight,'Long messages should still expand');
+  await page.locator('#prompt').fill('');assert.equal((await page.locator('#prompt').boundingBox()).height,emptyPromptHeight);
+  await page.locator('#prompt').fill('Make the layout clearer');
+  assert.equal((await page.locator('#prompt').boundingBox()).height,emptyPromptHeight,'Short typing must not resize the composer');
+  await page.locator('#send-button').click();
   await page.getByText('Sample response only. To change Mora, send your browser annotations to Codex.',{exact:true}).waitFor();
+  assert.equal((await page.locator('#prompt').boundingBox()).height,emptyPromptHeight,'Sending should retain the short-message composer height');
   await assert.rejects(page.evaluate(()=>window.muse.projectCommand('run')),/UI preview only/);
   // Codex's page overlay uses an injected style inside a shadow root. A strict
   // style-src leaves an unstyled, centered browser-default popover in its place.
