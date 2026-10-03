@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog, clipboard, nativeImage, shell } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, clipboard, nativeImage, shell, Menu } from 'electron';
 import { readFile, writeFile, mkdir, rename, stat, mkdtemp, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -14,9 +14,11 @@ import {accountState,AccountLogin} from './account.js';
 import {createProject} from './project.js';
 import {Checkpoints} from './checkpoints.js';
 import {ProjectRunner} from './project-work.js';
-import { projectPathFor, groupConversations } from './projects.js';
+import { projectPathFor, groupConversations, projectKey } from './projects.js';
+import { contextMenuTemplate } from './context-menu.js';
 import { DesktopBrowser } from './browser.js';
 import {checkStitch,configureStitch,readStitchSettings,stitchStatus} from './stitch.js';
+import {checkTrello,configureTrello,readTrelloSettings,trelloStatus} from './trello.js';
 
 const directory = path.dirname(fileURLToPath(import.meta.url));
 let window, prefsPath, museHome, executable, connectionAttempt, quitting = false;
@@ -93,6 +95,22 @@ async function stitchCommand(action,payload={}) {
     const {server}=await readStitchSettings(filename);
     return {...stitchStatus(server),verified:true,keyOnly:action==='test' && provided,...verified,configPath:filename};
   }finally{stitchChanging=false;}
+}
+let trelloChanging=false;
+async function trelloCommand(action,payload={}) {
+  const filename=path.join(app.getPath('userData'),'trello.json');
+  if(action==='state'){const saved=await readTrelloSettings(filename);return {...trelloStatus(saved),configPath:filename};}
+  if(!['connect','test','disconnect'].includes(action))throw new Error('Unknown Trello action.');
+  assertIdle(state);if(trelloChanging)throw new Error('A Trello connection check is already running.');trelloChanging=true;
+  try{
+    if(action==='disconnect')return await configureTrello(filename,null);
+    const saved=await readTrelloSettings(filename);
+    const provided=typeof payload?.apiKey==='string' && !!payload.apiKey.trim() && typeof payload?.token==='string' && !!payload.token.trim();
+    const creds=action==='connect' || provided ? {apiKey:payload?.apiKey,token:payload?.token,board:payload?.board} : {apiKey:saved?.apiKey,token:saved?.token,board:saved?.board};
+    const verified=await checkTrello(creds);
+    if(action==='connect')await configureTrello(filename,{...creds,...verified});
+    return {...trelloStatus({...creds,...verified}),verified:true,keyOnly:action==='test' && provided,...verified};
+  }finally{trelloChanging=false;}
 }
 let updateTimer, saveQueue = Promise.resolve();
 let queueOperation = Promise.resolve(), queueReservation = 0;
@@ -219,6 +237,12 @@ async function resumeChat(sessionId) {
   await save(); return state;
   } finally { state.loading = false; publish(); }
 }
+async function removeNativeHistory(sessionId) {
+  const directory = path.dirname(path.resolve(resolveSessionLogPath(sessionId, museHome)));
+  const relative = path.relative(path.resolve(museHome), directory);
+  if (!relative || relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) throw new Error('History directory is outside Muse storage.');
+  await rm(directory, { recursive: true, force: true });
+}
 async function deleteChat(sessionId) {
   if (typeof sessionId !== 'string' || !sessionId) throw new Error('Choose a conversation to delete.');
   const index = state.sessions.findIndex(item => item.sessionId === sessionId);
@@ -231,13 +255,50 @@ async function deleteChat(sessionId) {
   await deleteChangeSummaries(app.getPath('userData'), sessionId).catch(report);
   await deleteWork(app.getPath('userData'),sessionId).catch(report);
   if (museHome) {
-    try {
-      const directory = path.dirname(path.resolve(resolveSessionLogPath(sessionId, museHome)));
-      const relative = path.relative(path.resolve(museHome), directory);
-      if (!relative || relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) throw new Error('History directory is outside Muse storage.');
-      await rm(directory, { recursive: true, force: true });
-    }
+    try { await removeNativeHistory(sessionId); }
     catch (error) { state.error = `Chat removed from the list, but its history file could not be deleted: ${error.message}`; }
+  }
+  publish();
+  return state;
+}
+async function renameChat(sessionId, title) {
+  if (typeof sessionId !== 'string' || !sessionId) throw new Error('Choose a conversation to rename.');
+  const session = state.sessions.find(item => item.sessionId === sessionId);
+  if (!session) throw new Error('This conversation is not in Mora Desktop.');
+  if (state.loading) throw new Error('A conversation is loading. Wait before renaming.');
+  if (typeof title !== 'string' || !title.trim()) throw new Error('Write a chat name.');
+  if (title.trim().length > 80) throw new Error('Keep the chat name to 80 characters.');
+  session.title = title.trim();
+  await save();
+  publish();
+  return state;
+}
+async function removeProject(projectPath) {
+  if (typeof projectPath !== 'string' || !projectPath) throw new Error('Choose a project to remove.');
+  const key = projectKey(projectPath);
+  const group = groupConversations(state.sessions, state.projects).slice(1).find(candidate => candidate.projectPath !== null && projectKey(candidate.projectPath) === key);
+  if (!group) throw new Error('This project is not in Mora Desktop.');
+  const removedIds = group.sessions.map(session => session.sessionId);
+  const activeRemoved = removedIds.includes(state.sessionId) || (state.projectPath !== null && projectKey(state.projectPath) === key);
+  if (state.loading) throw new Error('A conversation is loading. Wait before removing this project.');
+  if (state.busy && activeRemoved) throw new Error('A request is running. Stop it before removing this project.');
+  if (activeRemoved) assertProjectStopped();
+  state.sessions = state.sessions.filter(session => !removedIds.includes(session.sessionId));
+  state.projects = state.projects.filter(candidate => projectKey(candidate) !== key);
+  if (activeRemoved) {
+    Object.assign(state, createState(), { sessionId: null });
+    state.projectPath = null;
+    state.workspace = path.join(app.getPath('userData'), 'general-chat');
+    await mkdir(state.workspace, { recursive: true });
+  }
+  await save();
+  for (const sessionId of removedIds) {
+    await deleteChangeSummaries(app.getPath('userData'), sessionId).catch(report);
+    await deleteWork(app.getPath('userData'), sessionId).catch(report);
+    if (museHome) {
+      try { await removeNativeHistory(sessionId); }
+      catch (error) { state.error = `Project removed from the list, but a history file could not be deleted: ${error.message}`; }
+    }
   }
   publish();
   return state;
@@ -482,6 +543,14 @@ else {
   window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   window.webContents.on('will-navigate', event => event.preventDefault());
   window.webContents.session.setPermissionRequestHandler((_wc, _permission, callback) => callback(false));
+  window.webContents.on('context-menu', (event, params) => {
+    event.preventDefault();
+    const template = contextMenuTemplate(params, {
+      replace: suggestion => window.webContents.replaceMisspelling(suggestion),
+      addToDictionary: word => window.webContents.session.addWordToSpellCheckerDictionary(word),
+    });
+    if (template.length) Menu.buildFromTemplate(template).popup({ window });
+  });
   window.once('ready-to-show', () => window.show());
   let closing = false;
   window.on('close', event => {
@@ -507,6 +576,7 @@ else {
   handle('project-work',projectCommand);
   handle('browser', (action, payload) => browser.command(action, payload));
   handle('stitch', stitchCommand);
+  handle('trello', trelloCommand);
   handle('get-state', () => state);
   handle('checkpoints',checkpointCommand);
   handle('account',async action=>{
@@ -525,6 +595,8 @@ else {
   handle('new-chat', newChat);
   handle('resume-chat', resumeChat);
   handle('delete-chat', deleteChat);
+  handle('remove-project', removeProject);
+  handle('rename-chat', renameChat);
   handle('send', sendMessage);
   handle('stop', async () => { state.queuePaused = true; applyEvent(state, 'stop/requested', {}); publish(); try { await persistWork(); } finally { await runner.stop(); } });
   handle('queue', queueCommand);

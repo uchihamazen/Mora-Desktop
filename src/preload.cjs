@@ -10,6 +10,8 @@ contextBridge.exposeInMainWorld('muse', {
   newChat: (projectPath = null) => ipcRenderer.invoke('muse:new-chat', projectPath),
   resumeChat: id => ipcRenderer.invoke('muse:resume-chat', id),
   deleteChat: id => ipcRenderer.invoke('muse:delete-chat', id),
+  removeProject: projectPath => ipcRenderer.invoke('muse:remove-project', projectPath),
+  renameChat: (id, title) => ipcRenderer.invoke('muse:rename-chat', id, title),
   sendMessage: message => ipcRenderer.invoke('muse:send', message),
   stopTurn: () => ipcRenderer.invoke('muse:stop'),
   queueCommand: (action,payload) => ipcRenderer.invoke('muse:queue',action,payload),
@@ -22,5 +24,6 @@ contextBridge.exposeInMainWorld('muse', {
   openLink: url => ipcRenderer.invoke('muse:open-link',url),
   browserCommand: (action, payload) => ipcRenderer.invoke('muse:browser', action, payload),
   stitchCommand: (action, payload) => ipcRenderer.invoke('muse:stitch', action, payload),
+  trelloCommand: (action, payload) => ipcRenderer.invoke('muse:trello', action, payload),
   onEvent: callback => { const listener = (_event, value) => callback(value); ipcRenderer.on('muse:event', listener); return () => ipcRenderer.removeListener('muse:event', listener); }
 });

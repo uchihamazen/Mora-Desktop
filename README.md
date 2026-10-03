@@ -125,7 +125,7 @@ security settings. Upgrades and uninstall preserve the local chat profile.
 4. Select **Test my app** for configured checks and page loading. Expand **Show results** for outputs. Interactions still need suitable project tests.
 5. Select **Fix failures** for one Muse repair and one recheck, or stop the app and open **Checkpoints → Review restore** to select files to undo.
 
-Run/Test currently support Node projects with package.json scripts and Node/package manager on PATH. Checkpoints exclude secrets, generated files and oversized/linked source; they preserve Git history and unrelated later edits. They are source recovery, rather than whole-project backups.
+Run/Test currently support Node projects with package.json scripts and Node/package manager on PATH. Checkpoints exclude secrets and generated outputs, including compiled executables and libraries in any folder. Linked or oversized source prevents changes until handled; restores preserve Git history and unrelated later edits. Checkpoints provide source recovery rather than whole-project backups.
 
 ### Chat and projects
 

@@ -16,10 +16,10 @@
 
 ## Projects and general chats
 - Sidebar groups conversations under collapsible project folders, with a + for a new chat in that project; Add/Open project chooses a local folder. New project creates a named folder and optionally a dependency-free Node web starter, refusing existing targets and linked parent paths. New conversation / Ctrl N starts a general chat for questions and images.
-- Existing chats keep their IDs, messages, and saved workspace; absent project identity uses the legacy workspace. Full Windows paths distinguish folders, including projects with the same name.
+- Existing chats keep their IDs, messages, and saved workspace; absent project identity uses the legacy workspace. Full Windows paths distinguish folders, including projects with the same name. The pencil icon renames a chat inline (Enter saves, Escape cancels; up to 80 characters).
 - Explicit null project identity keeps general chats separate on reopen; the engine uses a private profile folder and Read only, without inheriting the previously selected project or its Full access setting. This is not a filesystem sandbox.
-- Project paths and chat identity persist in the existing conversation index and backup; project entries remain after their last chat is deleted. Full access remains available in project chats.
-- Verify grouping/lifecycle/persistence/date-boundary tests, `scripts/frontend-smoke.js`, and `scripts/projects-smoke.js [EXE] --send` for two real general replies with context and enabled sending after restart; tests use temporary profiles.
+- Project paths and chat identity persist in the existing conversation index and backup; project entries remain after their last chat is deleted. The project X (two clicks, like chat delete) removes the entry and its chats including native history without touching the folder; removing the open project falls back to a general chat. Full access remains available in project chats.
+- Verify grouping/removal/lifecycle/persistence/date-boundary tests, `scripts/frontend-smoke.js`, and `scripts/projects-smoke.js [EXE] --send` for two real general replies with context and enabled sending after restart; tests use temporary profiles.
 
 ## Missing engine history recovery
 - If a log is genuinely missing, recover available text from its view journal and show a notice; dismissal survives UI refreshes, expires when that error clears, and healthy chats clear stale notices.
@@ -55,6 +55,13 @@
 - Packaging removes the portable extraction stage; binaries remain unsigned without a trusted code-signing certificate, and antivirus acceptance is not guaranteed. No exclusions or security settings are changed automatically.
 - Verify packaged history/UI tests and direct shortcut launch; review any remaining behavioral alert with the antivirus vendor or apply an explicit app-only exception manually.
 
+## Trello board connection
+- Engine settings connects/tests/disconnects a Trello board with API key, token and board link; verification reads member identity, board name and list count over Trello's HTTPS API, and the status shows the connected board.
+- Requires a Trello API key + token from the Trello account and a board link or ID (`/b/` links, short or long IDs). Test checks pasted values without saving, and Connect verifies before saving; board link stays visible while key/token clear like Stitch.
+- Credentials and board identity live in the local Mora profile (`trello.json` with backup-first atomic writes), outside projects and chat/state output; secrets never appear in status or error text.
+- Read-only verification only: no cards are written and one board is connected at a time. Engine/Muse usage of the board is a later step, not this feature.
+- Verify `tests/trello.test.js` (link parsing, save/disconnect, fixture verification, redaction) and `scripts/frontend-smoke.js` (mocked UI flow plus short-viewport settings scroll); live Trello access needs real user credentials.
+
 ## Muse-wide workflow defaults
 - Superpowers and Ponytail are installed for the user, with a SessionStart hook that loads their startup instructions in every project.
 - Requires Node on PATH and an approved `workflow-defaults` hook on each machine; full skill libraries install separately and relevant skills load on demand.
@@ -77,7 +84,7 @@
 - Keep the installed EXE path stable so the Windows Search shortcut continues working.
 
 ## File change review
-- Full access requests update a Live file count and green/red line totals during edits; an open diff updates while preserving the selected file, scroll and keyboard focus.
+- Full access requests update a Live file count and green/red line totals during edits; a Live bar above the composer shows the running count until the turn finishes, then the completed badge returns inline. An open diff updates while preserving the selected file, scroll and keyboard focus.
 - Live scans reuse unchanged file contents and diff results against the original baseline; ignore changes, unnamed events and watcher failures trigger full scans. The final full reconciliation also catches missed events and concurrent external edits.
 - Uses installed Git for diff calculations, with the existing Codex Git runtime as a fallback; works in ordinary folders and respects Git ignore rules in repositories.
 - Saves reviews per conversation until that chat is deleted; skips symlinks, generated folders outside Git, files over 2 MiB and snapshots over 32 MiB/5,000 files. Partial reviews are labelled; binary files have no line counts and long previews are truncated.
@@ -102,7 +109,7 @@
 - Pending requests persist separately per chat, including images; queued-to-active receipts preserve interrupted submissions without automatically replaying them.
 - Stop cancels only the current request and pauses the rest; failure, restart and recovered work require explicit Resume. A fresh send leaves a recovered queue paused.
 - Edit, remove, pause, resume or clear pending messages; save failures retain the unsent draft and report the error. Immediate steering awaits verified transport support.
-- Draft text, images and annotation notes autosave and flush on close; loading another chat preserves draft ownership. Verify storage/lifecycle tests, frontend smoke and `scripts/work-smoke.js [EXE]`; real ordered replies use `scripts/ui-smoke.js [EXE] --send`.
+- Draft text, images and annotation notes autosave and flush on close; loading another chat preserves draft ownership. Right-click in any text field offers spellcheck corrections with add-to-dictionary plus standard cut/copy/paste; selected read-only text offers Copy. Verify storage/lifecycle/context-menu tests, frontend smoke and `scripts/work-smoke.js [EXE]`; real ordered replies use `scripts/ui-smoke.js [EXE] --send`.
 
 ## Formatted answers and streaming
 - Headings, lists, tables, quotes, links and fenced code render as safe DOM nodes; raw HTML stays literal and only HTTP(S) links can open externally. Code Copy and supported Stitch image previews remain available.
@@ -139,10 +146,10 @@
 
 ## Checkpoints and restore
 - Full access Muse requests and Run/Test commands save bounded project source checkpoints in the local app profile; failed or incomplete snapshots block mutation. Manual save/list/delete uses Checkpoints.
-- Includes dirty and visible untracked source; excludes generated/secret files even if tracked, rejects links, and limits files to 2 MiB, snapshots to 32 MiB/5,000 files and stored checkpoints to 256 MiB per project. Checkpoints are not a backup of databases, dependencies or secrets.
+- Includes dirty and visible untracked source and assets; excludes secrets and compiled outputs (EXE/DLL/installers/debug/object files) anywhere, even if tracked, so builds do not block source checkpoints. Linked or oversized source still blocks changes: 2 MiB/file, 32 MiB/5,000 files/snapshot, 256 MiB stored/project. Not a backup of databases, dependencies or secrets.
 - Automatic Muse/Test snapshots seal post-work hashes; restore previews select only those changed paths and flag later edits. Manual/Run snapshots require file selection. Stale previews refuse writes; newer edits need explicit acknowledgement.
 - Restore requires idle agent and stopped project commands, saves a recovery checkpoint, changes selected files only and leaves Git history intact. A partial filesystem failure preserves recovery and reports it; deleting a chat does not delete project checkpoints.
-- Verify checkpoint/lifecycle tests and native journey for dirty originals, additions/deletions, exclusions, link/bounds protection, later edits, stale previews, partial failures and restart persistence.
+- Verify checkpoint/lifecycle tests for compiled outputs in Git/plain folders, dirty originals, additions/deletions, exclusions, link/bounds protection, later edits, stale previews, partial failures and restart persistence.
 
 ## Run my app
 - Runs the configured dev/start/serve script in the selected Node project, waits for a reported localhost URL to respond, then opens the native preview. Stop/Restart manages its owned process tree only.

@@ -9,7 +9,7 @@ const excluded=new Set(['.git','.ssh','node_modules','.next','.cache','.venv','v
 export function checkpointSource(name) {
   const parts=name.replaceAll('\\','/').split('/'),leaf=parts.at(-1).toLowerCase();
   return !parts.some(part=>excluded.has(part.toLowerCase())) && !['dist','build','artifacts'].includes(parts[0].toLowerCase()) &&
-    !/^\.env(?:\.|$)/i.test(leaf) && !/\.(?:pem|key|pfx|p12)$/i.test(leaf) &&
+    !/^\.env(?:\.|$)/i.test(leaf) && !/\.(?:pem|key|pfx|p12|exe|dll|pdb|msi|msix|appx|obj|o|lib|a|so|dylib|pyc|class)$/i.test(leaf) &&
     !['credentials.json','credential.json','tokens.json','auth.json','secrets.json','.npmrc','.netrc'].includes(leaf);
 }
 async function atomic(file,data) {

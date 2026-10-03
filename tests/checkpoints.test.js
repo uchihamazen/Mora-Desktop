@@ -28,6 +28,18 @@ test('later edits require explicit selection and acknowledgement; stale previews
   const next=await store.preview(cp.id);await store.restore({token:next.token,paths:['app.js'],allowConflicts:true});
   assert.equal(await readFile(path.join(root,'other.js'),'utf8'),'unrelated user work');
 }));
+for(const tracked of [false,true])test(`compiled Windows outputs do not block source checkpoints (${tracked?'Git':'plain folder'})`,()=>fixture(async(root,profile)=>{
+  await mkdir(path.join(root,'release'));
+  await writeFile(path.join(root,'app.js'),'original source');await writeFile(path.join(root,'icon.png'),Buffer.from([0,1,2]));
+  await writeFile(path.join(root,'Application.EXE'),Buffer.alloc(2*1024*1024+1));await writeFile(path.join(root,'release','library.dll'),Buffer.alloc(2*1024*1024+1));
+  if(tracked){const {execFile}=await import('node:child_process');const {promisify}=await import('node:util');const exec=promisify(execFile);await exec('git',['init',root],{windowsHide:true});await exec('git',['-C',root,'add','.'],{windowsHide:true});}
+  const store=new Checkpoints(profile,root),cp=await store.create('Before edit',{manual:false});assert.equal(cp.fileCount,2);
+  await writeFile(path.join(root,'app.js'),'edited source');await writeFile(path.join(root,'Application.EXE'),'rebuilt executable');await store.seal(cp.id);
+  const preview=await store.preview(cp.id);assert.deepEqual(preview.changes.map(file=>file.path),['app.js']);
+  await store.restore({token:preview.token,paths:['app.js']});assert.equal(await readFile(path.join(root,'app.js'),'utf8'),'original source');
+  assert.equal(await readFile(path.join(root,'Application.EXE'),'utf8'),'rebuilt executable');
+}));
+
 test('secret/generated files are excluded and unsafe/incomplete snapshots cannot protect edits',()=>fixture(async(root,profile)=>{
   await mkdir(path.join(root,'dist'));await writeFile(path.join(root,'dist','output.js'),'generated');await writeFile(path.join(root,'.env'),'private');await writeFile(path.join(root,'app.js'),'source');
   const store=new Checkpoints(profile,root),cp=await store.create('Snapshot');assert.equal(cp.fileCount,1);

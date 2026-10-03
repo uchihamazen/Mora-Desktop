@@ -27,7 +27,21 @@ async function stitchAction(name,payload) {
   }catch(error){$('stitch-status').textContent=(error.message || String(error)).replace(/^Error invoking remote method '[^']+': Error: /,'');}
   finally{stitchChanging=false;refreshStitch();}
 }
-let openReviewId = null, selectedReviewPath = null, openReviewSignature = '';
+let trelloConfigured=false,trelloChanging=false;
+function refreshTrello(){if(!api.trelloCommand)return;for(const name of ['connect','test','disconnect'])$(`trello-${name}`).disabled=trelloChanging || state.busy || state.loading || (name==='test' && !trelloConfigured && (!$('trello-key').value.trim() || !$('trello-token').value.trim())) || (name==='disconnect' && !trelloConfigured);}
+async function trelloAction(name,payload) {
+  if(trelloChanging)return;trelloChanging=true;refreshTrello();
+  $('trello-status').textContent='Checking Trello board access…';
+  try{
+    const result=await api.trelloCommand(name,payload);if(!result)return;
+    trelloConfigured=result.configured;
+    $('trello-status').textContent=result.configured ? `Connected · ${result.boardName} · ${result.listCount} lists${result.keyOnly ? ' · press Connect to save' : ''}` : 'Not connected';
+    if(name==='connect'){$('trello-key').value='';$('trello-token').value='';}
+    if(name==='disconnect'){$('trello-key').value='';$('trello-token').value='';$('trello-board').value='';}
+  }catch(error){$('trello-status').textContent=(error.message || String(error)).replace(/^Error invoking remote method '[^']+': Error: /,'');}
+  finally{trelloChanging=false;refreshTrello();}
+}
+let openReviewId = null, selectedReviewPath = null, openReviewSignature = '', liveReviewSignature;
 const icon = name => { const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); const use = document.createElementNS('http://www.w3.org/2000/svg', 'use'); use.setAttribute('href', `#i-${name}`); svg.append(use); return svg; };
 const textNode = (tag, text, className) => { const node = document.createElement(tag); node.textContent = text; if (className) node.className = className; return node; };
 function error(error) { $('error-text').textContent = (error?.message || String(error)).replace(/^Error invoking remote method '[^']+': Error: /, ''); $('error-banner').hidden = false; }
@@ -134,6 +148,7 @@ function renderMessages() {
   const seen=new Set();let position=0;
   for(const item of rows) {
     if(!['fileChanges','activity','toolCall','userShell','agentMessage','userMessage','queued','outcome'].includes(item.kind))continue;
+    if(item.kind==='fileChanges'&&item.live)continue;
     const key=item.itemId,signature=JSON.stringify({...item,images:undefined,queuePaused:item.kind==='queued'?state.queuePaused:undefined});
     let record=messageRows.get(key);
     const sameImages=record && (record.images || []).length===(item.images || []).length && (item.images || []).every((image,index)=>image.mediaType===record.images[index].mediaType && image.base64Data===record.images[index].base64Data);
@@ -174,6 +189,9 @@ function renderMessages() {
   for(const [key,record] of messageRows)if(!seen.has(key)){record.node.remove();messageRows.delete(key);}
   const queue=$('queue-controls');queue.hidden=!(state.pendingQueue || []).length;$('queue-status').textContent=(state.pendingQueue || []).length+' pending · '+(state.queuePaused?'paused':'runs in order');$('queue-toggle').textContent=state.queuePaused?'Resume queue':'Pause queue';$('queue-toggle').disabled=state.loading || state.stopping || state.connection!=='ready' || state.historyMissing || state.workUnavailable;
   if(nearBottom)requestAnimationFrame(()=>{area.scrollTop=area.scrollHeight;});
+  const liveItem=(state.items||[]).find(item=>item.kind==='fileChanges'&&item.live);
+  const dockSignature=liveItem?JSON.stringify(liveItem):'';
+  if(dockSignature!==liveReviewSignature){liveReviewSignature=dockSignature;const dock=$('live-review');dock.replaceChildren();if(liveItem){dock.hidden=false;dock.append(textNode('span',liveItem.files.length+' '+(liveItem.files.length===1?'file':'files')+' changed'+(liveItem.partial?' · partial':'')));changeCounts(dock,liveItem.added,liveItem.removed);dock.append(textNode('span','Live','change-live'));dock.title='Review file changes';dock.onclick=()=>showChanges(liveItem);}else dock.hidden=true;}
 }
 function renderToolOutput(node) {
   const details=node.querySelector('details'),item=node.currentItem;
@@ -190,6 +208,22 @@ function fillSelect(node, options, value) {
   const signature = JSON.stringify(options);
   if (node.dataset.options !== signature) { node.replaceChildren(...options.map(option => { const el = document.createElement('option'); el.value = option.value; el.textContent = option.label; return el; })); node.dataset.options = signature; }
   node.value = value;
+}
+function startRename(row, button, session) {
+  if (row.querySelector('.session-rename-input')) return;
+  button.hidden = true;
+  const input = document.createElement('input');
+  input.className = 'session-rename-input'; input.value = session.title || ''; input.maxLength = 80; input.setAttribute('aria-label', 'Chat name');
+  let done = false;
+  const finish = save => {
+    if (done) return; done = true;
+    const title = input.value.trim();
+    input.remove(); button.hidden = false;
+    if (save && title && title !== (session.title || '')) action(() => api.renameChat(session.sessionId, title));
+  };
+  input.addEventListener('keydown', event => { if (event.key === 'Enter') { event.preventDefault(); finish(true); } else if (event.key === 'Escape') { event.preventDefault(); finish(false); } });
+  input.addEventListener('blur', () => finish(true));
+  row.prepend(input); input.focus(); input.select();
 }
 function update(next) {
   if (next.sessionId === state.sessionId && state.error && state.error !== next.error) dismissedErrors.delete(errorKey(state.error));
@@ -261,7 +295,16 @@ function update(next) {
       const add = textNode('button', '', 'project-new-chat'); add.append(icon('plus')); add.setAttribute('aria-label', `New chat in ${name}`); add.title = `New chat in ${group.projectPath}`;
       add.disabled = state.busy || state.loading || sending;
       add.addEventListener('click', event => { event.preventDefault(); event.stopPropagation(); action(() => api.newChat(group.projectPath)); });
-      summary.append(add); container = textNode('div', '', 'project-chats'); details.append(summary,container); $('sessions').append(details);
+      const remove = textNode('button', '', 'project-remove'); remove.append(icon('x')); remove.setAttribute('aria-label', `Remove ${name}`); remove.title = `Remove ${group.projectPath} from Mora Desktop (keeps the folder)`;
+      const projectBusy = state.busy && (group.sessions.some(session => session.sessionId === state.sessionId) || state.projectPath === group.projectPath);
+      remove.disabled = state.loading || sending || projectBusy;
+      if (projectBusy) remove.title = 'Stop the request before removing this project';
+      remove.addEventListener('click', event => {
+        event.preventDefault(); event.stopPropagation();
+        if (!remove.dataset.confirm) { remove.dataset.confirm = '1'; remove.classList.add('confirm'); return; }
+        action(() => api.removeProject(group.projectPath));
+      });
+      summary.append(add, remove); container = textNode('div', '', 'project-chats'); details.append(summary,container); $('sessions').append(details);
     }
     for (const session of group.sessions) {
     const row = textNode('div', '', `session-row${session.sessionId === state.sessionId ? ' active' : ''}`);
@@ -282,14 +325,20 @@ function update(next) {
       if (!del.dataset.confirm) { del.dataset.confirm = '1'; del.classList.add('confirm'); return; }
       action(() => api.deleteChat(session.sessionId));
     });
-    row.append(button, del);
+    const edit = textNode('button', '', 'session-edit-icon');
+    edit.append(icon('edit'));
+    edit.setAttribute('aria-label', `Rename ${session.title || 'conversation'}`);
+    edit.disabled = state.loading || sending;
+    edit.title = 'Rename this conversation';
+    edit.addEventListener('click', event => { event.stopPropagation(); startRename(row, button, session); });
+    row.append(button, edit, del);
     container.append(row);
     }
     if (!group.sessions.length) container.append(textNode('div', group.projectPath === null ? 'Ask anything with New conversation.' : 'Start a chat with +', 'empty-history'));
   }
   if (!$('sessions').children.length) $('sessions').append(textNode('div', 'Add a folder to start a project.', 'empty-history'));
   }
-  renderMessages(); refreshSend();refreshStitch();
+  renderMessages(); refreshSend();refreshStitch();refreshTrello();
 }
 function refreshSend() { $('send-button').disabled = sending || state.loading || state.projectOperation || state.projectRepair || state.historyMissing || state.workUnavailable || ['required','pending'].includes(state.account?.status) || state.connection !== 'ready' || (!$('prompt').value.trim() && !attachments.length); }
 function renderAttachments(persist=true) {
@@ -355,6 +404,13 @@ if(api.stitchCommand){
   for(const name of ['disconnect','open'])$(`stitch-${name}`).addEventListener('click',()=>stitchAction(name));
   stitchAction('state');
 }else $('stitch-settings').hidden=true;
+if(api.trelloCommand){
+  for(const id of ['key','token','board'])$(`trello-${id}`).addEventListener('input',refreshTrello);
+  $('trello-connect').addEventListener('click',()=>trelloAction('connect',{apiKey:$('trello-key').value,token:$('trello-token').value,board:$('trello-board').value}));
+  $('trello-test').addEventListener('click',()=>trelloAction('test',{apiKey:$('trello-key').value,token:$('trello-token').value,board:$('trello-board').value}));
+  $('trello-disconnect').addEventListener('click',()=>trelloAction('disconnect'));
+  trelloAction('state');
+}else $('trello-settings').hidden=true;
 $('choose-muse').addEventListener('click', () => action(() => api.chooseMuse())); $('reconnect').addEventListener('click', () => action(() => api.connect()));
 $('dismiss-error').addEventListener('click', () => { dismissedErrors.add(errorKey($('error-text').textContent)); $('error-banner').hidden = true; });
 document.querySelectorAll('[data-prompt]').forEach(button => button.addEventListener('click', () => { $('prompt').value = button.dataset.prompt; $('prompt').dispatchEvent(new Event('input')); $('prompt').focus(); }));
