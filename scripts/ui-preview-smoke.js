@@ -25,7 +25,7 @@ try{
   assert.equal(await page.locator('#execution-mode-menu').isVisible(),false);
   await page.locator('#execution-mode-trigger').click();await page.getByRole('menuitemradio',{name:/Read only/}).click();
   assert.equal((await page.evaluate(()=>window.muse.getState())).executionMode,'readonly');
-  await page.locator('#execution-mode-trigger').click();await page.locator('#prompt').click();
+  await page.locator('#execution-mode-trigger').click();await page.locator('#prompt').click({position:{x:10,y:10}});
   assert.equal(await page.locator('#execution-mode-menu').isVisible(),false,'Clicking outside should dismiss the access menu');
   const chatLayout=await page.evaluate(()=>{
     const user=document.querySelector('.message.user .message-content'),assistant=document.querySelector('.message.assistant');
