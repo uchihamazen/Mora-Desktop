@@ -66,12 +66,14 @@ export function setupSelectMenus(api) {
       const trigger=document.createElement('button');trigger.type='button';trigger.className='select-trigger';trigger.id=(select.id || 'select-'+(++serial))+'-trigger';trigger.setAttribute('aria-label',label);trigger.setAttribute('aria-haspopup','menu');trigger.setAttribute('aria-expanded','false');
       const title=document.createElement('span'),arrow=document.createElement('span');arrow.textContent='⌄';arrow.setAttribute('aria-hidden','true');trigger.append(title,arrow);
       const menu=document.createElement('div');menu.id=(select.id || trigger.id)+'-menu';menu.className='select-menu';menu.setAttribute('popover','auto');menu.setAttribute('role','menu');menu.setAttribute('aria-label',label+' options');trigger.setAttribute('aria-controls',menu.id);
+      trigger.setAttribute('popovertarget',menu.id);
       const heading=document.createElement('div');heading.className='mode-menu-heading';heading.textContent=label;menu.append(heading);
       select.classList.add('mode-native');select.tabIndex=-1;select.setAttribute('aria-hidden','true');select.before(trigger);(select.closest('dialog') || document.body).append(menu);
       const record={select,trigger,menu};records.set(select,record);
       record.observer=new MutationObserver(()=>sync(record));record.observer.observe(select,{childList:true,subtree:true,characterData:true,attributes:true,attributeFilter:['disabled','hidden','title','selected']});
       select.addEventListener('change',()=>sync(record));
-      trigger.addEventListener('click',()=>{
+      trigger.addEventListener('click',event=>{
+        event.preventDefault();
         if(menu.matches(':popover-open')){menu.hidePopover();return;}sync(record);if(select.disabled)return;
         const rect=trigger.getBoundingClientRect(),up=rect.top>innerHeight/2;
         menu.style.left=Math.max(8,Math.min(rect.right-300,innerWidth-308))+'px';menu.style.top=up?'auto':rect.bottom+8+'px';menu.style.bottom=up?innerHeight-rect.top+8+'px':'auto';menu.style.maxHeight=Math.max(60,(up?rect.top:innerHeight-rect.bottom)-24)+'px';

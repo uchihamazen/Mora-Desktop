@@ -12,6 +12,10 @@ try{
   assert.equal(await page.locator('.browser-annotation').isVisible(),false);
   assert.match(await page.locator('#engine-detail').textContent(),/Sample data/);
   assert.equal(await page.locator('#browser-panel').isVisible(),true);
+  for(const id of ['model','effort','execution-mode']){
+    await page.locator('#'+id+'-trigger').click();assert.equal(await page.locator('#'+id+'-menu').isVisible(),true);
+    await page.locator('#'+id+'-trigger').click();assert.equal(await page.locator('#'+id+'-menu').isVisible(),false,'Clicking the same dropdown trigger should close its menu');
+  }
   await page.locator('#execution-mode-trigger').click();
   assert.equal(await page.getByRole('menu',{name:'Execution mode options'}).isVisible(),true);
   const modeBounds=await page.locator('#execution-mode-menu').boundingBox(),triggerBounds=await page.locator('#execution-mode-trigger').boundingBox();
