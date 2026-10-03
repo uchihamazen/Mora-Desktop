@@ -10,8 +10,8 @@ export function restoreWindowBounds(saved,areas) {
   return {x,y,width,height,maximized:saved?.maximized===true};
 }
 
-export class CompletionNotices {
-  constructor({foreground,notify,save}){this.foreground=foreground;this.notify=notify;this.save=save;this.seen=new Set();this.reports=new Map();this.enabled=true;}
+export class CompletionSignals {
+  constructor({foreground,playSound,save}){this.foreground=foreground;this.playSound=playSound;this.save=save;this.seen=new Set();this.reports=new Map();this.enabled=true;}
   report(state,kind,value) {
     const key=`${kind}:${value.id}`,active=['running','reproducing','solving','awaiting permission'];
     const previous=this.reports.get(key) || {generation:0,status:null};
@@ -28,8 +28,8 @@ export class CompletionNotices {
     if(!outcome?.turnId || !['finished','failed','attention'].includes(outcome.status) || this.seen.has(outcome.turnId))return;
     this.seen.add(outcome.turnId);if(this.seen.size>256)this.seen.delete(this.seen.values().next().value);
     const chat=state.sessions.find(session=>session.sessionId===state.sessionId);
-    if(!chat || this.foreground())return;
-    chat.unread=true;this.save();
-    if(this.enabled)this.notify({sessionId:chat.sessionId,title:outcome.title || (outcome.status==='failed'?'Request failed':outcome.status==='attention'?'Mora needs your attention':'Request finished'),body:chat.title || 'Conversation'});
+    if(!chat)return;
+    if(!this.foreground()){chat.unread=true;this.save();}
+    if(this.enabled && outcome.status==='finished')this.playSound();
   }
 }

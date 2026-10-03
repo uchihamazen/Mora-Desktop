@@ -37,7 +37,7 @@ try {
  assert.equal(await page.locator('.project-group').count(),2);
  assert.equal((await state()).sessions.length,2);
  await page.locator('#prompt').fill('Keep this draft');
- await page.evaluate(()=>window.muse.notificationOptions(false));
+ await page.evaluate(()=>window.muse.completionSoundOptions(false));
  const remembered=await app.evaluate(({BrowserWindow,screen})=>{const window=BrowserWindow.getAllWindows()[0],area=screen.getPrimaryDisplay().workArea;window.unmaximize();window.setBounds({x:area.x+20,y:area.y+20,width:Math.min(1130,area.width-40),height:Math.min(740,area.height-40)});return window.getNormalBounds();});
  await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0].maximize());
  await page.evaluate(async id=>{
@@ -53,7 +53,7 @@ try {
  const archived=(await state()).sessions.find(s=>s.sessionId===legacyId);
  assert.equal(archived.title,'Organized chat');assert.equal(archived.pinned,true);assert.equal(archived.archived,true);
  assert.equal((await state()).draft.text,'Keep this draft');
- assert.equal((await state()).notifyCompletions,false);
+ assert.equal((await state()).completionSound,false);
  assert.deepEqual(await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0].getNormalBounds()),remembered);
  assert.equal(await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0].isMaximized()),true);
  assert.equal(await page.locator('#library-archived').getAttribute('aria-pressed'),'true');

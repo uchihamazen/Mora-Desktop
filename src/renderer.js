@@ -11,6 +11,7 @@ import {setupWebsiteTester} from './website-ui.js';
 
 const $ = id => document.getElementById(id);
 const api = window.muse;
+const completionSound=new Audio('assets/completion.wav');completionSound.preload='auto';completionSound.volume=0.6;
 let sidebarCollapsed=false;
 try {sidebarCollapsed=localStorage.getItem('mora.sidebarCollapsed')==='true';}catch{}
 function setSidebar(collapsed) {
@@ -259,7 +260,7 @@ function update(next) {
   fillSelect($('effort'), (Array.isArray(model?.variants) ? model.variants : ['max']).map(value => ({ value, label: value[0].toUpperCase() + value.slice(1) })), state.reasoningEffort);
   $('execution-mode').value = state.executionMode || 'readonly';
   $('speed').value = state.speedPreset || 'custom'; $('speed').disabled = state.busy || state.loading || sending || !model?.variants?.length || state.connection!=='ready';
-  $('notify-completions').checked=state.notifyCompletions!==false;
+  $('completion-sound').checked=state.completionSound!==false;
   updateLibrary(state,sending);updateQuickActions();
   renderMessages(); conversationFind.update(state.sessionId);refreshSend();refreshStitch();
 }
@@ -331,12 +332,12 @@ $('choose-muse').addEventListener('click', () => action(() => api.chooseMuse()))
 $('dismiss-error').addEventListener('click', () => { dismissedErrors.add(errorKey($('error-text').textContent)); $('error-banner').hidden = true; });
 document.querySelectorAll('[data-prompt]').forEach(button => button.addEventListener('click', () => { $('prompt').value = button.dataset.prompt; $('prompt').dispatchEvent(new Event('input')); $('prompt').focus(); }));
 setInterval(() => { if (state.busy && startedAt) { const seconds = Math.floor((Date.now()-startedAt)/1000); $('elapsed').textContent = seconds >= 60 ? `${Math.floor(seconds/60)}m ${seconds%60}s` : `${seconds}s`; } },1000);
-api.onEvent(event => { if (event.type === 'state') update(event.state); });
+api.onEvent(event => { if (event.type === 'state') update(event.state);else if(event.type==='completion-sound'){completionSound.currentTime=0;completionSound.play().catch(()=>{});} });
 setupBrowser(api,capture=>{addImages([capture]);$('prompt').focus();});
 const updateLibrary=setupLibrary(api,action);
 const conversationFind=setupConversationFind();
 const updateQuickActions=setupQuickActions(api,{find:conversationFind,sidebar:setSidebar});
-$('notify-completions').addEventListener('change',()=>action(()=>api.notificationOptions($('notify-completions').checked),{flush:false}));
+$('completion-sound').addEventListener('change',()=>action(()=>api.completionSoundOptions($('completion-sound').checked),{flush:false}));
 updateProjects=setupProjects(api,action);
 updateProjectWork=setupProjectWork(api,action);
 updateTester=setupTester(api,error);

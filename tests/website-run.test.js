@@ -138,6 +138,55 @@ test('a newly reached page is planned before another queued normal case navigate
  assert.ok(planned.includes('https://site.example/settings'),'Settings rules must get their own planning opportunity');
  assert.ok(planned.includes('https://site.example/tasks'));
 });
+test('optional model correction timeout preserves and runs already validated cases',async()=>{
+ const {run,performed}=await setup([]);let calls=0;
+ run.makeModel=()=>({initialize:async()=>{},close:async()=>{},decide:async()=>{if(++calls===1)return {action:'plan',cases:[plannedCase(),{...plannedCase(),title:'Invalid',steps:[{action:'click',target:'Save'}]}]};throw Object.assign(Error('Planning timed out'),{code:'MORA_DECISION_TIMEOUT'});}});
+ run.onChange=report=>{if(report.pending&&run.pending)setImmediate(()=>run.approve(report.pending.id,true));};
+ await run.start(undefined,{accessibility:false});await run.completion;
+ assert.equal(run.report.cases[0].status,'passed');assert.deepEqual(performed.map(step=>step.action),['click','assert']);assert.equal(calls,2);assert.equal(run.report.status,'paused');assert.match(run.report.gaps.join(' '),/timed out/i);
+});
+test('unavailable expectation review never confirms an observed failure',async()=>{
+ const {run,browser}=await setup([]);let calls=0;browser.perform=async step=>({status:step.action==='assert'?'failed':'ok',actual:'Wrong'});
+ run.makeModel=()=>({initialize:async()=>{},close:async()=>{},decide:async()=>{if(++calls===1)return {action:'plan',cases:[plannedCase()]};throw Object.assign(Error('Planning timed out'),{code:'MORA_DECISION_TIMEOUT'});}});
+ run.onChange=report=>{if(report.pending&&run.pending)setImmediate(()=>run.approve(report.pending.id,true));};
+ await run.start(undefined,{accessibility:false});await run.completion;assert.equal(run.report.status,'paused');assert.equal(run.report.cases[0].status,'needs clarification');assert.equal(run.report.findings.length,0);
+});
+test('unsafe native failures halt before queued actions rather than using timeout recovery',async()=>{
+ const {run,performed}=await setup([]);let calls=0;
+ run.makeModel=()=>({initialize:async()=>{},close:async()=>{},decide:async()=>{if(++calls===1)return {action:'plan',cases:[plannedCase(),{...plannedCase(),steps:[{action:'click',target:'Save'}]}]};throw Error('Native tester attempted an unavailable tool');}});
+ await run.start(undefined,{accessibility:false});await run.completion;assert.equal(run.report.status,'blocked');assert.equal(performed.length,0);assert.equal(run.modelUnavailable,false);
+});
+test('time-budget completion waits for takeover cleanup and reports a terminal state',async()=>{
+ const {run,browser}=await setup([]);let resolve;browser.takeOver=async()=>{await new Promise(r=>setTimeout(r,25));browser.manual=true;};
+ run.makeModel=()=>({initialize:async()=>{},decide:()=>new Promise(r=>{resolve=r;}),stop:async()=>resolve?.({action:'finish'}),close:async()=>{}});
+ await run.start(undefined,{maxMs:10,accessibility:false});await run.completion;
+ assert.ok(['manual','stopped','paused'].includes(run.report.status),run.report.status);assert.match(run.report.message,/time budget/i);assert.equal(run.report.pending,undefined);
+});
+test('time budget exhausted during initialization still takes over and records cleanup uncertainty',async()=>{
+ const {run,browser}=await setup([]);let takeovers=0;browser.takeOver=async()=>{takeovers++;throw Error('Page closed during takeover');};
+ run.makeModel=()=>({initialize:async()=>{run.report.metrics.startedMs=Date.now()-10001;},decide:async()=>{throw Error('Expired work must not request a decision');},stop:async()=>{},close:async()=>{}});
+ await run.start(undefined,{maxMs:10000,accessibility:false});await run.completion;
+ assert.equal(takeovers,1);
+ assert.equal(run.report.status,'blocked');assert.match(run.report.gaps.join(' '),/cleanup.*Page closed/i);assert.match(run.report.message,/review.*website/i);
+});
+test('newly revealed navigation is explored before queued cases leave its state',async()=>{
+ const {run,browser}=await setup([]);let revealed=false,url='https://site.example/',seeded=false;
+ browser.observe=async()=>browser.observation={id:'o',url,roleId:browser.scope.roleId,visibleText:'Ready',controls:[{id:'e1',name:'Reveal',tag:'button'},...(revealed&&url.endsWith('/')?[{id:'e2',name:'Details',tag:'a',href:'https://site.example/details'}]:[])]};
+ browser.perform=async step=>{if(step.target==='e1')revealed=true;if(step.target==='e2')url='https://site.example/details';return {status:'ok'};};
+ run.makeModel=()=>({initialize:async()=>{},close:async()=>{},decide:async()=>({action:'finish'})});
+ const handle=run.handleDecision.bind(run);run.handleDecision=async(...args)=>{if(!seeded){seeded=true;run.report.cases.push({id:'reveal',status:'queued',family:'normal'},{id:'leave',status:'queued',family:'normal'});}return handle(...args);};
+ run.executeCase=async record=>{if(record.id==='reveal'){const observation=await run.observe(run.epoch);await run.atomic({action:'click',target:'e1',observationId:observation.id},observation,run.epoch);}else{assert.equal(url,'https://site.example/details');url='https://site.example/away';}record.status='passed';};
+ run.onChange=report=>{if(report.pending&&run.pending)setImmediate(()=>run.approve(report.pending.id,true));};
+ await run.start(undefined,{mode:'site',accessibility:false});await run.completion;assert.equal(run.report.cases[1].status,'passed');
+});
+test('a ready case for a revealed link runs before exploratory navigation changes its start',async()=>{
+ const {run,browser}=await setup([]);let revealed=false,url='https://site.example/',planned=false;
+ browser.observe=async()=>browser.observation={id:'o',url,roleId:browser.scope.roleId,visibleText:'Ready',controls:[{id:'e1',name:'Reveal',tag:'button'},...(revealed&&url.endsWith('/')?[{id:'e2',name:'Details',tag:'a',href:'https://site.example/details'}]:[])]};
+ browser.perform=async step=>{if(step.target==='e1')revealed=true;if(step.target==='e2')url='https://site.example/details';return {status:step.action==='assert'?'passed':'ok'};};
+ run.makeModel=()=>({initialize:async()=>{},close:async()=>{},decide:async()=>{if(!planned){planned=true;return {action:'click',target:'e1',observationId:'o'};}if(revealed&&url.endsWith('/'))return {action:'plan',cases:[{title:'Details outcome',feature:'Details',family:'normal',basisSource:'user',basisQuote:'Saving shows Ready',steps:[{action:'click',target:'Details'},{action:'assert',check:'text',expected:'Ready'}],reset:[]}]};return {action:'finish'};}});
+ run.onChange=report=>{if(report.pending&&run.pending)setImmediate(()=>run.approve(report.pending.id,true));};
+ await run.start(undefined,{mode:'site',accessibility:false});await run.completion;assert.equal(run.report.cases[0].status,'passed',run.report.cases[0].reason);
+});
 
 test('malformed generated plans get one grounded repair before becoming user questions',async()=>{
  const invalid={...plannedCase(),steps:[{action:'click',target:'Save'}]};

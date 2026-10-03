@@ -43,6 +43,6 @@ try{
    finally{await run.stop().catch(()=>{});await fixture.close();await persist();}
    console.log('RESULT',JSON.stringify(summary.trials.at(-1)));
   }
-  summary.gate=summary.trials.length===6&&summary.trials.every(t=>!t.error&&!t.misses.length&&(t.faulty||t.functionalFindings===0))?'passed':'experimental: reliability gate not met';await persist();console.log(summary.gate,root);
+  summary.gate=summary.trials.length===6&&summary.trials.every(t=>!t.error&&t.status==='done'&&!t.misses.length&&(t.faulty||t.functionalFindings===0))?'passed':'experimental: reliability gate not met';await persist();console.log(summary.gate,root);
  }
 }catch(error){summary.error=error.message;await persist();throw error;}

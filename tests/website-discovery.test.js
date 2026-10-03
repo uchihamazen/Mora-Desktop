@@ -43,3 +43,16 @@ test('page discovery stays on the chosen path and includes native toggles',()=>{
  const initial=api.observeState(map,obs({controls:[{id:'e1',name:'Settings',tag:'a',href:'https://site.example/settings'},{id:'e2',name:'Updates',tag:'input',type:'checkbox'}]}));
  assert.equal(api.nextDiscovery(map,scope,initial.stateId,{pageOnly:true}).item?.name,'Updates');
 });
+test('revealed discovery selects only new controls in the current evidenced transition',()=>{
+ const map=api.createDiscovery(),scope={entryUrl:'https://site.example/cart',navigationOrigins:['https://site.example'],includePaths:[],excludePaths:[]},initial=obs();
+ const before=api.observeState(map,initial),after=api.observeState(map,obs({controls:[...initial.controls,{id:'e2',name:'Details',tag:'a',href:'https://site.example/details'}]}));
+ api.recordTransition(map,before.stateId,{action:'click',targetKey:api.controlKey(initial.controls[0])},after.stateId);
+ assert.equal(api.nextDiscovery(map,scope,after.stateId,{revealedOnly:true}).item?.name,'Details');
+ assert.equal(api.nextDiscovery(map,scope,before.stateId,{revealedOnly:true}).item,undefined);
+});
+test('revisiting an existing transition uses its latest traversal to identify revealed controls',()=>{
+ const map=api.createDiscovery(),scope={entryUrl:'https://site.example/cart',navigationOrigins:['https://site.example'],includePaths:[],excludePaths:[]},details={id:'e2',name:'Details',tag:'a',href:'https://site.example/details'};
+ const a=api.observeState(map,obs()),b=api.observeState(map,obs({controls:[...obs().controls,details]})),c=api.observeState(map,obs({visibleText:'Other state',controls:[...obs().controls,details]}));
+ api.recordTransition(map,a.stateId,{action:'click',targetKey:'reveal'},b.stateId);api.recordTransition(map,c.stateId,{action:'click',targetKey:'return'},b.stateId);api.recordTransition(map,a.stateId,{action:'click',targetKey:'reveal'},b.stateId);
+ assert.equal(api.nextDiscovery(map,scope,b.stateId,{revealedOnly:true}).item?.name,'Details');assert.equal(map.transitions.length,2);
+});

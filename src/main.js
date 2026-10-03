@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog, clipboard, nativeImage, shell, safeStorage, screen, Notification } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, clipboard, nativeImage, shell, safeStorage, screen } from 'electron';
 import { readFile, writeFile, mkdir, rename, stat, mkdtemp, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -26,7 +26,7 @@ import {WebsiteRun,websiteDecisionSchema} from './website-run.js';
 import {buildWebsiteExport,evidenceName} from './website-report.js';
 import {TesterSolver} from './tester-solver.js';
 import {checkStitch,configureStitch,readStitchSettings,stitchStatus} from './stitch.js';
-import {restoreWindowBounds,CompletionNotices} from './desktop-workspace.js';
+import {restoreWindowBounds,CompletionSignals} from './desktop-workspace.js';
 
 const directory = path.dirname(fileURLToPath(import.meta.url));
 let window, prefsPath, museHome, executable, connectionAttempt, quitting = false;
@@ -96,7 +96,7 @@ async function testerCommand(action,payload={}) {
     }
     state.tester=saved;await persistWork();
     if(epoch!==testerEpoch||quitting)throw Error('Testing stopped before launch.');
-    const shared={store:testerReports,makeBrowser:(url,directory,onClose)=>new TesterBrowser(url,directory,{onClose}),onChange:value=>{reportNotice('Project tester',value);state.tester=value;publish();}};
+    const shared={store:testerReports,makeBrowser:(url,directory,onClose)=>new TesterBrowser(url,directory,{onClose}),onChange:value=>{state.tester=value;publish();}};
     let ids=payload.issues;
     if(action==='solve'){
       if(!ids){ids=/^all confirmed(?: issues)?$/i.test(payload.request?.trim()||'')?saved.issues.filter(i=>i.status==='confirmed').map(i=>i.id):payload.request?.match(/BUG-\d{3}/g);}
@@ -106,7 +106,8 @@ async function testerCommand(action,payload={}) {
         if(testerRun.stopped||projectRunner.state.run.status!=='ready'||new URL(projectRunner.state.run.url).origin!==new URL(saved.url).origin)throw Error('The app could not restart at the original address. Repair remains unverified.');
       }});
     }else testerRun=new TesterRun({...shared,makeModel:()=>new TesterNative(executable,{modelId:state.modelId,reasoningEffort:'minimal'}),maxActions:Math.max(100,(saved.actions||0)+100)});
-    testerCompletion=testerRun.start(saved,ids).catch(report).finally(()=>{state.testerActive=false;publish();});
+    reportNotice('Project tester',{...saved,status:action==='solve'?'solving':'running'});
+    testerCompletion=testerRun.start(saved,ids).then(()=>{if(epoch===testerEpoch&&!quitting)reportNotice('Project tester',saved);}).catch(report).finally(()=>{state.testerActive=false;publish();});
     return saved;
   }catch(error){state.testerActive=false;publish();throw error;}
 }
@@ -571,7 +572,7 @@ else {
   state.sessions = library.sessions;
   state.projects = groupConversations(state.sessions, library.projects).slice(1).map(group => group.projectPath);
   preferences.lastSessionId = library.lastSessionId;
-  state.notifyCompletions=preferences.notifyCompletions!==false;
+  state.completionSound=typeof preferences.completionSound==='boolean'?preferences.completionSound:preferences.notifyCompletions!==false;
   await saveConversations(app.getPath('userData'), {...library, projects:state.projects});
   museHome = preferences.museHome || path.join(app.getPath('home'), '.local', 'share', 'muse');
   try { if (!state.workspace || !(await stat(state.workspace)).isDirectory()) throw new Error('Missing project'); }
@@ -587,10 +588,7 @@ else {
   if(geometry.maximized)window.maximize();
   let boundsTimer;const captureBounds=()=>{preferences.windowBounds={...window.getNormalBounds(),maximized:window.isMaximized()};};
   for(const name of ['move','resize','maximize','unmaximize'])window.on(name,()=>{clearTimeout(boundsTimer);boundsTimer=setTimeout(()=>{if(!window.isDestroyed()){captureBounds();save().catch(report);}},400);});
-  completionNotices=new CompletionNotices({foreground:()=>window.isVisible() && !window.isMinimized() && window.isFocused(),save:()=>{save().catch(report);publish();},notify:notice=>{
-    if(!Notification.isSupported())return;const notification=new Notification({title:notice.title,body:notice.body,silent:true});
-    notification.on('click',()=>{if(window.isMinimized())window.restore();window.show();window.focus();if(state.sessionId===notice.sessionId)markCurrentRead();else resumeChat(notice.sessionId).catch(report);});try{notification.show();}catch{}
-  }});completionNotices.enabled=state.notifyCompletions;
+  completionNotices=new CompletionSignals({foreground:()=>window.isVisible() && !window.isMinimized() && window.isFocused(),save:()=>{save().catch(report);publish();},playSound:()=>window.webContents.send('muse:event',{type:'completion-sound'})});completionNotices.enabled=state.completionSound;
   window.on('focus',markCurrentRead);
   window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   window.webContents.on('will-navigate', event => event.preventDefault());
@@ -647,7 +645,7 @@ else {
   handle('resume-chat', resumeChat);
   handle('delete-chat', deleteChat);
   handle('chat-metadata',async(sessionId,action,title)=>{changeConversation(state,sessionId,action,title);await save();publish();return state;});
-  handle('notification-options',async enabled=>{if(typeof enabled!=='boolean')throw new Error('Choose whether to show completion notices.');preferences.notifyCompletions=enabled;state.notifyCompletions=enabled;completionNotices.enabled=enabled;await save();publish();return state;});
+  handle('completion-sound-options',async enabled=>{if(typeof enabled!=='boolean')throw new Error('Choose whether to play the completion sound.');preferences.completionSound=enabled;state.completionSound=enabled;completionNotices.enabled=enabled;await save();publish();return state;});
   handle('send', sendMessage);
   handle('stop', async () => { state.queuePaused = true; applyEvent(state, 'stop/requested', {}); publish(); try { await persistWork(); } finally { await runner.stop(); } });
   handle('queue', queueCommand);

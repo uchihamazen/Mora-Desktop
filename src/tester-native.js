@@ -16,8 +16,8 @@ export const decisionSchema={type:'object',additionalProperties:false,properties
 },required:['action','caseId','target','text','note','check','expected','present','cases']};
 
 export class TesterNative {
-  constructor(executable,{modelId='muse-spark-1.3-contributor',reasoningEffort='minimal',schema=decisionSchema}={}) {
-    Object.assign(this,{executable,modelId,reasoningEffort,schema});this.runner=new ExecRunner();this.stopped=false;
+  constructor(executable,{modelId='muse-spark-1.3-contributor',reasoningEffort='minimal',schema=decisionSchema,decisionTimeoutMs=90000}={}) {
+    Object.assign(this,{executable,modelId,reasoningEffort,schema,decisionTimeoutMs});this.runner=new ExecRunner();this.stopped=false;
   }
   async initialize({project,repair=false}={}) {
     this.directory=await mkdtemp(path.join(tmpdir(),'mora-tester-runtime-'));
@@ -39,7 +39,7 @@ export class TesterNative {
     try{await copyFile(original,this.credential);}catch{throw Error('Sign in to Muse before using AI Tester.');}
     this.schemaFile=path.join(this.workspace,'decision-schema.json');await writeFile(this.schemaFile,JSON.stringify(this.schema));
   }
-  async decide(prompt,{image,allowedActions=this.schema.properties.action.enum}={}) {
+  async decide(prompt,{image,allowedActions=this.schema.properties.action.enum,timeoutMs=this.decisionTimeoutMs}={}) {
     if(this.stopped)throw Error('Testing stopped.');
     const promptFile=path.join(this.workspace,'request.txt');await writeFile(promptFile,prompt);
     await writeFile(this.schemaFile,JSON.stringify({...this.schema,properties:{...this.schema.properties,action:{type:'string',enum:allowedActions}}}));
@@ -47,11 +47,11 @@ export class TesterNative {
     let forbidden=false,timedOut=false;
     const observe=record=>{if(record.payload?.event?.task_kind?.startsWith('tool.')){forbidden=true;this.runner.stop().catch(()=>{});}};
     this.runner.on('record',observe);
-    const timer=setTimeout(()=>{timedOut=true;this.runner.stop().catch(()=>{});},90000);
+    const timer=setTimeout(()=>{timedOut=true;this.runner.stop().catch(()=>{});},Math.max(1,Math.min(this.decisionTimeoutMs,timeoutMs)));
     try {
       const result=await this.runner.run({executable:this.executable,workspace:this.workspace,promptFile,images:image?[image]:[],modelId:this.modelId,reasoningEffort:this.reasoningEffort,environment:this.environment,extraArgs:['--preset','mora-observer','--provider','meta','--disable-web-tools','--disable-approval','--approval-judge','off','--no-session-log','--max-model-steps','4','--output-schema',this.schemaFile]});
       if(forbidden)throw Error('Native tester attempted an unavailable tool; the run was stopped.');
-      if(timedOut)throw Error('Muse took too long to choose the next action. Saved cases can be resumed.');
+      if(timedOut)throw Object.assign(Error('Muse took too long to choose the next action. Saved cases can be resumed.'),{code:'MORA_DECISION_TIMEOUT'});
       if(result.stopped||this.stopped)throw Error('Testing stopped.');
       if(result.code!==0||result.error||result.terminal?.terminal!=='completed')throw Error('Muse did not complete the next testing decision. Reconnect and resume saved work.');
       let decision;try{decision=JSON.parse(result.terminal.text);}catch{throw Error('Muse returned an invalid testing decision. Saved work was preserved.');}

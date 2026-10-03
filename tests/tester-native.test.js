@@ -23,3 +23,9 @@ test('repairs use fresh native sessions and retain their isolated runtime storag
  for(const call of calls){assert.match(call.sessionId||'',/^[a-f0-9]{8}-[a-f0-9]{4}-7[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/);assert.equal(call.extraArgs.includes('--no-session-log'),false);assert.equal(call.environment.XDG_DATA_HOME,native.environment.XDG_DATA_HOME);}
  assert.notEqual(calls[0].sessionId,calls[1].sessionId);
 });
+test('decision timeout is classified and cancels only that decision without losing later usability',async()=>{
+ const native=new TesterNative('unused',{decisionTimeoutMs:5});native.workspace=await mkdtemp(path.join(tmpdir(),'mora-native-timeout-'));native.schemaFile=path.join(native.workspace,'schema.json');let calls=0,stops=0;
+ native.runner.run=async()=>{if(++calls===1)await new Promise(resolve=>setTimeout(resolve,20));return {code:0,terminal:{terminal:'completed',text:JSON.stringify({action:'finish'})}};};native.runner.stop=async()=>{stops++;};
+ await assert.rejects(native.decide('first'),error=>error.code==='MORA_DECISION_TIMEOUT');assert.equal(stops,1);
+ assert.equal((await native.decide('second')).action,'finish');assert.equal(native.stopped,false);
+});
