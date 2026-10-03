@@ -56,7 +56,7 @@ try{
  assert.equal(await page.locator('#sidebar-toggle').count(),1,'The navigation needs a persistent show/hide control');
  await page.locator('#sidebar-toggle').click();assert.equal(await page.locator('.sidebar').isVisible(),false);
  await page.locator('#welcome-setup').click();await page.getByRole('button',{name:'Open engine settings',exact:true}).click();await page.locator('.setup-dialog').waitFor({state:'detached'});
- assert.equal(await page.locator('#settings-panel').isVisible(),true,'Setup opens engine settings even with collapsed navigation');await page.locator('#sidebar-toggle').click();
+ assert.equal(await page.locator('#settings-panel').isVisible(),true,'Setup opens engine settings even with collapsed navigation');await page.locator('#settings-close').click();await page.locator('#sidebar-toggle').click();
  await page.reload();await page.locator('#connection-badge').filter({hasText:'Connected'}).waitFor();assert.equal(await page.locator('.sidebar').isVisible(),false,'Collapsed navigation survives reload');
  await page.keyboard.press('Control+b');assert.equal(await page.locator('.sidebar').isVisible(),true);
  await page.locator('#new-chat').focus();await page.keyboard.press('Control+b');assert.equal(await page.locator('#sidebar-toggle').evaluate(e=>e===document.activeElement),true,'Collapsing navigation must not strand focus');
@@ -276,6 +276,7 @@ try{
  assert.equal(await page.locator('#sign-in').isVisible(),false);
  await page.locator('#cancel-sign-in').click();
  await page.waitForFunction(()=>document.querySelector('#login-code').hidden);
+ await page.locator('#settings-close').click();
  await clickControl(page,'create-project');
  await page.getByRole('textbox',{name:'Project name',exact:true}).fill('First app');
  await page.getByRole('button',{name:'Choose parent folder',exact:true}).click();
