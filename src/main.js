@@ -9,6 +9,7 @@ import { createState, assertIdle, applyEvent } from './state.js';
 import { snapshotProject, compareProject, watchProjectChanges, saveChangeSummary, loadChangeSummaries, deleteChangeSummaries } from './changes.js';
 import { profilePath, loadConversations, saveConversations } from './persistence.js';
 import {loadWork, saveWork, deleteWork, validateDraft} from './work.js';
+import {changeAnnotation} from './annotation-notes.js';
 import {accountState,AccountLogin} from './account.js';
 import {createProject} from './project.js';
 import {exportProject} from './project-export.js';
@@ -236,6 +237,7 @@ function persistWork() {
 async function restoreWork(sessionId) {
   try {
     Object.assign(state,await loadWork(app.getPath('userData'),sessionId));
+    if(desktopBrowser?.sessionId===state.sessionId)await desktopBrowser.syncNotes(state.draft.images);
     if(state.activeRequest) state.lastOutcome = {status:'interrupted',turnId:state.activeRequest.turnId,message:'The previous request was interrupted. Review the saved conversation before sending again.'};
   } catch(error) { state.workUnavailable = true; report(error); }
 }
@@ -243,8 +245,16 @@ async function saveDraft({sessionId = null,...value}) {
   if(sessionId !== null && !state.sessions.some(session=>session.sessionId===sessionId)) throw new Error('This conversation is not in Mora Desktop.');
   const draft = validateDraft(value);
   const owner = sessionId || 'new';
-  if(owner === (state.sessionId || 'new')) { state.draft = draft; await persistWork(); }
+  if(owner === (state.sessionId || 'new')) { state.draft = draft; await persistWork();await desktopBrowser?.syncNotes(draft.images).catch(report); }
   else { const work = await loadWork(app.getPath('userData'),owner); work.draft = draft; await saveWork(app.getPath('userData'),owner,work); }
+}
+async function saveAnnotation(sessionId,change) {
+  if(sessionId!==state.sessionId || state.loading)throw Error('The chat changed. Select this area again.');
+  const previous=state.draft,draft=changeAnnotation(previous,change);
+  state.draft=draft;
+  try{await persistWork();}catch(error){state.draft=previous;throw error;}
+  await desktopBrowser.syncNotes(draft.images).catch(report);
+  window?.webContents.send('muse:event',{type:'annotation-saved',sessionId,images:draft.images});
 }
 async function attachChangeSummaries(items, sessionId) {
   for (const summary of await loadChangeSummaries(app.getPath('userData'), sessionId)) {
@@ -640,7 +650,7 @@ else {
     }).catch(error=>{closing=false;report(new Error(`Could not save pending work: ${error.message}`));});
   });
   let browserSaveTimer,browserSignature='';
-  const browser = new BrowserWorkspace(window,(sessionId,snapshot)=>{const session=state.sessions.find(item=>item.sessionId===sessionId);if(!session)return;const signature=JSON.stringify([sessionId,snapshot]);if(signature===browserSignature)return;browserSignature=signature;session.browser=snapshot;clearTimeout(browserSaveTimer);browserSaveTimer=setTimeout(()=>save().catch(report),400);});
+  const browser = new BrowserWorkspace(window,(sessionId,snapshot)=>{const session=state.sessions.find(item=>item.sessionId===sessionId);if(!session)return;const signature=JSON.stringify([sessionId,snapshot]);if(signature===browserSignature)return;browserSignature=signature;session.browser=snapshot;clearTimeout(browserSaveTimer);browserSaveTimer=setTimeout(()=>save().catch(report),400);},saveAnnotation);
   window.on('closed',()=>clearTimeout(browserSaveTimer));
   desktopBrowser=browser;
   let openedRunURL;
@@ -682,7 +692,7 @@ else {
   handle('delete-chat', deleteChat);
   handle('chat-metadata',async(sessionId,action,title)=>{changeConversation(state,sessionId,action,title);await save();publish();return state;});
   handle('completion-sound-options',async enabled=>{if(typeof enabled!=='boolean')throw new Error('Choose whether to play the completion sound.');preferences.completionSound=enabled;state.completionSound=enabled;completionNotices.enabled=enabled;await save();publish();return state;});
-  handle('send', sendMessage);
+  handle('send',async message=>{browser.sendingNotes=(browser.sendingNotes || 0)+1;try{return await sendMessage(message);}finally{browser.sendingNotes--;}});
   handle('stop', async () => { state.queuePaused = true; applyEvent(state, 'stop/requested', {}); publish(); try { await persistWork(); } finally { await runner.stop(); } });
   handle('queue', queueCommand);
   handle('save-draft', saveDraft);

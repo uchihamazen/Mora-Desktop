@@ -1,8 +1,8 @@
 import {previewOccluded} from './menu-ui.js';
-export function setupBrowser(api,addCapture) {
+export function setupBrowser(api,addCapture,{flushDraft,send}={}) {
   const $=id=>document.getElementById(id);
   if(!api.browserCommand){$('browser-button').disabled=true;return;}
-  let state={open:false},capturing=false,resizeFrame,expanded=false;
+  let state={open:false},capturing=false,resizeFrame,expanded=false,sending=false;
   const divider=$('browser-resizer');let preferredWidth=null,drag=null;
   try {const saved=Number(localStorage.getItem('mora.browserWidth'));if(Number.isFinite(saved)&&saved>=390)preferredWidth=saved;}catch{}
   function fitWidth(){
@@ -65,7 +65,7 @@ export function setupBrowser(api,addCapture) {
     const history=$('browser-history'),entries=state.history?.entries || [],historySignature=JSON.stringify(entries);if(history.dataset.signature!==historySignature){history.dataset.signature=historySignature;history.replaceChildren();const placeholder=document.createElement('option');placeholder.value='';placeholder.textContent='Choose a visited page';history.append(placeholder);entries.forEach((entry,index)=>{const option=document.createElement('option');option.value=String(index);option.textContent=entry.title || entry.url;option.title=entry.url;history.append(option);});}history.value='';history.disabled=state.loading || !entries.length;
     $('browser-back').disabled=!state.canBack;$('browser-forward').disabled=!state.canForward;
     $('browser-reload').disabled=!state.url;
-    for(const id of ['browser-annotate','browser-region'])$(id).disabled=state.loading || !/^https?:/.test(state.url || '');
+    for(const id of ['browser-annotate','browser-region'])$(id).disabled=sending || state.noteEditing || state.loading || !/^https?:/.test(state.url || '');
     $('browser-cancel').disabled=!state.annotating && !state.selection;
     $('browser-selection').textContent=state.selection ? `${state.selection.mode==='region' ? 'Region · ' : ''}${state.selection.selector}` : state.annotating ? 'Select on the page. Escape cancels.' : 'Select part of the preview to describe a change.';
     $('browser-add').hidden=!state.selection;
@@ -87,8 +87,10 @@ export function setupBrowser(api,addCapture) {
   for(const mode of ['desktop','mobile'])$(`browser-${mode}`).addEventListener('click',()=>command('device',{mode}));
   $('browser-address').addEventListener('submit',event=>{event.preventDefault();command('navigate',{url:$('browser-url').value});});
   for(const action of ['back','forward','reload'])$(`browser-${action}`).addEventListener('click',()=>command(action));
-  $('browser-annotate').addEventListener('click',()=>command('annotate',{mode:'element'}));
-  $('browser-region').addEventListener('click',()=>command('annotate',{mode:'region'}));
+  async function annotate(mode){try{await flushDraft?.();await command('annotate',{mode,noteEditor:true});}catch(error){showError(error);}}
+  $('browser-annotate').addEventListener('click',()=>annotate('element'));
+  $('browser-region').addEventListener('click',()=>annotate('region'));
+  $('browser-send-notes').addEventListener('click',()=>{if(expanded)expand(false);send?.();});
   $('browser-cancel').addEventListener('click',()=>command('cancel'));
   $('browser-before').addEventListener('click',()=>command('compare-before'));
   $('browser-after').addEventListener('click',async()=>{
@@ -114,4 +116,5 @@ export function setupBrowser(api,addCapture) {
   window.addEventListener('resize',bounds);
   api.onEvent(event=>{if(event.type==='browser')update(event.state);});
   api.browserCommand('state').then(update).catch(showError);
+  return {setSending(value){if(sending===value)return;sending=value;for(const id of ['browser-annotate','browser-region'])$(id).disabled=sending || state.noteEditing || state.loading || !/^https?:/.test(state.url || '');}};
 }

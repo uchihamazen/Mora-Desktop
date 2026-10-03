@@ -28,7 +28,7 @@ $('sidebar-toggle').addEventListener('click',()=>setSidebar(!sidebarCollapsed));
 const dismissedErrors = new Set();
 let state = { items: [], sessions: [], models: [], busy: false, connection: 'connecting' };
 let projectFailureNotice='';
-let attachments = [], sending = false, lastSignature = '', startedAt = 0;
+let attachments = [], sending = false, lastSignature = '', startedAt = 0,browserUI;
 let draftOwner, draftTimer, draftWrites=Promise.resolve();
 let updateProjects,updateProjectWork,updateTester,updateWebsiteTester,updateReadiness;
 const messageRows=new Map();
@@ -300,13 +300,14 @@ function update(next) {
   updateLibrary(state,sending);updateQuickActions();
   renderMessages(); conversationFind.update(state.sessionId);refreshSend();refreshStitch();
 }
-function refreshSend() { $('send-button').disabled = sending || state.loading || state.testerActive || state.websiteActive || state.projectOperation || state.projectRepair || state.historyMissing || state.workUnavailable || ['required','pending'].includes(state.account?.status) || state.connection !== 'ready' || (!$('prompt').value.trim() && !attachments.length); }
+function refreshSend() { $('send-button').disabled = sending || state.loading || state.testerActive || state.websiteActive || state.projectOperation || state.projectRepair || state.historyMissing || state.workUnavailable || ['required','pending'].includes(state.account?.status) || state.connection !== 'ready' || (!$('prompt').value.trim() && !attachments.length);const count=attachments.filter(image=>image.annotationRef).length;$('browser-send-notes').hidden=!count;$('browser-send-notes').textContent=`Send notes (${count})`;$('browser-send-notes').disabled=$('send-button').disabled;browserUI?.setSending(sending);for(const button of $('attachments').querySelectorAll('button'))button.disabled=sending; }
 function renderAttachments(persist=true) {
   $('attachments').replaceChildren(); $('attachments').hidden = !attachments.length;
   for (const [index,image] of attachments.entries()) {
     const box = textNode('div', '', 'attachment'); const img = document.createElement('img'); img.src = `data:${image.mediaType};base64,${image.base64Data}`; img.alt = image.name || 'Attached image';
     const remove = textNode('button', '×'); remove.setAttribute('aria-label', 'Remove image'); remove.addEventListener('click', () => { attachments.splice(index,1); renderAttachments(); }); box.append(img,remove);
-    if(image.contextText){box.classList.add('browser-attachment');box.append(textNode('strong',`Selection ${index+1}`),textNode('small',image.sourceUrl || '', 'annotation-source'));const note=document.createElement('textarea');note.value=image.note || '';note.maxLength=10000;note.placeholder='What should change here?';note.setAttribute('aria-label',`Note for selection ${index+1}`);note.addEventListener('input',()=>{image.note=note.value;scheduleDraft();});box.append(note);const context=textNode('details','','attachment-context');context.append(textNode('summary',image.name || 'Browser annotation'),textNode('pre',image.contextText));box.append(context);}
+    if(image.annotationRef){box.classList.add('saved-annotation');const number=attachments.slice(0,index+1).filter(item=>item.annotationRef).length;const edit=textNode('button',`Note ${number}: ${image.note}`,'saved-note-edit');edit.title=image.note;edit.setAttribute('aria-label',`Edit note ${number}`);edit.addEventListener('click',()=>action(()=>api.browserCommand('note-edit',{id:image.annotationRef.id})));box.append(edit);}
+    else if(image.contextText){box.classList.add('browser-attachment');box.append(textNode('strong',`Selection ${index+1}`),textNode('small',image.sourceUrl || '', 'annotation-source'));const note=document.createElement('textarea');note.value=image.note || '';note.maxLength=10000;note.placeholder='What should change here?';note.setAttribute('aria-label',`Note for selection ${index+1}`);note.addEventListener('input',()=>{image.note=note.value;scheduleDraft();});box.append(note);const context=textNode('details','','attachment-context');context.append(textNode('summary',image.name || 'Browser annotation'),textNode('pre',image.contextText));box.append(context);}
     $('attachments').append(box);
   } refreshSend();if(persist)scheduleDraft();
 }
@@ -330,9 +331,11 @@ async function send() {
   sending = true; refreshSend();
   try {
     await flushDraft();
-    const text=[$('prompt').value,...attachments.map((image,index)=>image.contextText ? `Selection ${index+1}${image.note ? ` — requested change: ${image.note}` : ''}\n${image.contextText}` : '').filter(Boolean)].filter(Boolean).join('\n\n');
+    const sentImages=attachments.map(image=>({...image})),sentPrompt=$('prompt').value;
+    let noteNumber=0;const text=[$('prompt').value,...attachments.map((image,index)=>image.contextText ? `${image.annotationRef?`Note ${++noteNumber}`:`Selection ${index+1}`}${image.note ? ` — requested change: ${image.note}` : ''}\n${image.contextText}` : '').filter(Boolean)].filter(Boolean).join('\n\n');
     await api.sendMessage({ text, images: attachments.map(({ mediaType, base64Data }) => ({ mediaType, base64Data })) });
-    $('prompt').value = ''; $('prompt').style.height = ''; attachments = []; renderAttachments(false); await flushDraft(); $('error-banner').hidden = true;
+    if($('prompt').value===sentPrompt){$('prompt').value = ''; $('prompt').style.height = '';}
+    attachments=attachments.filter(image=>!sentImages.some(sent=>['mediaType','base64Data','contextText','note'].every(key=>sent[key]===image[key]) && sent.annotationRef?.id===image.annotationRef?.id));renderAttachments(false);await flushDraft();$('error-banner').hidden=true;
   } catch (e) { error(e); }
   finally { sending = false; update(await api.getState()); if (!state.busy) $('prompt').focus(); }
 }
@@ -367,8 +370,8 @@ $('choose-muse').addEventListener('click', () => action(() => api.chooseMuse()))
 $('dismiss-error').addEventListener('click', () => { dismissedErrors.add(errorKey($('error-text').textContent)); $('error-banner').hidden = true; });
 document.querySelectorAll('[data-prompt]').forEach(button => button.addEventListener('click', () => { $('prompt').value = button.dataset.prompt; $('prompt').dispatchEvent(new Event('input')); $('prompt').focus(); }));
 setInterval(() => { if (state.busy && startedAt) { const seconds = Math.floor((Date.now()-startedAt)/1000); $('elapsed').textContent = seconds >= 60 ? `${Math.floor(seconds/60)}m ${seconds%60}s` : `${seconds}s`; } },1000);
-api.onEvent(event => { if (event.type === 'state') update(event.state);else if(event.type==='completion-sound'){completionSound.currentTime=0;completionSound.play().catch(()=>{});} });
-setupBrowser(api,capture=>{addImages([capture]);$('prompt').focus();});
+api.onEvent(event => { if (event.type === 'state') update(event.state);else if(event.type==='annotation-saved' && event.sessionId===(draftOwner||null)){attachments=event.images;renderAttachments(false);}else if(event.type==='completion-sound'){completionSound.currentTime=0;completionSound.play().catch(()=>{});} });
+browserUI=setupBrowser(api,capture=>{addImages([capture]);$('prompt').focus();},{flushDraft,send});
 const updateLibrary=setupLibrary(api,action);
 const conversationFind=setupConversationFind();
 const updateQuickActions=setupQuickActions(api,{find:conversationFind,sidebar:setSidebar});

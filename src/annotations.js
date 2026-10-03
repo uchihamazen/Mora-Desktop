@@ -53,7 +53,7 @@ export function selectOnPage(mode,token) {
   const block=event=>{event.preventDefault();event.stopImmediatePropagation();};
   function finish(node,rect) {
     if (!node || !rect || rect.width<2 || rect.height<2) {clear();return;}
-    selectedNode=node;selectedRect=rect;
+    selectedNode=node;selectedRect=rect;state.target=node;
     const clone=node.cloneNode(true);
     clone.querySelectorAll('script,noscript,[data-muse-annotation]').forEach(child=>child.remove());
     for(const child of [clone,...clone.querySelectorAll('*')]) {
@@ -108,4 +108,33 @@ export function selectOnPage(mode,token) {
     }
     return {selection:state.selection,active:state.active,viewport:{width:innerWidth,height:innerHeight},scroll:{x:scrollX,y:scrollY}};
   };
+}
+
+export function syncNoteMarkers(notes,selectedId) {
+  let state=globalThis.__moraNoteMarkers;
+  if(!state){
+    state={entries:new Map(),action:null};globalThis.__moraNoteMarkers=state;
+    state.refresh=()=>{
+      for(const entry of state.entries.values()){
+        const {ref,node,host}=entry;
+        const rect=ref.mode==='element'?node?.isConnected&&node.getBoundingClientRect():{x:ref.rect.x-scrollX,y:ref.rect.y-scrollY,width:ref.rect.width,height:ref.rect.height};
+        const valid=rect&&rect.width>1&&rect.height>1&&rect.x+rect.width>0&&rect.y+rect.height>0&&rect.x<innerWidth&&rect.y<innerHeight&&(ref.mode==='element'||ref.viewport.width===innerWidth&&ref.viewport.height===innerHeight);
+        host.style.display=valid?'block':'none';if(valid){host.style.left=`${Math.max(0,Math.min(innerWidth-28,rect.x))}px`;host.style.top=`${Math.max(0,Math.min(innerHeight-28,rect.y))}px`;}
+      }
+    };
+    window.addEventListener('scroll',state.refresh,true);window.addEventListener('resize',state.refresh);
+    state.takeAction=()=>{state.refresh();const action=state.action;state.action=null;return action;};
+  }
+  const ids=new Set(notes.map(note=>note.ref.id));
+  for(const [id,entry] of state.entries)if(!ids.has(id)){entry.host.remove();state.entries.delete(id);}
+  for(const {ref,number} of notes){
+    let entry=state.entries.get(ref.id);
+    if(!entry){
+      const host=document.createElement('div');host.setAttribute('data-muse-annotation','');host.setAttribute('data-mora-note-id',ref.id);host.style.cssText='all:initial;position:fixed;width:28px;height:28px;z-index:2147483645;pointer-events:auto;';
+      const shadow=host.attachShadow({mode:'closed'}),button=document.createElement('button');button.style.cssText='all:initial;box-sizing:border-box;width:28px;height:28px;border-radius:50%;background:#087af2;color:white;border:2px solid white;box-shadow:0 2px 6px #0006;font:600 12px Segoe UI,sans-serif;text-align:center;cursor:pointer;';button.setAttribute('aria-label',`Edit note ${number}`);button.onclick=event=>{event.preventDefault();event.stopPropagation();if(event.isTrusted)state.action=ref.id;};shadow.append(button);document.documentElement.append(host);entry={host,button,ref,node:null};state.entries.set(ref.id,entry);
+    }
+    entry.ref=ref;entry.button.textContent=String(number);entry.button.setAttribute('aria-label',`Edit note ${number}`);
+    if(ref.id===selectedId)entry.node=globalThis.__museAnnotation?.target;
+  }
+  state.refresh();
 }

@@ -37,7 +37,7 @@ try {
  await restored.keyboard.press('Control+f');assert.equal(await page.locator('#conversation-find').isVisible(),false);
  await command('tab-select',{id:secondTab});await command('close');const beforeRestartHits=hits;await app.close();app=null;await launch();await waitReady();assert.equal(hits,beforeRestartHits,'Startup must not navigate remembered pages');
  await command('open');current=await command('state');assert.equal(current.tabs.length,2);assert.equal(current.activeTabId,secondTab);assert.equal(current.url,origin+'/two');
- await page.getByRole('button',{name:'Close tab /one',exact:true}).focus();await page.keyboard.press('Enter');await waitFor(async()=>(await command('state')).tabs.length===1);assert.equal(await page.evaluate(()=>document.activeElement?.dataset.tabId),secondTab);
+ await page.getByRole('button',{name:'Close tab /one',exact:true}).focus();await page.keyboard.press('Enter');await waitFor(async()=>(await command('state')).tabs.length===1);assert.equal(await page.evaluate(()=>document.activeElement?.id),'browser-url','Closing to one tab returns focus to the visible address control');
  for(let i=1;i<8;i++)await command('tab-new');await assert.rejects(()=>command('tab-new'),/8 per chat/);
  await page.locator('#browser-expand').click();await page.locator('#browser-url').focus();await page.keyboard.press('Control+f');assert.equal(await page.locator('#conversation-find').isVisible(),true);await page.keyboard.press('Escape');
  await page.locator('#browser-expand').click();await page.locator('#browser-url').focus();await page.keyboard.press('Control+Shift+f');assert.equal(await page.locator('#library-search').isVisible(),true);assert.equal(await page.locator('#library-search').evaluate(node=>node===document.activeElement),true);

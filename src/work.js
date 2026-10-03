@@ -13,6 +13,11 @@ export function validateDraft(value = {}) {
         image[key] = source[key];
       }
     }
+    if(source.annotationRef!==undefined) {
+      const ref=source.annotationRef;
+      if(!ref || !['id','tabId','documentId'].every(key=>typeof ref[key]==='string' && /^[\w-]{1,100}$/.test(ref[key])) || !['element','region'].includes(ref.mode) || !ref.rect || !ref.viewport || ![ref.rect.x,ref.rect.y,ref.rect.width,ref.rect.height,ref.viewport.width,ref.viewport.height].every(number=>Number.isFinite(number)&&Math.abs(number)<=10000000) || ref.rect.width<=0 || ref.rect.height<=0 || ref.viewport.width<=0 || ref.viewport.height<=0)throw Error('Invalid annotation reference.');
+      image.annotationRef={id:ref.id,tabId:ref.tabId,documentId:ref.documentId,mode:ref.mode,rect:{x:ref.rect.x,y:ref.rect.y,width:ref.rect.width,height:ref.rect.height},viewport:{width:ref.viewport.width,height:ref.viewport.height}};
+    }
     return image;
   });
   return {text:value.text,images};

@@ -25,10 +25,10 @@ No personal chats, API keys, or private project data are shown.
 
 ### Browser annotations
 
-Select a page element, preview its cropped screenshot, and attach its HTML context to the main chat.
-The example below uses the Mobile preview.
+Select a page element or region, write a note in the popup, and save it as a numbered marker.
+Save more notes, then send them together with their screenshots and HTML context.
 
-![Browser annotation with a selected demo card and screenshot attached to chat](docs/screenshots/browser-annotation.png)
+![Trusted annotation popup with a note and Save and Cancel controls](docs/screenshots/annotation-note-popup.png)
 
 ### Engine settings
 
@@ -58,7 +58,7 @@ Choose your Muse executable, reconnect the engine, and configure your own Google
 | Request queue | Durable follow-ups with images, edit/remove controls and explicit pause/resume; Stop preserves pending work. |
 | Execution controls | Read only for inspection, Full access for project operations, and Stop for the active request. |
 | Integrated browser | Browse websites and local development servers in a Chromium panel with Desktop/Mobile previews and an expanded view. |
-| Design annotations | Numbered selections with editable notes, source URL and bounded HTML; compare before/after screenshots of the same preview. |
+| Design annotations | Save notes in a trusted popup, reopen numbered page markers, edit/delete and send them together; compare before/after screenshots. |
 | Work speed | Quick, Balanced and Thorough use supported efforts on your selected model; explicit effort controls stay available. |
 | Google Stitch MCP | Connect, test and disconnect your own Stitch account; use design tools through Muse's native MCP integration. |
 | Image previews | Display supported Stitch image links in chat, enlarge them, or copy the original link. |
@@ -256,10 +256,18 @@ Run/Test currently support Node projects with package.json scripts and Node/pack
 1. Open **Browser** and enter an HTTP/HTTPS URL or local address such as `localhost:3000`.
 2. Choose **Desktop** or **Mobile**. Drag the browser's left divider to resize it; its width is remembered. Arrow keys also adjust the focused divider, double-click resets it, and Escape cancels a drag. **Expand** fills the window; **Back to chat** restores the split.
 3. Use **Annotate element** to click an element, or **Select region** to drag an area.
-4. Click **Add to chat**. Muse receives a cropped screenshot of the visible selection
-   with bounded HTML, URL and computed styles.
-5. Add an editable note to the numbered selection card, select more areas if needed,
-   and write your overall request in the main composer.
+4. Write what should change in the popup, then click **✓ Save** (or **Ctrl+Enter**).
+   The popup closes and a numbered marker remains. Saving does not send a request.
+5. Select more areas. Click a marker or its compact chat note to edit/delete it;
+   **Escape** cancels an unsaved note. Click **Send notes** to send all saved notes
+   with the main composer's text, cropped screenshots, bounded HTML, URL and styles.
+
+Saved notes stay in the current chat's draft after restart or a failed send. Their
+screenshots and HTML describe the capture time. Markers follow the original element
+in the current page; removed elements, full navigation and restart do not attach old
+markers to new elements. Notes remain editable from chat without reopening a site.
+Region markers hide when the viewport changes. A failed disk save keeps the popup
+and note text available for retry.
 
 Use **Capture before**, make a change, then **Compare after** to compare the same
 page, device, viewport and scroll position. Both images show their capture times.
@@ -271,9 +279,22 @@ Navigation, scrolling, resizing and device changes invalidate the selection. Sel
 if the page changes. Annotation HTML omits scripts, event handlers and form values,
 and is limited to 24,000 characters. Frames are selected as outer elements.
 
+User note text stays in Mora's trusted popup and chat, outside website DOM content.
 The browser uses a persistent partition for cookies and login state. Web pages run
 sandboxed without Node or the Muse bridge; downloads, native permissions and non-web
 navigation schemes are denied.
+
+### Annotating Mora itself in a local browser
+
+Run `npm run preview:ui` (or `node scripts/ui-preview.js`) and open
+`http://127.0.0.1:4173` in Codex's browser. This serves Mora's actual UI with a clear
+sample-data banner and a small counter example. Use Codex's browser annotations to
+point out changes, then send them to the coding chat for implementation.
+
+This preview has sample chats and model controls. It does not connect to Muse,
+access your real chats or project files, run/test projects, or modify source files.
+Reloading clears sample changes. Real engine and native browser operations require
+the desktop app; this is a local UI workbench, not a full browser edition.
 
 ### Google Stitch
 

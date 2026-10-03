@@ -4,10 +4,10 @@ $version = (Get-Content -LiteralPath (Join-Path $projectRoot 'package.json') -Ra
 $destination = Join-Path $projectRoot "artifacts\release\Mora-Desktop-$version-source.zip"
 if (Test-Path -LiteralPath $destination) { throw "Archive already exists: $destination" }
 
-$rootFiles = @('.gitattributes', '.gitignore', 'AGENTS.md', 'LICENSE', 'Open Mora Desktop.cmd', 'README.md', 'THIRD_PARTY_NOTICES.md', 'package.json', 'pnpm-lock.yaml', 'pnpm-workspace.yaml')
+$rootFiles = @('.gitattributes', '.gitignore', 'LICENSE', 'Open Mora Desktop.cmd', 'README.md', 'THIRD_PARTY_NOTICES.md', 'package.json', 'pnpm-lock.yaml', 'pnpm-workspace.yaml')
 $files = @(git -C $projectRoot ls-files --cached --others --exclude-standard)
 if ($LASTEXITCODE -ne 0) { throw 'Could not list public source files.' }
-$files = @($files | Where-Object { $_ -in $rootFiles -or $_ -match '^(src|tests|scripts|docs|muse-plugins|\.github)/' } | Sort-Object -Unique)
+$files = @($files | Where-Object { ($_ -in $rootFiles -or $_ -match '^(src|tests|scripts|docs|muse-plugins|\.github)/') -and $_ -notmatch '(^|/)AGENTS\.md$' } | Sort-Object -Unique)
 if ($files.Count -eq 0) { throw 'No source files found.' }
 foreach ($relative in $files) {
     if ($relative -match '(?i)(^|/)(\.git|node_modules|artifacts|dist|backups?|user-data|sessions|\.superpowers)(/|$)|AGENTS\.override|(^|/)(preferences|conversations|auth|credentials|secrets)\.(json|jsonl)|\.(pem|pfx|key|bak|log)$|(^|/)\.env($|\.)') { throw "Private or generated file: $relative" }

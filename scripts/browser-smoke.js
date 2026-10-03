@@ -20,7 +20,7 @@ try {
   const page=app.context().pages().find(candidate=>candidate.url().endsWith('/index.html'));assert.ok(page,'Mora main window is available');
   await page.locator('#browser-button').waitFor({timeout:10000});
   await page.locator('#browser-button').click();
-  assert.equal(await page.locator('#browser-note').count(),0,'Annotation note must be removed; users write in the main chat');
+  assert.equal(await page.locator('#browser-note').count(),0,'The browser footer must not contain an inline note editor');
   await page.locator('#browser-url').fill(url);
   await page.locator('#browser-url').press('Enter');
   let web;
@@ -78,7 +78,7 @@ try {
   }
   assert.equal(await web.evaluate(()=>typeof window.muse),'undefined');
   assert.equal(await web.evaluate(()=>typeof require),'undefined');
-  await page.locator('#browser-annotate').click();
+  await page.evaluate(()=>window.muse.browserCommand('annotate',{mode:'element'}));
   await clickWeb('#link');
   await page.locator('#browser-selection').filter({hasText:'#link'}).waitFor();
   assert.equal(web.url(),url+'/','Annotation click must not navigate');
@@ -92,14 +92,14 @@ try {
   await writeFile('artifacts/browser-selected-element.png',Buffer.from((await page.locator('#attachments img').getAttribute('src')).split(',')[1],'base64'));
   await page.locator('.attachment button[aria-label="Remove image"]').click();
   assert.equal(await page.locator('.attachment-context').count(),0);
-  await page.locator('#browser-annotate').click();
+  await page.evaluate(()=>window.muse.browserCommand('annotate',{mode:'element'}));
   await clickWeb('#card',{x:8,y:8});
   await page.locator('#browser-selection').filter({hasText:'#card'}).waitFor();
   const hiddenSelection=await app.evaluate(({webContents})=>webContents.getAllWebContents().find(web=>web.getURL().startsWith('http:')).executeJavaScriptInIsolatedWorld(117,[{code:"document.getElementById('card').style.display='none';globalThis.__museAnnotation.read(true)"}]));
   assert.equal(hiddenSelection.selection,null,'Capture refresh must invalidate an element that just became hidden');
   await assert.rejects(page.evaluate(()=>window.muse.browserCommand('capture',{note:''})));
   await web.locator('#card').evaluate(element=>{element.style.display='';});
-  await page.locator('#browser-annotate').click();
+  await page.evaluate(()=>window.muse.browserCommand('annotate',{mode:'element'}));
   await clickWeb('#card',{x:8,y:8});
   await page.locator('#browser-selection').filter({hasText:'#card'}).waitFor();
   await web.locator('#card h1').evaluate(element=>{element.textContent='Updated heading before capture';});
@@ -130,7 +130,7 @@ try {
   assert.equal(sent.images[0].mediaType,'image/png');
   assert.match(sent.text,/Selection 1.*Make this card blue/);
   await writeFile('artifacts/browser-annotation-proof.png',Buffer.from(sent.images[0].base64Data,'base64'));
-  await clickControl(page,'browser-region');
+  await page.evaluate(()=>window.muse.browserCommand('annotate',{mode:'region'}));
   const start=await point(42,42),end=await point(250,180);
   await web.mouse.move(start.x,start.y);await web.mouse.down();await web.mouse.move(end.x,end.y);await web.mouse.up();
   await page.locator('#browser-selection').filter({hasText:'Region'}).waitFor();
@@ -139,23 +139,23 @@ try {
   await page.waitForFunction(()=>document.querySelector('#attachments img')?.naturalWidth>0);await assertSelectedImage(regionCrop,'Dragged region');
   await writeFile('artifacts/browser-selected-region.png',Buffer.from((await page.locator('#attachments img').getAttribute('src')).split(',')[1],'base64'));
   await page.locator('.attachment button[aria-label="Remove image"]').click();
-  await clickControl(page,'browser-region');
+  await page.evaluate(()=>window.muse.browserCommand('annotate',{mode:'region'}));
   await web.mouse.move(start.x,start.y);await web.mouse.down();await web.mouse.move(end.x,end.y);await web.mouse.up();
   await page.locator('#browser-selection').filter({hasText:'Region'}).waitFor();
   await web.evaluate(()=>history.pushState({},'','#section'));
   await page.waitForFunction(()=>document.getElementById('browser-add').disabled);
   assert.equal(await web.locator('[data-muse-annotation]').count(),0);
-  await page.locator('#browser-annotate').click();await web.keyboard.press('Escape');
+  await page.evaluate(()=>window.muse.browserCommand('annotate',{mode:'element'}));await web.keyboard.press('Escape');
   await page.locator('#browser-selection').filter({hasText:'Select part of the preview'}).waitFor();
   assert.equal(await page.locator('#browser-cancel').isDisabled(),true);
   await web.evaluate(url=>{const frame=document.createElement('iframe');frame.id='frame';frame.src=url+'/frame';frame.style.cssText='position:fixed;left:40px;top:40px;width:300px;height:260px';document.body.append(frame);},url);
   const child=await web.locator('#frame').contentFrame();await child.locator('#link').waitFor();
   await web.evaluate(()=>{const modal=document.createElement('div');modal.id='modal';modal.textContent='Overlay above iframe';modal.style.cssText='position:fixed;left:50px;top:50px;width:200px;height:80px;z-index:10000;background:white';document.body.append(modal);});
-  await page.locator('#browser-annotate').click();await clickWeb('#modal',{x:30,y:30});
+  await page.evaluate(()=>window.muse.browserCommand('annotate',{mode:'element'}));await clickWeb('#modal',{x:30,y:30});
   await page.locator('#browser-selection').filter({hasText:'#modal'}).waitFor({timeout:1500});
   await clickControl(page,'browser-cancel');await web.locator('#modal').evaluate(element=>element.remove());
   const frameLink=await child.locator('#link').boundingBox();
-  await page.locator('#browser-annotate').click();
+  await page.evaluate(()=>window.muse.browserCommand('annotate',{mode:'element'}));
   const framePoint=await point(frameLink.x+5,frameLink.y+5);await web.mouse.click(framePoint.x,framePoint.y);
   await page.locator('#browser-selection').filter({hasText:'#frame'}).waitFor({timeout:1500});
   assert.equal(web.frames().find(frame=>frame.url()===url+'/frame')?.url(),url+'/frame','Annotation must not activate links inside an iframe');
@@ -184,7 +184,7 @@ try {
   for(const zoom of [.8,1.25]){
   await app.evaluate(({webContents},zoom)=>webContents.getAllWebContents().find(web=>web.getURL().startsWith('http:')).setZoomFactor(zoom),zoom);
   await web.locator('#card').evaluate(element=>{element.style.cssText='position:fixed;right:5px;top:20px;width:60px;height:60px;padding:0;overflow:hidden;';});
-  await page.locator('#browser-annotate').click();await clickWeb('#card');
+  await page.evaluate(()=>window.muse.browserCommand('annotate',{mode:'element'}));await clickWeb('#card');
   await page.locator('#browser-selection').filter({hasText:'#card'}).waitFor();
   const zoomCrop=await selectedImageSize();
   await page.locator('#browser-add').click();await page.locator('.attachment-context').waitFor({timeout:3000});
@@ -198,7 +198,7 @@ try {
   await page.locator('#browser-mobile').click();
   await web.waitForFunction(()=>innerWidth===390);
   assert.equal(await web.locator('#card').evaluate(element=>getComputedStyle(element).color),'rgb(0, 128, 0)','Mobile must activate responsive CSS');
-  await page.locator('#browser-annotate').click();await clickWeb('#link');
+  await page.evaluate(()=>window.muse.browserCommand('annotate',{mode:'element'}));await clickWeb('#link');
   await page.locator('#browser-selection').filter({hasText:'#link'}).waitFor();
   await page.locator('#browser-desktop').click();
   await web.waitForFunction(()=>innerWidth>=1279);
@@ -215,7 +215,7 @@ try {
   await page.waitForTimeout(200);await page.screenshot({path:'artifacts/browser-mobile-preview.png'});
   await writeFile('artifacts/browser-mobile-page.png',Buffer.from(await app.evaluate(({webContents})=>webContents.getAllWebContents().find(web=>web.getURL().startsWith('http:')).capturePage().then(image=>image.toPNG().toString('base64'))),'base64'));
   await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0].webContents.setZoomFactor(1.2));await page.waitForTimeout(250);
-  await page.locator('#browser-annotate').click();await clickWeb('#link');
+  await page.evaluate(()=>window.muse.browserCommand('annotate',{mode:'element'}));await clickWeb('#link');
   await page.locator('#browser-selection').filter({hasText:'#link'}).waitFor();
   const mobileCrop=await selectedImageSize();
   await page.locator('#browser-add').click();await page.locator('.attachment-context').waitFor();
@@ -227,7 +227,7 @@ try {
   await page.locator('.attachment button[aria-label="Remove image"]').click();
   await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0].webContents.setZoomFactor(1));await page.waitForTimeout(250);
   await web.evaluate(()=>{document.body.style.minHeight='4000px';scrollTo(0,100);});await page.waitForTimeout(150);
-  await page.locator('#browser-annotate').click();await clickWeb('#link');await page.locator('#browser-selection').filter({hasText:'#link'}).waitFor();
+  await page.evaluate(()=>window.muse.browserCommand('annotate',{mode:'element'}));await clickWeb('#link');await page.locator('#browser-selection').filter({hasText:'#link'}).waitFor();
   const scrolledCrop=await selectedImageSize();await page.locator('#browser-add').click();await page.locator('.attachment-context').waitFor();
   await page.waitForFunction(()=>document.querySelector('#attachments img')?.naturalWidth>0);await assertSelectedImage(scrolledCrop,'Scrolled Mobile element');
   await writeFile('artifacts/browser-selected-scrolled.png',Buffer.from((await page.locator('#attachments img').getAttribute('src')).split(',')[1],'base64'));
