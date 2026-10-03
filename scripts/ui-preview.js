@@ -22,7 +22,11 @@ export function createPreviewServer(){
         type=types[path.extname(file)];if(!type){res.writeHead(404).end();return;}
         const resolved=await realpath(file);if(!resolved.startsWith(root+path.sep)){res.writeHead(403).end();return;}
         content=await readFile(resolved);
-        if(file===path.join(root,'index.html'))content=content.toString().replace('<script type="module" src="renderer.js">','<script src="/preview-bridge.js"></script><script type="module" src="renderer.js">');
+        if(file===path.join(root,'index.html'))content=content.toString()
+          // Browser annotation tools inject their UI stylesheet. Keep scripts
+          // restricted; relax styles only in this loopback sample workbench.
+          .replace("style-src 'self';","style-src 'self' 'unsafe-inline';")
+          .replace('<script type="module" src="renderer.js">','<script src="/preview-bridge.js"></script><script type="module" src="renderer.js">');
       }
       res.setHeader('Content-Type',type+'; charset=utf-8');res.end(req.method==='HEAD'?undefined:content);
     }catch{res.writeHead(404).end();}

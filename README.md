@@ -290,6 +290,8 @@ Run `npm run preview:ui` (or `node scripts/ui-preview.js`) and open
 `http://127.0.0.1:4173` in Codex's browser. This serves Mora's actual UI with a clear
 sample-data banner and a small counter example. Use Codex's browser annotations to
 point out changes, then send them to the coding chat for implementation.
+The local preview allows the styles injected by browser annotation tools so their
+note boxes display correctly. The desktop app keeps its original security policy.
 
 This preview has sample chats and model controls. It does not connect to Muse,
 access your real chats or project files, run/test projects, or modify source files.

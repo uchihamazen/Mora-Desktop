@@ -121,8 +121,8 @@
 ## Local UI preview
 - `node scripts/ui-preview.js` serves the actual renderer at `http://127.0.0.1:4173` with labelled sample data and a small counter iframe. Annotate Mora's UI using Codex's browser, then send the feedback to the coding chat.
 - Uses an in-memory sample bridge, without Muse, real chats/project files, process execution, native browser APIs or source editing. Sample controls do not call a model; Run/Test and unsupported actions explain their desktop requirement.
-- Binds only to loopback; static reads stay within source/assets, reject traversal and symlink escapes, and reject HTTP writes. No backend adapter, additional dependency, installation or user-wide setting is needed.
-- Verify the preview server test and `scripts/ui-preview-smoke.js` for the actual renderer, sample banner, effort selection, sample chat, unavailable engine actions and page errors. This proof does not establish a full browser edition.
+- Binds only to loopback; static reads stay within source/assets, reject traversal and symlink escapes, and reject HTTP writes. Allows injected annotation styles in this preview only; scripts and the packaged desktop retain their strict policy. No additional dependency, installation or user-wide setting is needed.
+- Verify the preview server test and `scripts/ui-preview-smoke.js` for the renderer, sample banner, effort selection, sample chat, unavailable engine actions, injected shadow-root popup styling/note save and browser errors. The popup regression models annotation injection; check Codex's button manually. This proof does not establish a full browser edition.
 
 ## Workspace layout
 - Projects, conversation and preview share a calm three-column workspace. Run/Test/Preview stay in the header; the workspace menu retains restart/stop, results, checkpoints, brief, export and testers. Ctrl+K remains available.
