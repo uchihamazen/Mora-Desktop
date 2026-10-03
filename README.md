@@ -280,7 +280,8 @@ This is a visual comparison; it does not verify functionality or tests.
 Desktop fits a minimum **1280px CSS viewport**; Mobile previews a **390px viewport**.
 Mobile changes responsive width, without emulating a phone's hardware, touch or user agent.
 Navigation, scrolling, resizing and device changes invalidate the selection. Select again
-if the page changes. Annotation HTML omits scripts, event handlers and form values,
+if the page changes. Annotation controls keep the preview size steady while selecting and saving notes.
+Annotation HTML omits scripts, event handlers and form values,
 and is limited to 24,000 characters. Frames are selected as outer elements.
 
 User note text stays in Mora's trusted popup and chat, outside website DOM content.

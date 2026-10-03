@@ -68,8 +68,9 @@ export function setupBrowser(api,addCapture,{flushDraft,send}={}) {
     $('browser-reload').disabled=!state.url;
     for(const id of ['browser-annotate','browser-region'])$(id).disabled=sending || state.noteEditing || state.loading || !/^https?:/.test(state.url || '');
     $('browser-cancel').disabled=!state.annotating && !state.selection;
-    $('browser-selection').textContent=state.selection ? `${state.selection.mode==='region' ? 'Region · ' : ''}${state.selection.selector}` : state.annotating ? 'Select on the page. Escape cancels.' : '';
-    $('browser-add').hidden=!state.selection;
+    $('browser-selection').textContent=state.noteEditing ? 'Write a note in the popup.' : state.selection ? `${state.selection.mode==='region' ? 'Region · ' : ''}${state.selection.selector}` : state.annotating ? 'Select on the page. Escape cancels.' : 'Point to edit, save notes, then send together.';
+    $('browser-selection').title=state.selection?.selector || '';
+    $('browser-add').hidden=!state.selection || state.noteEditing;
     $('browser-add').disabled=capturing || !state.selection || state.loading;
     $('browser-before').disabled=capturing || state.loading || !state.deviceReady || !/^https?:/.test(state.url || '');
     $('browser-after').disabled=$('browser-before').disabled || !state.hasComparisonBefore;

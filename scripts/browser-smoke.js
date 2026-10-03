@@ -146,7 +146,7 @@ try {
   await page.waitForFunction(()=>document.getElementById('browser-add').disabled);
   assert.equal(await web.locator('[data-muse-annotation]').count(),0);
   await page.evaluate(()=>window.muse.browserCommand('annotate',{mode:'element'}));await web.keyboard.press('Escape');
-  await page.locator('#browser-selection').filter({hasText:'Select part of the preview'}).waitFor();
+  await page.locator('#browser-selection').filter({hasText:'Point to edit, save notes, then send together.'}).waitFor();
   assert.equal(await page.locator('#browser-cancel').isDisabled(),true);
   await web.evaluate(url=>{const frame=document.createElement('iframe');frame.id='frame';frame.src=url+'/frame';frame.style.cssText='position:fixed;left:40px;top:40px;width:300px;height:260px';document.body.append(frame);},url);
   const child=await web.locator('#frame').contentFrame();await child.locator('#link').waitFor();
@@ -232,7 +232,7 @@ try {
   await page.waitForFunction(()=>document.querySelector('#attachments img')?.naturalWidth>0);await assertSelectedImage(scrolledCrop,'Scrolled Mobile element');
   await writeFile('artifacts/browser-selected-scrolled.png',Buffer.from((await page.locator('#attachments img').getAttribute('src')).split(',')[1],'base64'));
   await page.locator('#browser-url').fill(url+'/slow');await page.locator('#browser-url').press('Enter');
-  await page.locator('#browser-title').filter({hasText:'Loading'}).waitFor();
+  await page.waitForFunction(async()=>(await window.muse.browserCommand('state')).loading);
   assert.equal(await page.locator('#browser-desktop').isDisabled(),true,'Device changes must wait for the new page to load');
   await assert.rejects(page.evaluate(()=>window.muse.browserCommand('device',{mode:'desktop'})),/page.*load/i);
   await page.waitForFunction(()=>!document.getElementById('browser-mobile').disabled);

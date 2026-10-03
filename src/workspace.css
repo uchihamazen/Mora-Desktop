@@ -104,6 +104,7 @@ main{background:#111419}
 .browser-size{display:none}
 @container (max-width:480px){.browser-heading strong{display:none}.browser-tools #browser-annotate{font-size:10px;padding:5px 4px}.browser-address button{padding:4px}.browser-heading .browser-tools{gap:3px}}
 .browser-tabs-bar{padding:7px 12px;background:#171b22;flex-shrink:0}
+/* Selection and saved-note actions must not resize the native preview mid-capture. */
 .browser-annotation,.browser-expanded .browser-annotation{height:52px;padding:9px 14px;display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:center;gap:8px;flex-shrink:0}
 .browser-annotation>div{font:12px/1.5 "Segoe UI",sans-serif;color:#b3c2d8}
 .browser-annotation>small{grid-column:1/-1;font-size:11px;color:#a2aec0}
@@ -155,8 +156,6 @@ main{background:#111419}
 #settings-panel #stitch-key{font-size:12px;padding:9px}
 @media(max-width:1100px){#settings-panel{left:234px}}
 @media(max-width:600px){#settings-panel{left:16px}}
-
-.browser-annotation:not(:has(button:not([hidden]))){display:none}
 
 .brand .sidebar-collapse{margin-left:auto;display:flex;align-items:center;justify-content:center;width:30px;height:30px;flex-shrink:0;padding:5px;border:1px solid #455165;border-radius:6px;background:#202630;color:#c9d3e2}
 .brand .sidebar-collapse:hover{background:#28313e;border-color:#60738d}
