@@ -212,7 +212,7 @@ try{
  assert.equal(await page.evaluate(()=>window.smoke.deleted[0]),'s2');
  await page.evaluate(()=>window.smoke.emit({items:[{itemId:'change-test',kind:'fileChanges',added:68,removed:3,files:[{path:'src/feature.js',status:'modified',added:68,removed:3,patch:'@@ -1 +1 @@\n-old value\n+<script>literal text</script>\n context'}]}]}));
  await page.locator('.change-badge').waitFor();
- assert.match(await page.locator('.change-badge').textContent(),/1 file changed.*\+68.*-3/);
+ assert.match(await page.locator('.change-badge').textContent(),/Edited src\/feature\.js.*\+68.*-3/);
  await page.locator('.change-badge').click();
  await page.locator('.changes-panel').waitFor();
  assert.equal(await page.locator('.diff-line.added').textContent(),'+<script>literal text</script>');
@@ -301,6 +301,8 @@ try{
  await page.evaluate(()=>window.smoke.emit({projectWork:{root:'C:\\Projects\\First app',run:{status:'stopped'},tests:{status:'not checked'}}}));
  await page.evaluate(()=>window.smoke.emit({lastOutcome:{status:'finished',turnId:'request-undo',message:'Built your app',checkpointId:'cp1'}}));
  await page.evaluate(()=>{window.smoke.originalProjectCommand=window.muse.projectCommand;window.smoke.stopResolves=[];window.muse.projectCommand=async name=>{if(name==='stop')await new Promise(resolve=>window.smoke.stopResolves.push(resolve));};window.smoke.emit({projectWork:{root:'C:\\Projects\\First app',run:{status:'ready'},tests:{status:'not checked'}}});});
+ await page.getByRole('button',{name:'Open preview',exact:true}).waitFor();
+ await mkdir('artifacts/frontend-proof',{recursive:true});await page.screenshot({path:'artifacts/frontend-proof/timeline-outcome.png'});
  await page.getByRole('button',{name:'Undo this request',exact:true}).evaluate(button=>{button.click();button.click();});
  await page.waitForFunction(()=>window.smoke.stopResolves.length===2);
  await page.evaluate(()=>{window.smoke.emit({projectWork:{root:'C:\\Projects\\First app',run:{status:'stopped'},tests:{status:'not checked'}}});for(const resolve of window.smoke.stopResolves)resolve();window.muse.projectCommand=window.smoke.originalProjectCommand;});

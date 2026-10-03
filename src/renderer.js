@@ -169,7 +169,7 @@ function renderMessages() {
   const history=(state.items || []).filter(item=>!item.retracted);
   older.hidden=history.length<=visibleHistory;older.textContent=`Load older messages (${Math.max(0,history.length-visibleHistory)} remaining)`;
   const rows=[...history.slice(-visibleHistory),...(state.pendingQueue || []).map(entry=>({...entry,itemId:'queue-'+entry.queueId,kind:'queued'}))];
-  if(state.lastOutcome && !state.busy)rows.push({...state.lastOutcome,itemId:'outcome-'+state.lastOutcome.turnId,kind:'outcome',tools:(state.items || []).filter(item=>item.turnId===state.lastOutcome.turnId && (item.kind==='toolCall' || item.kind==='userShell')),review:(state.items || []).find(item=>item.turnId===state.lastOutcome.turnId && item.kind==='fileChanges'),activeRequest:state.activeRequest});
+  if(state.lastOutcome && !state.busy)rows.push({...state.lastOutcome,itemId:'outcome-'+state.lastOutcome.turnId,kind:'outcome',previewReady:state.projectWork?.root===state.projectPath&&state.projectWork?.run?.status==='ready',tools:(state.items || []).filter(item=>item.turnId===state.lastOutcome.turnId && (item.kind==='toolCall' || item.kind==='userShell')),review:(state.items || []).find(item=>item.turnId===state.lastOutcome.turnId && item.kind==='fileChanges'),activeRequest:state.activeRequest});
   const seen=new Set();let position=0;
   for(const item of rows) {
     if(!['fileChanges','activity','toolCall','userShell','agentMessage','userMessage','queued','outcome'].includes(item.kind))continue;
@@ -181,12 +181,15 @@ function renderMessages() {
     if(record.signature!==signature || !sameImages) {
       const sameKind=record.kind===item.kind;record.signature=signature;record.kind=item.kind;
       if(item.kind==='toolCall' || item.kind==='userShell') {
+        node.className='timeline-operation';
         if(!sameKind){node.replaceChildren();const details=document.createElement('details');details.className='tool-card';details.dataset.id=key;details.open=item.status==='inProgress';const summary=document.createElement('summary');summary.append(icon('terminal'),textNode('span',''),textNode('span','','tool-status'));details.append(summary);node.append(details);details.addEventListener('toggle',()=>renderToolOutput(node));}
         const summary=node.querySelector('summary');summary.children[1].textContent=item.description || item.tool || item.commandText || 'Project operation';summary.children[2].textContent=item.status==='inProgress'?'Running':item.status || 'Completed';renderToolOutput(node);
       }else if(item.kind==='agentMessage' || item.kind==='userMessage' || item.kind==='queued') {
         const user=item.kind!=='agentMessage';node.className='message '+(user?'user':'assistant')+(item.kind==='queued'?' queued':'');
         if(!sameKind){node.replaceChildren();const avatar=textNode('div',user?'Y':'','avatar');if(!user){const logo=document.createElement('img');logo.src='assets/mora-mark.svg';logo.alt='Mora';avatar.append(logo);}const content=textNode('div','','message-content');content.append(textNode('div',user?'You':'Mora','message-label'),textNode('div','','message-images'),textNode('div','','message-body'));node.append(avatar,content);}
         if(!sameImages){const imgs=node.querySelector('.message-images');imgs.replaceChildren();for(const image of item.images || []){const img=document.createElement('img');img.src='data:'+image.mediaType+';base64,'+image.base64Data;img.alt='Attached image';imgs.append(img);}}
+        if(!user)node.querySelector('.message-label').textContent=item.status==='completed'?'Completed':item.status==='inProgress'?'Working':'Mora';
+        node.setAttribute('aria-label',user?'Your message':'Mora reply');
         renderText(node.querySelector('.message-body'),item.displayText || item.text || '',item.status==='inProgress');
         if(item.kind==='queued') {
           const label=node.querySelector('.message-label');label.replaceChildren(document.createTextNode('You'),textNode('span',state.queuePaused?'Paused':'Queued','queue-badge'));
@@ -196,7 +199,7 @@ function renderMessages() {
       }else {
         node.replaceChildren();
         if(item.kind==='fileChanges') {
-          node.className='change-row';const button=textNode('button','','change-badge');button.append(textNode('strong',item.files.length+' '+(item.files.length===1?'file':'files')+' changed'+(item.partial?' · partial':'')));changeCounts(button,item.added,item.removed);if(item.live)button.append(textNode('span','Live','change-live'));button.append(textNode('span','Review changes','change-review-label'));button.title='Review file changes';button.addEventListener('click',()=>showChanges(node.currentItem));node.append(button);
+          node.className='change-row';const button=textNode('button','','change-badge');button.append(textNode('strong',(item.files.length===1?'Edited '+item.files[0].path:item.files.length+' files changed')+(item.partial?' · partial':'')));changeCounts(button,item.added,item.removed);if(item.live)button.append(textNode('span','Live','change-live'));button.append(textNode('span','Review changes','change-review-label'));button.title='Review file changes';button.addEventListener('click',()=>showChanges(node.currentItem));node.append(button);
         }else if(item.kind==='activity'){node.className='activity-step';node.dir='auto';node.textContent=item.text;}
         else {
           node.className='completion-card '+item.status;node.append(textNode('strong',item.status==='finished'?'Request finished':item.status==='interrupted'?'Request interrupted':'Request failed'),textNode('p',item.message));
@@ -205,14 +208,14 @@ function renderMessages() {
           if(item.activeRequest){const details=document.createElement('details');details.append(textNode('summary',item.activeRequest.phase==='admitted'?'Saved request · review before continuing':'Unsubmitted request'),textNode('p',item.activeRequest.text));node.append(details);if(item.activeRequest.phase==='preparing'){const recover=textNode('button','Recover as draft');recover.addEventListener('click',()=>{if($('prompt').value || attachments.length){error('Keep or clear the current draft first.');return;}$('prompt').value=item.activeRequest.text;attachments=item.activeRequest.images || [];renderAttachments();scheduleDraft();});node.append(recover);}}
           const controls=textNode('div','','request-actions');
           if(item.status!=='finished'){const continuing=textNode('button','Continue in chat');continuing.title='Keep your draft and write the next step';continuing.addEventListener('click',()=>$('prompt').focus());controls.append(continuing);}
-          if(state.projectPath&&item.status==='finished'){const preview=textNode('button','Run / open preview');preview.addEventListener('click',()=>action(()=>api.projectCommand(state.projectWork?.root===state.projectPath && state.projectWork.run.status==='ready'?'preview':'run')));controls.append(preview);}
+          if(state.projectPath&&item.status==='finished'){const preview=textNode('button',item.previewReady?'Open preview':'Run / open preview');preview.addEventListener('click',()=>action(()=>api.projectCommand(state.projectWork?.root===state.projectPath && state.projectWork.run.status==='ready'?'preview':'run')));if(item.previewReady){const card=textNode('div','','timeline-preview-card');card.append(textNode('strong','Web preview'),preview);node.append(card);}else controls.append(preview);}
           if(state.projectPath&&item.checkpointId){const undo=textNode('button','Undo this request');undo.title='Review source files to restore; stops the running preview first';undo.addEventListener('click',()=>action(()=>updateProjectWork.reviewCheckpoint(node.currentItem.checkpointId)));controls.append(undo);}
           if(controls.children.length)node.append(controls);
         }
       }
       record.images=item.images;
     }
-    for(const button of node.querySelectorAll('.request-actions button'))button.disabled=!!(state.busy || state.loading || state.projectOperation || state.projectRepair || state.testerActive || state.websiteActive);
+    for(const button of node.querySelectorAll('.request-actions button,.timeline-preview-card button'))button.disabled=!!(state.busy || state.loading || state.projectOperation || state.projectRepair || state.testerActive || state.websiteActive);
     if($('messages').children[position]!==node)$('messages').insertBefore(node,$('messages').children[position] || null);
     seen.add(key);position++;
   }

@@ -160,3 +160,38 @@ main{background:#111419}
 
 .brand .sidebar-collapse{margin-left:auto;display:flex;align-items:center;justify-content:center;width:30px;height:30px;flex-shrink:0;padding:5px;border:1px solid #455165;border-radius:6px;background:#202630;color:#c9d3e2}
 .brand .sidebar-collapse:hover{background:#28313e;border-color:#60738d}
+
+/* A connected timeline separates Mora's work from right-aligned user messages. */
+.messages{max-width:760px;padding:24px 4px 16px}
+.message.user{justify-content:flex-end;padding:0;margin:8px 0 28px}
+.message.user>.avatar,.message.assistant>.avatar{display:none}
+.message.user .message-label{display:none}
+.message.user .message-content{flex:0 1 auto;max-width:85%;min-width:0;background:#12466d;border:1px solid #2475a6;border-radius:14px;padding:12px 16px;color:#eff7ff}
+.message.user .message-body{color:#eff7ff;font-size:15px;line-height:1.6}
+.message.user .message-body>:last-child{margin-bottom:0}
+.message.user .message-images:empty{display:none}
+.message.user .queue-badge{display:inline-block}
+.message.user.queued .message-label{display:block;font-size:11px;margin:0 0 7px}
+.message.assistant,.timeline-operation,.change-row,.activity-step,.completion-card{position:relative;margin:0 0 0 13px;padding:0 0 24px 24px;border:0;border-left:1px solid #215578;border-radius:0;background:none}
+.message.assistant::before,.timeline-operation::before,.change-row::before,.activity-step::before,.completion-card::before{content:'';position:absolute;left:-5px;top:10px;width:9px;height:9px;border-radius:50%;background:#43c7ee;box-shadow:0 0 0 4px #102d42}
+.message.assistant{display:block}
+.message.assistant .message-label{font-size:12px;color:#63d6f2;margin:0 0 14px;letter-spacing:.2px}
+.message.assistant .message-body{font-size:16px;line-height:1.7;color:#dce6f0}
+.message.assistant .message-body>:last-child{margin-bottom:0}
+.message-body p code{display:inline;white-space:pre-wrap;padding:2px 6px;border:1px solid #354d63;border-radius:5px;background:#142436;color:#c3e4ff;font-size:.9em}
+.timeline-operation .tool-card{margin:0;max-width:none;border-color:#29445b;background:#121e2c;border-radius:10px}
+.timeline-operation summary{padding:11px 13px;gap:9px;font-size:12px;color:#b5cfe4}
+.change-row .change-badge{align-items:center;padding:14px;border-color:#29445b;background:#121e2c;border-radius:10px;gap:8px}
+.change-badge strong{min-width:0;overflow-wrap:anywhere;font-size:13px}
+.change-review-label{border:1px solid #3a536a;border-radius:6px;padding:6px 9px;color:#d4e6f4;white-space:nowrap}
+.completion-card.finished,.completion-card.failed,.completion-card.interrupted{background:none;border:0;border-left:1px solid #215578}
+.completion-card>strong{display:block;color:#63d6f2;font-size:12px;font-weight:500}
+.completion-card>p{font-size:13px;line-height:1.6;color:#b6c6d6}
+.completion-card.failed::before{background:#f09494}.completion-card.interrupted::before{background:#e8bf7a}
+.completion-card .request-actions{display:flex;flex-wrap:wrap;gap:8px;padding:12px;border:1px solid #29445b;border-radius:10px;background:#121e2c}
+.completion-card .request-actions button{border:1px solid #3a536a;background:#172a3d;color:#d6eafa;border-radius:6px;padding:7px 10px;font-size:12px}
+.activity-step{font-size:12px;color:#8eb5d0}
+.working{margin:8px auto 14px;max-width:760px;color:#63d6f2}.working-dot{background:#43c7ee}
+@media(max-width:1100px){.message.user .message-content{max-width:95%;padding:10px 12px}.message.assistant,.timeline-operation,.change-row,.activity-step,.completion-card{margin-left:8px;padding-left:18px}.message.assistant .message-body{font-size:15px}}
+
+.timeline-preview-card{display:flex;align-items:center;gap:12px;padding:14px;margin:12px 0;border:1px solid #29445b;border-radius:10px;background:#121e2c;font-size:13px}.timeline-preview-card strong{flex:1;color:#dce6f0}.timeline-preview-card button{border:1px solid #3a536a;border-radius:6px;padding:7px 10px;background:#172a3d;color:#d6eafa;font-size:12px}

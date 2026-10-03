@@ -12,6 +12,12 @@ try{
   assert.equal(await page.locator('.browser-annotation').isVisible(),false);
   assert.match(await page.locator('#engine-detail').textContent(),/Sample data/);
   assert.equal(await page.locator('#browser-panel').isVisible(),true);
+  const chatLayout=await page.evaluate(()=>{
+    const user=document.querySelector('.message.user .message-content'),assistant=document.querySelector('.message.assistant');
+    return {userBackground:getComputedStyle(user).backgroundColor,rail:getComputedStyle(assistant).borderLeftWidth,userLabel:getComputedStyle(document.querySelector('.message.user .message-label')).display};
+  });
+  assert.equal(chatLayout.rail,'1px','Assistant replies should sit on the timeline rail');
+  assert.equal(chatLayout.userLabel,'none');assert.notEqual(chatLayout.userBackground,'rgba(0, 0, 0, 0)');
   await page.getByRole('button',{name:'Hide sidebar',exact:true}).focus();await page.keyboard.press('Enter');
   assert.equal(await page.locator('#navigation-sidebar').isVisible(),false);
   assert.equal(await page.evaluate(()=>document.activeElement.id),'sidebar-toggle');

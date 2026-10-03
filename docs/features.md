@@ -1,7 +1,7 @@
 # Features
 
 ## Chat and project operations
-- Chat, image attachments, saved native Muse conversations, and project selection.
+- Chat, image attachments, saved native Muse conversations, and project selection. Timeline styling uses right-aligned blue user bubbles and a cyan rail for replies, expandable operations and compact change cards. Status comes from engine messages; live elapsed time stays available while working. Running-project outcomes offer an Open preview card; file review and checkpoint Undo retain their existing guards.
 - Requires the installed and signed-in Muse engine; reconnects share one discovery attempt, reject malformed catalogs and reconcile the selected effort after model fallback.
 - Read only inspects; Full access permits project edits and commands under the user's Windows permissions.
 - Uses Muse 1.4.1's working `exec --json` interface and excludes foreign personal rules/skills on every turn; native workspace instructions and engine settings still apply. Interactive per-command approvals remain available in the native terminal.
