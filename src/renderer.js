@@ -1,6 +1,8 @@
 import { groupConversations } from './projects.js';
 import { setupBrowser } from './browser-ui.js';
 import {stitchImageParts} from './images.js';
+import {videoFileError, frameTimes, VIDEO_LIMITS} from './video-frames.js';
+import {summarizeUsage} from './usage.js';
 import {markdownBlocks, inlineParts} from './markdown.js';
 import {setupProjects} from './project-ui.js';
 import {setupProjectWork} from './work-ui.js';
@@ -10,7 +12,7 @@ const api = window.muse;
 const collapsedProjects = new Set();
 const dismissedErrors = new Set();
 let state = { items: [], sessions: [], models: [], busy: false, connection: 'connecting' };
-let attachments = [], sending = false, lastSignature = '', startedAt = 0;
+let attachments = [], sending = false, extracting = false, lastSignature = '', startedAt = 0;
 let sidebarSignature='', draftOwner, draftTimer, draftWrites=Promise.resolve();
 let updateProjects,updateProjectWork;
 const messageRows=new Map();
@@ -260,7 +262,7 @@ function update(next) {
   if (state.busy && !wasBusy) { startedAt = Date.now(); $('elapsed').textContent = '0s'; }
   $('send-button').hidden = false; $('stop-button').hidden = !state.busy; $('stop-button').disabled = state.stopping;
   for (const id of ['new-chat','add-project','workspace-button','model','effort','execution-mode','choose-muse','reconnect']) $(id).disabled = state.busy || state.loading || sending || state.connection==='connecting';
-  $('attach-button').disabled = state.loading || sending || state.workUnavailable;
+  $('attach-button').disabled = state.loading || sending || extracting || state.workUnavailable;
   $('prompt').disabled = state.loading || sending || state.workUnavailable;
   $('prompt').placeholder = state.busy && state.finishing ? 'Write your next message while Muse finishes…' : state.busy ? 'Queue a follow-up while Muse works…' : general ? 'Ask Muse anything, or attach an image…' : 'Ask Muse to build, fix, or explain…';
   $('composer').classList.toggle('full-mode', !general && state.executionMode === 'full');
@@ -340,12 +342,12 @@ function update(next) {
   }
   renderMessages(); refreshSend();refreshStitch();refreshTrello();
 }
-function refreshSend() { $('send-button').disabled = sending || state.loading || state.projectOperation || state.projectRepair || state.historyMissing || state.workUnavailable || ['required','pending'].includes(state.account?.status) || state.connection !== 'ready' || (!$('prompt').value.trim() && !attachments.length); }
+function refreshSend() { $('send-button').disabled = sending || extracting || state.loading || state.projectOperation || state.projectRepair || state.historyMissing || state.workUnavailable || ['required','pending'].includes(state.account?.status) || state.connection !== 'ready' || (!$('prompt').value.trim() && !attachments.length); }
 function renderAttachments(persist=true) {
   $('attachments').replaceChildren(); $('attachments').hidden = !attachments.length;
   for (const [index,image] of attachments.entries()) {
     const box = textNode('div', '', 'attachment'); const img = document.createElement('img'); img.src = `data:${image.mediaType};base64,${image.base64Data}`; img.alt = image.name || 'Attached image';
-    const remove = textNode('button', '×'); remove.setAttribute('aria-label', 'Remove image'); remove.addEventListener('click', () => { attachments.splice(index,1); renderAttachments(); }); box.append(img,remove);
+    const remove = textNode('button', '×'); remove.setAttribute('aria-label', 'Remove image'); remove.addEventListener('click', () => { attachments.splice(index,1); renderAttachments(); }); box.append(img,remove);if(image.sourceVideo)box.title=image.name;
     if(image.contextText){box.classList.add('browser-attachment');box.append(textNode('strong',`Selection ${index+1}`),textNode('small',image.sourceUrl || '', 'annotation-source'));const note=document.createElement('textarea');note.value=image.note || '';note.maxLength=10000;note.placeholder='What should change here?';note.setAttribute('aria-label',`Note for selection ${index+1}`);note.addEventListener('input',()=>{image.note=note.value;scheduleDraft();});box.append(note);const context=textNode('details','','attachment-context');context.append(textNode('summary',image.name || 'Browser annotation'),textNode('pre',image.contextText));box.append(context);}
     $('attachments').append(box);
   } refreshSend();if(persist)scheduleDraft();
@@ -357,7 +359,67 @@ function addImages(images) {
   if (next.length > 20 || total > 20*1024*1024) throw new Error('Attach up to 20 MB of images per message.');
   attachments = next; renderAttachments();
 }
-async function pickImages() { await action(async () => addImages(await api.pickImages())); }
+async function pickImages() { await action(async () => { const picked = await api.pickImages(); addImages(picked.filter(item => !String(item.mediaType).startsWith('video/'))); for (const video of picked.filter(item => String(item.mediaType).startsWith('video/'))) await attachVideo(video); }); }
+function readFileData(file) { return new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result).split(',', 2)[1]); reader.onerror = () => reject(new Error(`Could not read ${file.name}.`)); reader.readAsDataURL(file); }); }
+async function attachFiles(files) {
+  const images = [];
+  for (const file of files.filter(file => file.type.startsWith('image/'))) {
+    if (!['image/png','image/jpeg','image/webp'].includes(file.type)) throw new Error('Use a PNG, JPEG, or WebP image.');
+    if (file.size > 10*1024*1024) throw new Error('Each image must be 10 MB or smaller.');
+    images.push({ mediaType: file.type, base64Data: await readFileData(file), name: file.name });
+  }
+  addImages(images);
+  for (const file of files.filter(file => file.type.startsWith('video/'))) await attachVideo({ mediaType: file.type, name: file.name, size: file.size, file });
+}
+async function attachVideo(video) {
+  if (extracting) throw new Error('Wait for the current video to finish extracting.');
+  const early = videoFileError({ mediaType: video.mediaType, size: video.size });
+  if (early) throw new Error(early);
+  extracting = true; refreshSend();
+  try { addImages(await extractVideoFrames(video)); }
+  finally { extracting = false; refreshSend(); }
+}
+function extractVideoFrames(video) {
+  return new Promise((resolve, reject) => {
+    let objectUrl = null;
+    const cleanup = () => { if (objectUrl) URL.revokeObjectURL(objectUrl); objectUrl = null; };
+    const fail = message => { clearTimeout(timer); cleanup(); reject(new Error(message)); };
+    try {
+      objectUrl = video.file ? URL.createObjectURL(video.file) : URL.createObjectURL(new Blob([Uint8Array.from(atob(video.base64Data), ch => ch.charCodeAt(0))], { type: video.mediaType }));
+    } catch { fail('This video could not be read.'); return; }
+    const el = document.createElement('video');
+    el.muted = true; el.preload = 'auto'; el.src = objectUrl;
+    const timer = setTimeout(() => fail('This video could not be read.'), 30000);
+    el.addEventListener('error', () => fail('This video could not be read.'), { once: true });
+    el.addEventListener('loadedmetadata', async () => {
+      try {
+        const problem = videoFileError({ mediaType: video.mediaType, size: video.size, durationSeconds: el.duration });
+        if (problem) { fail(problem); return; }
+        const canvas = document.createElement('canvas');
+        const scale = Math.min(1, VIDEO_LIMITS.FRAME_MAX_DIM / Math.max(el.videoWidth, el.videoHeight));
+        canvas.width = Math.max(2, Math.round(el.videoWidth * scale)); canvas.height = Math.max(2, Math.round(el.videoHeight * scale));
+        const context = canvas.getContext('2d');
+        const frames = [];
+        let lastTarget = null;
+        for (const [frameIndex, time] of frameTimes(el.duration).entries()) {
+          const target = Math.min(time, Math.max(0, el.duration - 0.05));
+          if (lastTarget === null ? el.currentTime !== target : target !== lastTarget) {
+            await new Promise((seekOk, seekFail) => {
+              const seekTimer = setTimeout(() => seekFail(new Error('This video could not be read.')), 10000);
+              el.addEventListener('seeked', () => { clearTimeout(seekTimer); seekOk(); }, { once: true });
+              el.currentTime = target;
+            });
+          }
+          lastTarget = target;
+          context.drawImage(el, 0, 0, canvas.width, canvas.height);
+          frames.push({ mediaType: 'image/jpeg', base64Data: canvas.toDataURL('image/jpeg', VIDEO_LIMITS.FRAME_QUALITY).split(',', 2)[1], name: `${video.name} · frame ${frameIndex + 1}/${VIDEO_LIMITS.MAX_FRAMES}`, sourceVideo: video.name, frameIndex, frameTime: Math.round(time * 10) / 10 });
+        }
+        clearTimeout(timer); cleanup();
+        resolve(frames);
+      } catch (error) { fail(error.message); }
+    }, { once: true });
+  });
+}
 function scheduleDraft() {clearTimeout(draftTimer);draftTimer=setTimeout(()=>flushDraft().catch(error),200);}
 function flushDraft() {
   clearTimeout(draftTimer);if(!api.saveDraft || state.workUnavailable || draftOwner===undefined)return Promise.resolve();
@@ -370,7 +432,8 @@ async function send() {
   sending = true; refreshSend();
   try {
     await flushDraft();
-    const text=[$('prompt').value,...attachments.map((image,index)=>image.contextText ? `Selection ${index+1}${image.note ? ` — requested change: ${image.note}` : ''}\n${image.contextText}` : '').filter(Boolean)].filter(Boolean).join('\n\n');
+    const clips=[...new Set(attachments.filter(image=>image.sourceVideo).map(image=>image.sourceVideo))];
+    const text=[$('prompt').value,...attachments.map((image,index)=>image.contextText ? `Selection ${index+1}${image.note ? ` — requested change: ${image.note}` : ''}\n${image.contextText}` : '').filter(Boolean),...clips.map(name=>{const frames=attachments.filter(image=>image.sourceVideo===name);return `Video ${name} · ${frames.length} frame${frames.length===1?'':'s'} in time order`;})].filter(Boolean).join('\n\n');
     await api.sendMessage({ text, images: attachments.map(({ mediaType, base64Data }) => ({ mediaType, base64Data })) });
     $('prompt').value = ''; $('prompt').style.height = ''; attachments = []; renderAttachments(false); await flushDraft(); $('error-banner').hidden = true;
   } catch (e) { error(e); }
@@ -379,9 +442,19 @@ async function send() {
 $('prompt').addEventListener('input', () => { $('prompt').style.height = 'auto'; $('prompt').style.height = `${Math.min(200,Math.max(79,$('prompt').scrollHeight))}px`; refreshSend();scheduleDraft(); });
 $('prompt').addEventListener('keydown', event => { if (event.key === 'Enter' && !event.shiftKey && !event.isComposing && event.keyCode !== 229) { event.preventDefault(); send(); } });
 $('prompt').addEventListener('paste', event => {
-  const files = [...event.clipboardData.items].filter(item => item.kind === 'file' && item.type.startsWith('image/')).map(item => item.getAsFile());
+  const files = [...event.clipboardData.items].filter(item => item.kind === 'file' && (item.type.startsWith('image/') || item.type.startsWith('video/'))).map(item => item.getAsFile());
   if (!files.length) return; event.preventDefault();
-  action(async () => { const images = []; for (const file of files) { if (!['image/png','image/jpeg','image/webp'].includes(file.type)) throw new Error('Use a PNG, JPEG, or WebP image.'); if (file.size > 10*1024*1024) throw new Error('Each image must be 10 MB or smaller.'); const url = await new Promise((resolve,reject) => { const reader = new FileReader(); reader.onload = () => resolve(reader.result); reader.onerror = reject; reader.readAsDataURL(file); }); images.push({ mediaType: file.type, base64Data: url.split(',')[1], name: file.name }); } addImages(images); });
+  action(async () => { await attachFiles(files); });
+});
+document.addEventListener('dragover', event => event.preventDefault());
+document.addEventListener('drop', event => event.preventDefault());
+$('composer').addEventListener('dragover', event => { if (![...(event.dataTransfer?.types || [])].includes('Files')) return; event.preventDefault(); $('composer').classList.add('dragging'); });
+$('composer').addEventListener('dragleave', () => $('composer').classList.remove('dragging'));
+$('composer').addEventListener('drop', event => {
+  event.preventDefault(); $('composer').classList.remove('dragging');
+  const files = [...(event.dataTransfer?.files || [])].filter(file => file.type.startsWith('image/') || file.type.startsWith('video/'));
+  if (!files.length) return;
+  action(async () => { await attachFiles(files); });
 });
 $('send-button').addEventListener('click', send);
 $('queue-toggle').addEventListener('click',()=>action(()=>api.queueCommand(state.queuePaused?'resume':'pause')));
@@ -396,6 +469,48 @@ $('effort').addEventListener('change', () => action(() => api.setOptions({ reaso
 $('speed').addEventListener('change', () => action(() => api.setOptions({ speedPreset: $('speed').value })));
 $('execution-mode').addEventListener('change', () => action(() => api.setOptions({ executionMode: $('execution-mode').value })));
 $('settings-button').addEventListener('click', () => { $('settings-panel').hidden = !$('settings-panel').hidden; });
+let usageData=null,usageError='',usageLoading=false;
+function usageRow(label,block){
+  const row=textNode('div','','usage-row');
+  const head=textNode('div','','usage-head');
+  head.append(textNode('strong',label),textNode('small',`${block.remaining}% left · resets in ${block.resetsIn}`));
+  const track=textNode('div','','usage-track');
+  const fill=document.createElement('span');fill.className='usage-fill'+(block.usedPercent>100?' over':'');fill.style.width=`${block.barPercent}%`;
+  track.append(fill);row.append(head,track);return row;
+}
+function renderUsage(){
+  const body=$('usage-body');body.innerHTML='';
+  if(usageLoading){body.append(textNode('div','Checking usage… (one tiny request)','usage-status'));return;}
+  if(usageError){body.append(textNode('div',usageError.replace(/^Error invoking remote method '[^']+': Error: /,''),'usage-error'));}
+  else if(!usageData){body.append(textNode('div','No data yet.','usage-status'));}
+  else{
+    body.append(usageRow('5-hour window',usageData.window),usageRow('Weekly',usageData.weekly));
+    if(usageData.overQuota)body.append(textNode('div','Over quota: wait for the reset.','usage-error'));
+  }
+  const meta=textNode('div','','usage-meta');
+  const stamp=usageData?`Updated ${new Date(usageData.observedAtMs).toLocaleTimeString()} · plan ${usageData.tier || 'unknown'}`:'Each refresh spends one tiny request';
+  meta.append(textNode('small',stamp));
+  const refresh=textNode('button',usageData||usageError?'Refresh':'Check now');refresh.id='usage-refresh';
+  refresh.addEventListener('click',event=>{event.stopPropagation();refreshUsage();});
+  meta.append(refresh);body.append(meta);
+}
+function updateUsageSummary(){
+  $('usage-summary').textContent=usageData?`5h ${usageData.window.remaining}% · wk ${usageData.weekly.remaining}%`:'–';
+}
+async function refreshUsage(){
+  if(usageLoading)return;usageLoading=true;usageError='';renderUsage();
+  try{usageData=summarizeUsage(await api.usageCommand());}
+  catch(error){usageError=error?.message||String(error);}
+  usageLoading=false;renderUsage();updateUsageSummary();
+}
+function setUsageOpen(open){
+  $('usage-popover').hidden=!open;$('usage-button').setAttribute('aria-expanded',String(open));
+  if(open&&!usageData&&!usageError&&!usageLoading)refreshUsage();
+}
+$('usage-button').addEventListener('click',event=>{event.stopPropagation();setUsageOpen($('usage-popover').hidden);});
+document.addEventListener('click',event=>{if(!$('usage-popover').hidden&&!event.target.closest('#usage-popover,#usage-button'))setUsageOpen(false);});
+document.addEventListener('keydown',event=>{if(event.key==='Escape'&&!$('usage-popover').hidden)setUsageOpen(false);});
+renderUsage();
 for(const [id,name] of [['sign-in','login'],['cancel-sign-in','cancel'],['refresh-account','refresh'],['install-muse','install']])$(id).addEventListener('click',()=>action(()=>api.accountCommand(name)));
 if(api.stitchCommand){
   $('stitch-key').addEventListener('input',refreshStitch);

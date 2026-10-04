@@ -7,7 +7,7 @@ const require=createRequire(import.meta.url);
 const {chromium}=require('./runtime-packages.cjs').runtimeRequire('playwright');
 const png='iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+ip1sAAAAASUVORK5CYII=';
 const server=createServer(async(req,res)=>{
-  const file={'/':'index.html','/style.css':'style.css','/renderer.js':'renderer.js','/markdown.js':'markdown.js','/project-ui.js':'project-ui.js','/work-ui.js':'work-ui.js','/images.js':'images.js','/projects.js':'projects.js','/browser-ui.js':'browser-ui.js','/assets/mora-mark.svg':'assets/mora-mark.svg'}[req.url];
+  const file={'/':'index.html','/style.css':'style.css','/renderer.js':'renderer.js','/markdown.js':'markdown.js','/project-ui.js':'project-ui.js','/work-ui.js':'work-ui.js','/images.js':'images.js','/projects.js':'projects.js','/browser-ui.js':'browser-ui.js','/video-frames.js':'video-frames.js','/usage.js':'usage.js','/assets/mora-mark.svg':'assets/mora-mark.svg'}[req.url];
   if(!file){res.writeHead(404).end();return;}
   res.setHeader('Content-Type',file.endsWith('.svg')?'image/svg+xml':file.endsWith('.css')?'text/css':file.endsWith('.js')?'application/javascript':'text/html');
   res.end(await readFile(path.join('src',file)));
@@ -19,7 +19,7 @@ try{
  await page.addInitScript(({png})=>{
   let state={items:[],sessions:[],models:[{modelId:'muse-test',displayLabel:'Muse test',variants:['minimal','max']}],modelId:'muse-test',reasoningEffort:'max',executionMode:'readonly',workspace:'C:\\Test',connection:'ready',engineVersion:'fixture',busy:false,pendingQueue:[]};
   let callback;window.smoke={projectActions:[],restores:[],accountActions:[],projectsCreated:[],trelloActions:[],stopCalls:0,failDraft:false,sent:[],copied:'',deleted:[],removed:[],renamed:[],created:[],emit:next=>{state={...state,...next};callback?.({type:'state',state});}};
-  window.muse={projectCommand:async action=>{window.smoke.projectActions.push(action);},checkpointCommand:async(action,payload)=>{if(action==='list')return [{id:'cp1',label:'Before request',fileCount:1,createdAt:new Date().toISOString(),manual:false}];if(action==='preview')return {token:'token',checkpoint:{label:'Before request',manual:false},changes:[{path:'app.js',status:'restore original',conflict:true}]};if(action==='restore'){window.smoke.restores.push(payload);return {restored:1};}},chooseProjectParent:async()=> 'C:\\Projects',createProject:async payload=>{window.smoke.projectsCreated.push(payload);return state;},accountCommand:async action=>{window.smoke.accountActions.push(action);window.smoke.emit({account:action==='login'?{status:'pending',message:'Approve the code',userCode:'DEMO-CODE'}:{status:'required',message:'Sign in required'}});},getState:async()=>state,onEvent:cb=>{callback=cb;return()=>{}},copyText:async text=>{window.smoke.copied=text},setOptions:async options=>{state={...state,...options};return state},pickImages:async()=>[{mediaType:'image/png',base64Data:png,name:'image.png'}],newChat:async projectPath=>{window.smoke.created.push(projectPath);return state},resumeChat:async()=>state,deleteChat:async id=>{window.smoke.deleted.push(id);return state},removeProject:async projectPath=>{window.smoke.removed.push(projectPath);return state},renameChat:async (id,title)=>{window.smoke.renamed.push([id,title]);return state},chooseWorkspace:async()=>state,chooseMuse:async()=>state,connect:async()=>state,trelloCommand:async (action,payload)=>{window.smoke.trelloActions.push([action,payload?.board]);if(action==='state'||action==='disconnect')return {configured:false};return {configured:true,verified:true,keyOnly:action==='test',boardName:'Demo board',boardUrl:'https://trello.com/b/demo',listCount:3,username:'demo-user'};},stopTurn:async()=>{window.smoke.stopCalls++;window.smoke.emit({busy:false,stopping:false,queuePaused:true});},sendMessage:async value=>{window.smoke.sent.push(value);return{accepted:true}},saveDraft:async value=>{if(window.smoke.failDraft)throw new Error('Disk save failed');window.smoke.draft=value;},queueCommand:async action=>{if(action==='clear')window.smoke.emit({pendingQueue:[]});return state;}};
+  window.muse={projectCommand:async action=>{window.smoke.projectActions.push(action);},checkpointCommand:async(action,payload)=>{if(action==='list')return [{id:'cp1',label:'Before request',fileCount:1,createdAt:new Date().toISOString(),manual:false}];if(action==='preview')return {token:'token',checkpoint:{label:'Before request',manual:false},changes:[{path:'app.js',status:'restore original',conflict:true}]};if(action==='restore'){window.smoke.restores.push(payload);return {restored:1};}},chooseProjectParent:async()=> 'C:\\Projects',createProject:async payload=>{window.smoke.projectsCreated.push(payload);return state;},accountCommand:async action=>{window.smoke.accountActions.push(action);window.smoke.emit({account:action==='login'?{status:'pending',message:'Approve the code',userCode:'DEMO-CODE'}:{status:'required',message:'Sign in required'}});},getState:async()=>state,onEvent:cb=>{callback=cb;return()=>{}},copyText:async text=>{window.smoke.copied=text},setOptions:async options=>{state={...state,...options};return state},pickImages:async()=>[{mediaType:'image/png',base64Data:png,name:'image.png'}],newChat:async projectPath=>{window.smoke.created.push(projectPath);return state},resumeChat:async()=>state,deleteChat:async id=>{window.smoke.deleted.push(id);return state},removeProject:async projectPath=>{window.smoke.removed.push(projectPath);return state},renameChat:async (id,title)=>{window.smoke.renamed.push([id,title]);return state},chooseWorkspace:async()=>state,chooseMuse:async()=>state,connect:async()=>state,trelloCommand:async (action,payload)=>{window.smoke.trelloActions.push([action,payload?.board]);if(action==='state'||action==='disconnect')return {configured:false};return {configured:true,verified:true,keyOnly:action==='test',boardName:'Demo board',boardUrl:'https://trello.com/b/demo',listCount:3,username:'demo-user'};},stopTurn:async()=>{window.smoke.stopCalls++;window.smoke.emit({busy:false,stopping:false,queuePaused:true});},sendMessage:async value=>{window.smoke.sent.push(value);return{accepted:true}},saveDraft:async value=>{if(window.smoke.failDraft)throw new Error('Disk save failed');window.smoke.draft=value;},queueCommand:async action=>{if(action==='clear')window.smoke.emit({pendingQueue:[]});return state;},usageCommand:async()=>{window.smoke.usageCalls=(window.smoke.usageCalls||0)+1;return {tier:'pro',window:{usedPercent:34,resetsAtMs:Date.now()+3720000,windowDurationMins:300},weekly:{usedPercent:9,resetsAtMs:Date.now()+172800000},observedAtMs:Date.now()};}};
  },{png});
  await page.goto(`http://127.0.0.1:${server.address().port}`);
  assert.equal(await page.title(),'Mora Desktop');
@@ -198,6 +198,29 @@ try{
  await page.locator('.session-row[data-session-id="s1"] .session-rename-input').press('Escape');
  assert.equal(await page.locator('.session-rename-input').count(),0);
  assert.equal(await page.evaluate(()=>window.smoke.renamed.length),1);
+ const dropOnComposer=files=>page.evaluate(list=>{const dt=new DataTransfer();for(const f of list){const file=new File([new Uint8Array(f.bytes)],f.name,{type:f.type});if(f.size)Object.defineProperty(file,'size',{value:f.size});dt.items.add(file);}const event=new DragEvent('drop',{bubbles:true});Object.defineProperty(event,'dataTransfer',{value:dt});document.querySelector('#composer').dispatchEvent(event);},files);
+ const attachedBefore=await page.locator('.attachment').count();
+ await dropOnComposer([{name:'big.mp4',type:'video/mp4',bytes:8,size:101*1024*1024}]);
+ await page.waitForFunction(()=>document.querySelector('#error-text').textContent.includes('100 MB'));
+ assert.equal(await page.locator('.attachment').count(),attachedBefore);
+ await dropOnComposer([{name:'clip.avi',type:'video/avi',bytes:8}]);
+ await page.waitForFunction(()=>document.querySelector('#error-text').textContent.includes('MP4, MOV, or WebM'));
+ assert.equal(await page.locator('.attachment').count(),attachedBefore);
+ await dropOnComposer([{name:'note.txt',type:'text/plain',bytes:5}]);
+ await page.waitForTimeout(300);
+ assert.equal(await page.title(),'Mora Desktop');
+ assert.equal(await page.locator('.attachment').count(),attachedBefore);
+ await page.evaluate(()=>{const dt=new DataTransfer();dt.items.add(new File(['x'],'a.png',{type:'image/png'}));const event=new DragEvent('dragover',{bubbles:true});Object.defineProperty(event,'dataTransfer',{value:dt});document.querySelector('#composer').dispatchEvent(event);});
+ assert.equal(await page.locator('#composer.dragging').count(),1);
+ await page.evaluate(()=>{document.querySelector('#composer').dispatchEvent(new DragEvent('dragleave',{bubbles:true}));});
+ assert.equal(await page.locator('#composer.dragging').count(),0);
+ await page.evaluate(()=>{window.smoke.realPick=window.muse.pickImages;window.muse.pickImages=async()=>[{mediaType:'image/png',base64Data:'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',name:'tiny.png'},{mediaType:'video/mp4',base64Data:'AAAA',name:'broken.mp4',size:3}];});
+ await page.locator('#attach-button').click();
+ await page.waitForFunction(n=>document.querySelectorAll('.attachment').length===n,attachedBefore+1);
+ await page.waitForFunction(()=>document.querySelector('#error-text').textContent.includes('could not be read'));
+ await page.evaluate(()=>{window.muse.pickImages=window.smoke.realPick;});
+ await page.locator('.attachment [aria-label="Remove image"]').last().click();
+ await page.waitForFunction(before=>document.querySelectorAll('.attachment').length===before,attachedBefore);
  await page.evaluate(()=>window.smoke.emit({items:[{itemId:'change-test',kind:'fileChanges',added:68,removed:3,files:[{path:'src/feature.js',status:'modified',added:68,removed:3,patch:'@@ -1 +1 @@\n-old value\n+<script>literal text</script>\n context'}]}]}));
  await page.locator('.change-badge').waitFor();
  assert.match(await page.locator('.change-badge').textContent(),/1 file changed.*\+68.*-3/);
@@ -289,5 +312,18 @@ try{
  assert.equal(await page.locator('.checkpoint-dialog input[type=checkbox]').first().isChecked(),false);
  await page.locator('.checkpoint-dialog input[type=checkbox]').first().check();await page.locator('.checkpoint-dialog input[type=checkbox]').last().check();await page.getByRole('button',{name:'Restore selected files'}).click();
  await page.waitForFunction(()=>window.smoke.restores.length===1);assert.equal(await page.evaluate(()=>window.smoke.restores[0].allowConflicts),true);await page.getByRole('button',{name:'Close',exact:true}).click();
+ await page.locator('#usage-button').click();
+ await page.waitForFunction(()=>document.querySelectorAll('.usage-row').length===2);
+ assert.equal(await page.locator('#usage-summary').textContent(),'5h 66% · wk 91%');
+ assert.equal(await page.evaluate(()=>window.smoke.usageCalls),1);
+ assert.equal(await page.locator('.usage-row small').first().textContent(),'66% left · resets in 1h 2m');
+ await page.locator('#usage-refresh').click();
+ await page.waitForFunction(()=>window.smoke.usageCalls===2);
+ await page.evaluate(()=>{window.smoke.realUsage=window.muse.usageCommand;window.muse.usageCommand=async()=>{throw new Error('offline');};});
+ await page.locator('#usage-refresh').click();
+ await page.waitForFunction(()=>document.querySelector('.usage-error')?.textContent==='offline');
+ await page.evaluate(()=>{window.muse.usageCommand=window.smoke.realUsage;});
+ await page.keyboard.press('Escape');
+ assert.equal(await page.locator('#usage-popover').isVisible(),false);
  console.log('PASS deterministic UI: stable streamed rows, lazy output, safe Markdown/images, durable drafts/attachments, Stop on save failure, queue and changes');
 }finally{await browser.close();await new Promise(resolve=>server.close(resolve));}

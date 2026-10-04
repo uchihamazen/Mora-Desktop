@@ -19,6 +19,7 @@ import { contextMenuTemplate } from './context-menu.js';
 import { DesktopBrowser } from './browser.js';
 import {checkStitch,configureStitch,readStitchSettings,stitchStatus} from './stitch.js';
 import {checkTrello,configureTrello,readTrelloSettings,trelloStatus} from './trello.js';
+import {resolveApiKey,resolveProbeModel,fetchUsage} from './usage.js';
 
 const directory = path.dirname(fileURLToPath(import.meta.url));
 let window, prefsPath, museHome, executable, connectionAttempt, quitting = false;
@@ -111,6 +112,18 @@ async function trelloCommand(action,payload={}) {
     if(action==='connect')await configureTrello(filename,{...creds,...verified});
     return {...trelloStatus({...creds,...verified}),verified:true,keyOnly:action==='test' && provided,...verified};
   }finally{trelloChanging=false;}
+}
+let usageRunning=false;
+async function usageCommand() {
+  if(usageRunning)throw new Error('A usage refresh is already running.');
+  usageRunning=true;
+  try{
+    const home=()=>app.getPath('home');
+    const apiKey=await resolveApiKey({env:process.env,readFile,homedir:home});
+    if(!apiKey)throw new Error('Sign in to Muse to see usage. Run muse login, then retry.');
+    const model=await resolveProbeModel({env:process.env,readFile,homedir:home});
+    return await fetchUsage({apiKey,model});
+  }finally{usageRunning=false;}
 }
 let updateTimer, saveQueue = Promise.resolve();
 let queueOperation = Promise.resolve(), queueReservation = 0;
@@ -509,7 +522,7 @@ async function executeTurn(text, validated, hooks) {
 function handle(name, fn) {
   ipcMain.handle(`muse:${name}`, async (event, ...args) => {
     if (!window || event.sender !== window.webContents || event.senderFrame !== window.webContents.mainFrame) throw new Error('Untrusted request.');
-    try { return await fn(...args); } catch (error) { if (!['browser','stitch'].includes(name)) report(error); throw error; }
+    try { return await fn(...args); } catch (error) { if (!['browser','stitch','usage'].includes(name)) report(error); throw error; }
   });
 }
 
@@ -577,6 +590,7 @@ else {
   handle('browser', (action, payload) => browser.command(action, payload));
   handle('stitch', stitchCommand);
   handle('trello', trelloCommand);
+  handle('usage', usageCommand);
   handle('get-state', () => state);
   handle('checkpoints',checkpointCommand);
   handle('account',async action=>{
@@ -618,7 +632,7 @@ else {
     if (options.executionMode !== undefined) { if (!['readonly','full'].includes(options.executionMode)) throw new Error('Invalid execution mode.'); state.executionMode = options.executionMode; }
     await save(); publish(); return state;
   });
-  handle('pick-images', async () => { const result = await dialog.showOpenDialog(window, { properties: ['openFile','multiSelections'], filters: [{ name: 'Images', extensions: ['png','jpg','jpeg','webp'] }] }); if (result.canceled) return []; const images = []; for (const filename of result.filePaths) { if ((await stat(filename)).size > 10*1024*1024) throw new Error('Each image must be 10 MB or smaller.'); const ext = path.extname(filename).toLowerCase(); images.push({ mediaType: ext === '.png' ? 'image/png' : ext === '.webp' ? 'image/webp' : 'image/jpeg', base64Data: (await readFile(filename)).toString('base64'), name: path.basename(filename) }); } validateImages(images); return images; });
+  handle('pick-images', async () => { const result = await dialog.showOpenDialog(window, { properties: ['openFile','multiSelections'], filters: [{ name: 'Images and videos', extensions: ['png','jpg','jpeg','webp','mp4','mov','webm'] },{ name: 'Images', extensions: ['png','jpg','jpeg','webp'] },{ name: 'Videos', extensions: ['mp4','mov','webm'] }] }); if (result.canceled) return []; const picked = []; for (const filename of result.filePaths) { const ext = path.extname(filename).toLowerCase(); const video = ['.mp4','.mov','.webm'].includes(ext); const size = (await stat(filename)).size; if (video && size > 100*1024*1024) throw new Error('Keep videos to 100 MB.'); if (!video && size > 10*1024*1024) throw new Error('Each image must be 10 MB or smaller.'); picked.push(video ? { mediaType: ext === '.mov' ? 'video/quicktime' : ext === '.webm' ? 'video/webm' : 'video/mp4', base64Data: (await readFile(filename)).toString('base64'), name: path.basename(filename), size } : { mediaType: ext === '.png' ? 'image/png' : ext === '.webp' ? 'image/webp' : 'image/jpeg', base64Data: (await readFile(filename)).toString('base64'), name: path.basename(filename) }); } validateImages(picked.filter(item => !item.mediaType.startsWith('video/'))); return picked; });
   handle('copy-text', text => { if (typeof text !== 'string' || text.length > 1000000) throw new Error('Invalid text.'); clipboard.writeText(text); });
   handle('open-link', url => { const target = new URL(url); if(!['http:','https:'].includes(target.protocol) || target.username || target.password) throw new Error('Use an HTTP or HTTPS link.'); return shell.openExternal(target.href); });
   await restoreWork('new');

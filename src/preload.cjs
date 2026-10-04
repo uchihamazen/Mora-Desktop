@@ -25,5 +25,6 @@ contextBridge.exposeInMainWorld('muse', {
   browserCommand: (action, payload) => ipcRenderer.invoke('muse:browser', action, payload),
   stitchCommand: (action, payload) => ipcRenderer.invoke('muse:stitch', action, payload),
   trelloCommand: (action, payload) => ipcRenderer.invoke('muse:trello', action, payload),
+  usageCommand: () => ipcRenderer.invoke('muse:usage'),
   onEvent: callback => { const listener = (_event, value) => callback(value); ipcRenderer.on('muse:event', listener); return () => ipcRenderer.removeListener('muse:event', listener); }
 });

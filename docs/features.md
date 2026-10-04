@@ -62,6 +62,13 @@
 - Read-only verification only: no cards are written and one board is connected at a time. Engine/Muse usage of the board is a later step, not this feature.
 - Verify `tests/trello.test.js` (link parsing, save/disconnect, fixture verification, redaction) and `scripts/frontend-smoke.js` (mocked UI flow plus short-viewport settings scroll); live Trello access needs real user credentials.
 
+## Video frames
+- Attach a video (mp4/mov/webm) via the + button, drag-drop on the composer, or paste; Mora samples up to 8 frames locally (Chromium decode, no extra tools) and sends them as JPEG images with a "Video name · N frames in time order" note.
+- Limits: 100 MB and 10 minutes per video; frames count toward the 20-image/20-MB per-message budget. Oversize, overlong, undecodable, or zero-duration videos are rejected with clear errors, and send stays disabled while extracting.
+- Frames render as image thumbnails (clip/frame name on hover) and persist in drafts like images; only JPEG bytes plus the note reach the engine.
+- No audio: the model sees frames only and cannot hear speech. Direct video bytes are rejected by the engine transport, so frames are the bridge until native support lands.
+- Verify `tests/video-frames.test.js` and `scripts/frontend-smoke.js` (drop/picker routing plus validation errors); real-decode proof comes from a throwaway /tmp probe against a sample mp4, never a committed binary.
+
 ## Muse-wide workflow defaults
 - Superpowers and Ponytail are installed for the user, with a SessionStart hook that loads their startup instructions in every project.
 - Requires Node on PATH and an approved `workflow-defaults` hook on each machine; full skill libraries install separately and relevant skills load on demand.
@@ -164,3 +171,10 @@
 - Page load checks the running local app and reported console errors. Interaction coverage remains explicitly not checked by Mora; configured project tests determine their own coverage. A green script result does not establish every app behavior.
 - Fix failures requires Full access, failed checks and an idle engine; sends one bounded repair request, then rechecks once on successful completion. Follow-ups remain paused and failed repairs never loop automatically.
 - Verify real check/build/test results, failure/deadline/cancel/missing-script/page-load fixtures, one-repair orchestration and native journey.
+
+## Usage remaining quota
+- A "Usage remaining" button under the engine card shows 5h/week remaining; clicking opens a popover with both bars + percents, reset countdowns, plan tier, last-updated stamp, and Refresh (Escape/outside-click closes).
+- Fetches on click only via one tiny streaming ping to the Meta Responses API (~24 tokens), reusing the engine login (`META_API_KEY`, `MUSE_AUTH_PATH`, or `~/.config/muse/auth.json`); no background polling, one refresh at a time, key never leaves the main process or logs.
+- Numbers are point-in-time ("as of"), never live; tier is the provider's opaque ID shown verbatim. Each refresh counts as a request against the 5h window. Signed-out/offline/errors render inside the popover without touching the global banner.
+- Out of scope: live push updates (impossible without a persistent engine session host), human plan names, and auto-refresh after runs.
+- Verify `tests/usage.test.js` (key resolution, SSE parsing, remaining/reset math, over-quota), `scripts/frontend-smoke.js` (open/bars/refresh/error/close), and one live `src/usage.js` call against the real API.
