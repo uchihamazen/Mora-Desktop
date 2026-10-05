@@ -20,7 +20,7 @@ async function git(args, settings = {}) {
   return exec(await gitCommand, args, { ...options, ...settings });
 }
 
-export async function snapshotProject(workspace, {previous,dirtyPaths,filter,refuseLinks=false} = {}) {
+export async function snapshotProject(workspace, {previous,dirtyPaths,filter,refuseLinks=false,maxFileBytes=2*1024*1024,maxBytes=32*1024*1024} = {}) {
   const files = new Map(), skipped = new Set();
   let names, partial = false, bytes = 0, excluded = [], gitVisible = false, readCount = 0;
   try {
@@ -54,10 +54,12 @@ export async function snapshotProject(workspace, {previous,dirtyPaths,filter,ref
       const info = await lstat(filename);
       if (refuseLinks && info.isSymbolicLink()) { skipped.add(name); partial = true; continue; }
       if (!info.isFile()) continue; // Do not follow symlinks outside the project.
-      if (info.size > 2 * 1024 * 1024 || bytes + info.size > 32 * 1024 * 1024) { skipped.add(name); partial = true; continue; }
+      const fileLimit=typeof maxFileBytes==='function'?maxFileBytes(name):maxFileBytes;
+      if (info.size > fileLimit || bytes + info.size > maxBytes) { skipped.add(name); partial = true; continue; }
       const reusable = previous && !previous.partial && dirtyPaths && ![...dirtyPaths].some(changed=>name===changed || name.startsWith(`${changed}/`)) && previous.files.has(name);
       const content = reusable ? previous.files.get(name) : await readFile(filename);
       if(!reusable)readCount++;
+      if(content.length>fileLimit || bytes+content.length>maxBytes){skipped.add(name);partial=true;continue;}
       bytes += content.length;
       files.set(name, content);
     } catch (error) { if (error.code !== 'ENOENT') { skipped.add(name); partial = true; } }

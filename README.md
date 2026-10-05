@@ -223,7 +223,7 @@ cleanup; an unexpected process or machine crash can leave temporary runtime file
 Your global Muse settings are preserved. Requirements, observations and selected
 screenshots go through your existing Muse provider connection.
 
-Run/Test currently support Node projects with package.json scripts and Node/package manager on PATH. Checkpoints exclude secrets, generated files and oversized/linked source; they preserve Git history and unrelated later edits. They are source recovery, rather than whole-project backups.
+Run/Test currently support Node projects with package.json scripts and Node/package manager on PATH. Checkpoints preserve source and supported media up to 16 MiB per media file and 128 MiB total; text/source files retain a 2 MiB limit. They exclude secrets and generated output, refuse incomplete or linked source and check backup disk space before edits. They preserve Git history and unrelated later edits; see [checkpoint limits](docs/features.md#checkpoints-and-restore).
 
 ### Chat and projects
 

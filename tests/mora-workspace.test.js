@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtemp,mkdir,writeFile,readFile,symlink} from 'node:fs/promises';
+import {mkdtemp,mkdir,writeFile,readFile,symlink,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {MoraWorkspace,validateMoraTask,overlappingFiles} from '../src/mora-workspace.js';
@@ -18,6 +18,22 @@ test('isolated edits cannot touch the project until checks pass; successful inte
   await writeFile(path.join(job.root,'a.js'),'export const value=3;\n');assert.match(await readFile(path.join(project,'a.js'),'utf8'),/=1/);
   const verified=await workspace.verify(job);assert.equal(verified.passed,true);
   const result=await workspace.integrate(job,{current:()=>true});assert.equal(result.files.length,1);assert.ok(result.checkpointId);assert.match(await readFile(path.join(project,'a.js'),'utf8'),/=3/);
+});
+
+test('Mora Mode verifies and integrates source while retaining media above preview limits',async()=>{
+  const {workspace,project,profile}=await fixture();
+  try {
+    await mkdir(path.join(project,'assets'));const media=Buffer.alloc(2*1024*1024+17,7);media[0]=0;
+    for(let index=0;index<17;index++)await writeFile(path.join(project,'assets',`image-${index}.png`),media);
+    const job=await workspace.prepare('media-job','media-run',{title:'Improve source',files:['a.js']});
+    assert.ok((await readFile(path.join(job.root,'assets','image-16.png'))).equals(media));
+    const {createMoraTools}=await import('../src/mora-tools.js'),tools=await createMoraTools({job,workspace});
+    try{const response=await fetch(tools.url,{method:'POST',headers:{authorization:'Bearer '+tools.token,'content-type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:1,method:'tools/call',params:{name:'list_files',arguments:{}}})});const result=(await response.json()).result;assert.equal(result.isError,false);assert.ok(JSON.parse(result.content[0].text).includes('assets/image-16.png'));}finally{await tools.close();}
+    await writeFile(path.join(job.root,'a.js'),'export const value=3;\n');assert.equal((await workspace.verify(job)).passed,true);
+    const result=await workspace.integrate(job,{current:()=>true});assert.deepEqual(result.files.map(file=>file.path),['a.js']);
+    assert.equal(await readFile(path.join(project,'a.js'),'utf8'),'export const value=3;\n');assert.ok((await readFile(path.join(project,'assets','image-16.png'))).equals(media));
+    media[media.length-1]=8;await writeFile(path.join(job.root,'assets','image-16.png'),media);await assert.rejects(workspace.changed(job),/ownership violation/);
+  } finally {await rm(profile,{recursive:true,force:true});}
 });
 
 test('failed original tests, unowned writes and newly added user files refuse integration',async()=>{

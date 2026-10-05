@@ -2,6 +2,8 @@
 
 Mora integrates a worker's changes only after host checks pass against the captured source revision. Checks run outside the model; a worker's completion message is not test evidence. Failed checks retain the isolated source and results for review.
 
+Worker copies, verification digests, file inventories and tester revisions use the complete checkpoint bounds: 2 MiB per source file, 16 MiB per supported media file and 128 MiB/5,000 files total. Large unchanged assets stay in verification copies and affect revision hashes. Linked or incomplete source still blocks work; model text reads and live diff previews retain their separate smaller limits.
+
 ## Project commands
 
 With Full access or approval for one task run, Mora uses the original project's configured `typecheck` (or `check`), `build`, `test`, and `test:flows` (or `test:e2e`) scripts. Commands run in shallow disposable source copies using installed project dependencies, a clean environment and a short temporary home/cache directory. Copies are removed after project and browser verification; result evidence stays with the task. Mora does not install missing dependencies or replace project scripts.

@@ -2,13 +2,12 @@ import {mkdir,mkdtemp,writeFile,symlink,rm,readdir,cp} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {randomUUID,createHash} from 'node:crypto';
 import path from 'node:path';
-import {snapshotProject} from './changes.js';
-import {checkpointSource} from './checkpoints.js';
+import {checkpointSnapshot} from './checkpoints.js';
 import {projectFile,projectScripts} from './project.js';
 import {ProjectRunner,scriptCommand} from './project-work.js';
 
 export async function sourceDigest(root){
- const snapshot=await snapshotProject(root,{filter:checkpointSource,refuseLinks:true});if(snapshot.partial)throw Error('Verification source is incomplete.');
+ const snapshot=await checkpointSnapshot(root);if(snapshot.partial)throw Error('Verification source is incomplete.');
  return filesDigest(snapshot.files);
 }
 export const filesDigest=files=>createHash('sha256').update(JSON.stringify([...files].sort(([a],[b])=>a.localeCompare(b)).map(([name,data])=>[name,createHash('sha256').update(data).digest('hex')]))).digest('hex');

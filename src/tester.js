@@ -1,8 +1,7 @@
 import {mkdir,readFile,writeFile,rename,rm,readdir,stat} from 'node:fs/promises';
 import {createHash,randomUUID} from 'node:crypto';
 import path from 'node:path';
-import {snapshotProject} from './changes.js';
-import {checkpointSource} from './checkpoints.js';
+import {checkpointSnapshot} from './checkpoints.js';
 
 export function parseTesterCommand(text) {
   const match=/^\s*\/project-tester\s+(report|solver)(?:\s+([\s\S]*))?$/i.exec(text);
@@ -17,7 +16,7 @@ export function testerURL(value) {
   return url.href;
 }
 export async function projectRevision(root) {
-  const snapshot=await snapshotProject(root,{filter:checkpointSource,refuseLinks:true});
+  const snapshot=await checkpointSnapshot(root);
   if(snapshot.partial)throw Error('Project source exceeds review limits; a reliable testing revision cannot be recorded.');
   const hash=createHash('sha256');
   for(const [name,data] of [...snapshot.files].sort(([a],[b])=>a.localeCompare(b)))hash.update(name).update('\0').update(createHash('sha256').update(data).digest());

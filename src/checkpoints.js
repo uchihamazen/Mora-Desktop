@@ -1,4 +1,4 @@
-import {readFile,mkdir,readdir,stat,lstat,rename,rm,open} from 'node:fs/promises';
+import {readFile,mkdir,readdir,stat,lstat,statfs,rename,rm,open} from 'node:fs/promises';
 import {createHash,randomUUID} from 'node:crypto';
 import path from 'node:path';
 import {snapshotProject} from './changes.js';
@@ -16,37 +16,40 @@ function checkpointPath(name) {
     !['credentials.json','credential.json','tokens.json','auth.json','secrets.json','.npmrc','.netrc'].includes(leaf);
 }
 export const checkpointSource=name=>checkpointPath(name)&&!compiledOutput.test(name);
+const media=/\.(?:png|jpe?g|webp|gif|avif|ico|bmp|mp3|wav|ogg|m4a|mp4|mov|webm|woff2?|ttf|otf|glb|pdf)$/i;
+const fileLimit=name=>(media.test(name)?16:2)*1024*1024,snapshotLimit=128*1024*1024;
+export const checkpointSnapshot=root=>snapshotProject(root,{filter:checkpointSource,refuseLinks:true,maxFileBytes:fileLimit,maxBytes:snapshotLimit});
 async function atomic(file,data) {
   await mkdir(path.dirname(file),{recursive:true});const temp=`${file}.${randomUUID()}.tmp`;
   try {const handle=await open(temp,'wx');try{await handle.writeFile(data);await handle.sync();}finally{await handle.close();}await rename(temp,file);}
   finally{await rm(temp,{force:true});}
 }
 export class Checkpoints {
-  constructor(profile,root,{write=atomic}={}) {
-    this.root=path.resolve(root);this.directory=path.join(profile,'checkpoints',digest(this.root));this.write=write;this.previews=new Map();
+  constructor(profile,root,{write=atomic,space=statfs}={}) {
+    this.root=path.resolve(root);this.directory=path.join(profile,'checkpoints',digest(this.root));this.write=write;this.space=space;this.previews=new Map();
   }
   file(id) {if(!/^[0-9a-f-]{36}$/.test(id))throw new Error('Choose a valid checkpoint.');return path.join(this.directory,`${id}.json`);}
   async physical(name) {
     const file=await projectFile(this.root,name);let handle;
     try {
-      const info=await lstat(file);if(!info.isFile() || info.size>2*1024*1024)throw new Error('File changed or exceeds checkpoint limits.');
-      handle=await open(file,'r');const buffer=Buffer.alloc(2*1024*1024+1);let length=0;
+      const info=await lstat(file),limit=fileLimit(name);if(!info.isFile() || info.size>limit)throw new Error('File changed or exceeds checkpoint limits.');
+      handle=await open(file,'r');const buffer=Buffer.alloc(info.size+1);let length=0;
       while(length<buffer.length){const {bytesRead}=await handle.read(buffer,length,buffer.length-length,null);if(!bytesRead)break;length+=bytesRead;}
-      if(length>2*1024*1024)throw new Error('File changed or exceeds checkpoint limits.');return buffer.subarray(0,length);
+      if(length>info.size)throw new Error('File changed or exceeds checkpoint limits.');return buffer.subarray(0,length);
     }catch(error){if(error.code==='ENOENT')return undefined;throw error;}
     finally{await handle?.close();}
   }
   async snapshot({extraPaths=[]}={}) {
-    await projectFile(this.root);const snapshot=await snapshotProject(this.root,{filter:checkpointSource,refuseLinks:true});
+    await projectFile(this.root);const snapshot=await checkpointSnapshot(this.root);
     for(const name of snapshot.files.keys())await projectFile(this.root,name);
     for(const name of extraPaths){if(!checkpointSource(name))throw new Error('Excluded checkpoint path.');const data=await this.physical(name);if(data!==undefined)snapshot.files.set(name,data);}
-    if(snapshot.files.size>5000 || [...snapshot.files.values()].reduce((total,data)=>total+data.length,0)>32*1024*1024)snapshot.partial=true;
-    if(snapshot.partial)throw new Error('A complete checkpoint could not be saved. Remove linked or oversized source files before allowing changes.');
+    if(snapshot.files.size>5000 || [...snapshot.files.values()].reduce((total,data)=>total+data.length,0)>snapshotLimit)snapshot.partial=true;
+    if(snapshot.partial)throw new Error(`A complete checkpoint could not be saved.${snapshot.skipped.size?` Check these paths: ${[...snapshot.skipped].slice(0,3).join(', ')}.`:''} Limits: 2 MiB per source file, 16 MiB per media file, 128 MiB and 5,000 files per project. Linked source files are unsupported.`);
     return snapshot;
   }
   summary(value) {return {id:value.id,label:value.label,createdAt:value.createdAt,fileCount:Object.keys(value.files).length,manual:value.manual,sealed:value.sealed};}
   async load(id) {
-    const file=this.file(id);if((await stat(file)).size>48*1024*1024)throw new Error('Checkpoint is too large.');
+    const file=this.file(id);if((await stat(file)).size>192*1024*1024)throw new Error('Checkpoint is too large.');
     const value=JSON.parse(await readFile(file,'utf8'));
     if(value.root!==this.root || value.id!==id || !value.files || typeof value.files!=='object')throw new Error('This checkpoint does not belong to this project.');
     return value;
@@ -55,7 +58,10 @@ export class Checkpoints {
     const snapshot=await this.snapshot({extraPaths});await mkdir(this.directory,{recursive:true});let bytes=0;
     for(const name of await readdir(this.directory))if(name.endsWith('.json'))bytes+=(await stat(path.join(this.directory,name))).size;
     const value={id:randomUUID(),root:this.root,label:String(label || 'Saved checkpoint').slice(0,100),createdAt:new Date().toISOString(),manual,sealed:false,files:Object.fromEntries([...snapshot.files].map(([name,data])=>[name,data.toString('base64')]))};
-    const data=JSON.stringify(value);if(bytes+Buffer.byteLength(data)>256*1024*1024)throw new Error('Checkpoint storage is full. Delete an old checkpoint before allowing changes.');
+    const data=JSON.stringify(value);if(bytes+Buffer.byteLength(data)>1024*1024*1024)throw new Error('Checkpoint storage is full. Delete an old checkpoint before allowing changes.');
+    // Reserve the checkpoint and its atomic sealed replacement before edits begin.
+    const disk=await this.space(this.directory),available=disk.bavail*disk.bsize,required=2*Buffer.byteLength(data)+16*1024*1024;
+    if(available<required)throw new Error(`Not enough free disk space for a complete checkpoint. ${Math.ceil(required/1024/1024)} MiB needed on ${path.parse(this.directory).root}; ${Math.floor(available/1024/1024)} MiB available. Free space on that drive before allowing changes, or use Read only.`);
     await atomic(this.file(value.id),data);return this.summary(value);
   }
   async seal(id) {

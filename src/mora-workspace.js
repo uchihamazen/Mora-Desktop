@@ -4,8 +4,7 @@ import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
 import {fileURLToPath,pathToFileURL} from 'node:url';
 import path from 'node:path';
-import {Checkpoints,checkpointSource} from './checkpoints.js';
-import {snapshotProject} from './changes.js';
+import {Checkpoints,checkpointSource,checkpointSnapshot} from './checkpoints.js';
 import {projectFile} from './project.js';
 import {projectChecks,sourceDigest,filesDigest,noTestsExecuted} from './mora-checks.js';
 import {browserChecks} from './mora-browser.js';
@@ -48,7 +47,7 @@ export class MoraWorkspace {
     return {root,directory,threadId,runId,task,baseline:baseline.files,verified:null,projectCommands};
   }
   async changed(job,files){
-    const candidate=files?{files}:await snapshotProject(job.root,{filter:checkpointSource,refuseLinks:true});
+    const candidate=files?{files}:await checkpointSnapshot(job.root);
     if(candidate.partial)throw Error('The worker source snapshot is incomplete.');
     const changes=[];for(const name of new Set([...job.baseline.keys(),...candidate.files.keys()])){
       const before=job.baseline.get(name),after=candidate.files.get(name);if(hash(before)===hash(after))continue;
@@ -92,7 +91,7 @@ export class MoraWorkspace {
     job.checkRoot=null;job.buildPassed=false;
     try{
     const inputRevision=await this.refreshInputs(job);
-    const snapshot=await snapshotProject(job.root,{filter:checkpointSource,refuseLinks:true});if(snapshot.partial)throw Error('Verification source is incomplete.');
+    const snapshot=await checkpointSnapshot(job.root);if(snapshot.partial)throw Error('Verification source is incomplete.');
     const candidate=snapshot.files,changes=await this.changed(job,candidate),checks=[],capturedDigest=filesDigest(candidate);
     const runTests=async(name,files)=>{const before=await sourceDigest(job.root),result=await this.runNode(job,['--test','--test-isolation=none','--test-concurrency=1',...files],{signal});if(await sourceDigest(job.root)!==before){result.passed=false;result.output+='\nSource changed while tests ran. Delivery refused.';}if(result.passed&&noTestsExecuted(result.output)){result.passed=false;result.output+='\nNo tests executed. Delivery refused.';}checks.push({name,...result});};
     for(const change of changes)if(change.after&&/\.[cm]?js$/i.test(change.path))checks.push({name:`Syntax: ${change.path}`,...await this.syntax(job,change,candidate,{signal})});

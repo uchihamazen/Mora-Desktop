@@ -61,6 +61,38 @@ test('secret/generated files are excluded and unsafe/incomplete snapshots cannot
   await writeFile(path.join(root,'large.js'),Buffer.alloc(2*1024*1024+1));await assert.rejects(store.create('Incomplete'),/complete/i);await rm(path.join(root,'large.js'));
   await mkdir(path.join(root,'outside'));await symlink(path.join(root,'outside'),path.join(root,'linked'),'junction');await assert.rejects(store.create('Linked'),/complete|linked/i);
 }));
+
+test('media-heavy projects retain complete checkpoints and exact binary recovery across restart',()=>fixture(async(root,profile)=>{
+  await mkdir(path.join(root,'assets'));await writeFile(path.join(root,'app.js'),'original source');
+  const media=Buffer.alloc(2*1024*1024+17,7);media[0]=0;
+  for(let index=0;index<18;index++)await writeFile(path.join(root,'assets',`image-${index}.PNG`),media);
+  const store=new Checkpoints(profile,root),checkpoint=await store.create('Before media edit',{manual:false});assert.equal(checkpoint.fileCount,19);
+  const edited=Buffer.from(media);edited[edited.length-1]=8;await writeFile(path.join(root,'assets','image-0.PNG'),edited);await store.seal(checkpoint.id);
+  const restarted=new Checkpoints(profile,root),review=await restarted.review(checkpoint.id,'assets/image-0.PNG');assert.equal(review.stale,false);assert.deepEqual(review.hunks,[]);
+  const preview=await restarted.preview(checkpoint.id);assert.deepEqual(preview.changes.map(file=>file.path),['assets/image-0.PNG']);
+  await restarted.restore({token:preview.token,paths:['assets/image-0.PNG']});
+  assert.ok((await readFile(path.join(root,'assets','image-0.PNG'))).equals(media));assert.equal(await readFile(path.join(root,'app.js'),'utf8'),'original source');
+  assert.ok((await readFile(path.join(root,'assets','image-17.PNG'))).equals(media));
+}));
+
+test('checkpoint media limits remain bounded and explain the actual blocking paths',()=>fixture(async(root,profile)=>{
+  await writeFile(path.join(root,'poster.png'),Buffer.alloc(16*1024*1024+1));
+  await assert.rejects(new Checkpoints(profile,root).create('Oversized media'),/poster\.png.*16 MiB/s);
+}));
+
+test('complete media checkpoints still refuse total source above 128 MiB',()=>fixture(async(root,profile)=>{
+  const media=Buffer.alloc(16*1024*1024);
+  for(let index=0;index<8;index++)await writeFile(path.join(root,`asset-${index}.png`),media);
+  await writeFile(path.join(root,'app.js'),'source exceeding the combined bound');
+  await assert.rejects(new Checkpoints(profile,root).create('Too large'),/complete.*128 MiB/s);
+}));
+
+test('insufficient checkpoint disk space blocks edits before a recovery snapshot is written',()=>fixture(async(root,profile)=>{
+  await writeFile(path.join(root,'app.js'),'preserve original');
+  const store=new Checkpoints(profile,root,{space:async()=>({bavail:1,bsize:1})});
+  await assert.rejects(store.create('Before edits',{manual:false}),/Not enough free disk space.*MiB.*available/i);
+  assert.equal(await readFile(path.join(root,'app.js'),'utf8'),'preserve original');assert.deepEqual(await store.list(),[]);
+}));
 test('partial restore failures retain a recovery checkpoint and never erase unaffected files',()=>fixture(async(root,profile)=>{
   for(const name of ['a.js','b.js'])await writeFile(path.join(root,name),'before');
   const store=new Checkpoints(profile,root),cp=await store.create('Before request',{manual:false});for(const name of ['a.js','b.js'])await writeFile(path.join(root,name),'after');await store.seal(cp.id);

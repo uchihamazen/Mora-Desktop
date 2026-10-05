@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtemp,readFile,writeFile} from 'node:fs/promises';
+import {mkdtemp,readFile,writeFile,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {assertIdle} from '../src/state.js';
@@ -9,6 +9,11 @@ const controller=await import('../src/tester-run.js').catch(()=>({}));
 test('tester work prevents project and conversation mutations until it stops',()=>{
   assert.throws(()=>assertIdle({testerActive:true}),/project-tester|testing/i);
   assert.doesNotThrow(()=>assertIdle({testerActive:false}));
+});
+
+test('tester revisions include larger media and detect changes in its bytes',async()=>{
+  const project=await mkdtemp(path.join(tmpdir(),'mora-tester-media-'));
+  try{const media=Buffer.alloc(2*1024*1024+17,7);media[0]=0;await writeFile(path.join(project,'image.png'),media);const before=await api.projectRevision(project);media[media.length-1]=8;await writeFile(path.join(project,'image.png'),media);assert.notEqual(await api.projectRevision(project),before);}finally{await rm(project,{recursive:true,force:true});}
 });
 
 test('tester commands preserve ordinary chat and require an explicit solver selection',()=>{

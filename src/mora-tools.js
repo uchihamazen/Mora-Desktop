@@ -2,8 +2,7 @@ import {createServer} from 'node:http';
 import {randomBytes,randomUUID} from 'node:crypto';
 import {readFile,writeFile,mkdir,rename,rm} from 'node:fs/promises';
 import path from 'node:path';
-import {snapshotProject} from './changes.js';
-import {checkpointSource} from './checkpoints.js';
+import {checkpointSource,checkpointSnapshot} from './checkpoints.js';
 import {projectFile} from './project.js';
 
 const pathSchema={type:'string',description:'A relative source file path inside this task workspace.'};
@@ -26,7 +25,7 @@ export async function createMoraTools({job,workspace,readOnly=false,reviewOnly=f
     if(reviewOnly&&!['list_files','read_file','read_original','list_skills','read_skill'].includes(name))throw Error('Independent review has read-only source access.');
     if(name==='list_skills'&&skills)return {available:catalog,missing:skills.missing};
     if(name==='read_skill'&&skills){const result=await skills.read(args.id,args.resource);if(Buffer.byteLength(JSON.stringify({content:[{type:'text',text:JSON.stringify(result)}],isError:false}))>62000)throw Error('Skill resource exceeds the tool output limit.');if(signal?.aborted)throw Error('This task was stopped.');const key=result.id+'/'+result.resource;if(!used.has(key)){const receipt={id:result.id,label:result.label,source:result.source,resource:result.resource,sha256:result.sha256};await onSkillRead([...job.skillUsage,receipt]);if(signal?.aborted)throw Error('This task was stopped.');used.add(key);job.skillUsage.push(receipt);}return result;}
-    if(name==='list_files')return [...(await snapshotProject(job.root,{filter:checkpointSource,refuseLinks:true})).files.keys()].slice(0,5000);
+    if(name==='list_files'){const snapshot=await checkpointSnapshot(job.root);if(snapshot.partial)throw Error('The worker source snapshot is incomplete.');return [...snapshot.files.keys()];}
     if(name==='run_checks')return workspace.verify(job,{signal});
     if(!['read_file','read_original','write_file','delete_file'].includes(name)||name==='read_original'&&!reviewOnly)throw Error('Unknown source tool.');
     if(typeof args.path!=='string'||!checkpointSource(args.path))throw Error('Choose an allowed source file.');
