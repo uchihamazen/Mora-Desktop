@@ -40,3 +40,9 @@ test('restart recovers pending case/replay uncertainty from a valid backup',asyn
 test('store rejects UTF-8 byte oversize and evidence traversal',async()=>{
  const store=new WebsiteReports(await mkdtemp(path.join(tmpdir(),'website-report-'))),r=await store.create({url:'https://example.com'});r.gaps=['ش'.repeat(2200000)];await assert.rejects(store.save(r),/size/i);await assert.rejects(store.evidence(r.id,'../auth.json'),/evidence/i);
 });
+
+test('exports preserve unsuccessful reproduction details beside the original failure',()=>{
+ const r=report();r.cases[0].reason='The original failure may be intermittent.';r.cases[0].replayStatus='passed on replay';r.cases[0].replayReason=r.cases[0].reason;r.findings[0].replay={status:'passed on replay',reason:r.cases[0].reason,stepIds:['replay-step']};
+ const output=JSON.parse(api.buildWebsiteExport(r,{format:'json'}));assert.equal(output.cases[0].replayStatus,'passed on replay');assert.equal(output.cases[0].replayReason,r.cases[0].reason);assert.equal(output.findings[0].replay.reason,r.cases[0].reason);
+ const html=api.buildWebsiteExport(r);assert.match(html,/passed on replay/);assert.match(html,/intermittent/);
+});

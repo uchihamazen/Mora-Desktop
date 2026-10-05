@@ -254,3 +254,15 @@ test('path steering can narrow a homepage session to the current subpage',async(
  const {run,browser}=await setup([]);browser.page={url:()=> 'https://site.example/settings'};run.onChange=report=>{if(report.pending&&run.pending)setImmediate(()=>run.approve(report.pending.id,false));};
  await run.steer('Check settings only',{mode:'page'},{includePaths:['/settings']});await run.completion;assert.equal(run.report.scope.entryUrl,'https://site.example/settings');assert.deepEqual(run.report.scope.includePaths,['/settings']);assert.equal(browser.policy.scope.entryUrl,run.report.scope.entryUrl);
 });
+
+for(const stage of ['create','initialize','close'])test(`model ${stage} failure preserves results and releases browser control`,async()=>{
+ const {run,browser}=await setup([]);run.makeModel=()=>{if(stage==='create')throw Error('Owned model creation failed');return {initialize:async()=>{if(stage==='initialize')throw Error('Owned initialization failed');},decide:async()=>({action:'finish'}),close:async()=>{if(stage==='close')throw Error('Owned model cleanup failed');}};};
+ await run.start(undefined,{accessibility:false});await run.completion;assert.equal(run.report.status,'blocked');assert.equal(browser.manual,true);assert.match(run.report.gaps.join(' '),/Owned/);assert.equal(run.report.findings.length,0);
+});
+
+test('a changed replay result retains the original assertion evidence and reports intermittent outcomes',async()=>{
+ const {run,browser}=await setup([{action:'plan',cases:[plannedCase()]},{action:'review',supported:true},{action:'finish'}]);let assertions=0;
+ browser.perform=async step=>({status:step.action==='assert'?(++assertions===1?'failed':'passed'):'ok',actual:assertions===1?'Waiting':'Ready'});
+ run.onChange=report=>{if(report.pending&&run.pending)setImmediate(()=>run.approve(report.pending.id,true));};
+ await run.start(undefined,{accessibility:false});await run.completion;const record=run.report.cases[0];assert.equal(record.status,'observed failure');assert.equal(record.replayStatus,'passed on replay');assert.equal(run.report.findings[0].actual,'Waiting');assert.match(record.replayReason,/intermittent/);assert.equal(assertions,2);
+});

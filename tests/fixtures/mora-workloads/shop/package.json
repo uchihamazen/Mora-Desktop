@@ -1,0 +1,1 @@
+{"name":"mora-workload-minishop","private":true,"type":"module","scripts":{"start":"node server.js","test":"node --test tests/original.test.js","check":"node --check app.js","build":"node --check checkout.js"}}

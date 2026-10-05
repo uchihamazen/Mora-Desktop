@@ -31,5 +31,10 @@ export async function launchDesktop(packaged,env,{cwd=process.cwd(),source='.'}=
   }
   const app=await launching;
   if(launchError || bootstrapError){await app?.close();throw launchError || bootstrapError;}
+  const pageDeadline=Date.now()+10000;
+  while(!app.windows().some(page=>page.url().endsWith('/index.html'))){
+    if(Date.now()>=pageDeadline){await app.close();throw Error('Desktop main page did not become available.');}
+    await new Promise(resolve=>setTimeout(resolve,30));
+  }
   return app;
 }

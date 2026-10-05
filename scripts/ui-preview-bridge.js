@@ -11,6 +11,14 @@
   window.muse={
     getState:async()=>{setTimeout(labelEngine,0);return state;},onEvent:listener=>{listeners.add(listener);return()=>listeners.delete(listener);},
     setOptions:async options=>update(options),saveDraft:async draft=>{state.draft={text:draft.text,images:draft.images};},
+    moraModeCommand:async(action,payload={})=>{
+      if(action==='evidence')return {image:'data:image/svg+xml;charset=utf-8,'+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="800" height="450" viewBox="0 0 800 450"><rect width="800" height="450" fill="#10141c"/><rect x="180" y="60" width="440" height="330" rx="18" fill="#191f2b" stroke="#43516b"/><g fill="#e6e7ed" font-family="Segoe UI, sans-serif" text-anchor="middle"><text x="400" y="120" font-size="16">Sample evidence · UI preview only</text><text x="400" y="180" font-size="30">Counter app</text><text x="400" y="285" font-size="70">1</text><text x="400" y="345" font-size="17">Configured outcome: Count = 1</text></g></svg>')};
+      const mode=state.moraMode||{enabled:false,replying:false,requests:[],tasks:[]};
+      if(action==='enable'){if(!payload.enabled&&mode.tasks.some(task=>['pending','running'].includes(task.status)))throw Error('Stop sample tasks before turning Mora Mode off.');mode.enabled=payload.enabled;if(payload.enabled&&!mode.tasks.length)mode.tasks=[{id:'sample-worker',title:'Sample: improve the counter',files:['counter.js'],status:'running',receipt:'Delivered',detail:'UI sample only'}];}
+      if(action==='stop'){mode.replying=false;mode.tasks=mode.tasks.map(task=>({...task,status:'cancelled',receipt:'cancelled'}));}
+      if(['steer','cancel','resume'].includes(action)){const task=mode.tasks.find(task=>task.id===payload.id);if(!task)throw Error('Choose a sample task.');Object.assign(task,{status:action==='cancel'?'cancelled':action==='steer'?'pending':'running',receipt:action==='cancel'?'cancelled':action==='steer'?'Saved':'Delivered'});if(action==='steer')setTimeout(()=>{Object.assign(task,{status:'running',receipt:'Delivered'});update({moraMode:{...mode}});},800);}
+      return update({moraMode:{...mode}});
+    },
     copyText:text=>navigator.clipboard.writeText(text),completionSoundOptions:async enabled=>update({completionSound:enabled}),
     newChat:async(projectPath=null)=>{const sessionId=crypto.randomUUID();return update({sessionId,projectPath,items:[],draft:{text:'',images:[]},sessions:[...state.sessions,{sessionId,projectPath,title:'New sample chat'}]});},
     resumeChat:async id=>{const chat=state.sessions.find(chat=>chat.sessionId===id);return update({sessionId:id,projectPath:chat?.projectPath||null,items:[],draft:{text:'',images:[]}});},
@@ -18,6 +26,7 @@
     deleteChat:async id=>update({sessions:state.sessions.filter(chat=>chat.sessionId!==id)}),
     removeProject:async projectPath=>update({projects:state.projects.filter(project=>project!==projectPath),sessions:state.sessions.filter(chat=>chat.projectPath!==projectPath),...(state.projectPath===projectPath?{sessionId:null,projectPath:null,workspace:'',items:[],draft:{text:'',images:[]}}:{})}),
     trelloCommand:async action=>action==='state'?{configured:false}:unavailable(),
+    usageCommand:async()=>({tier:'sample',window:{usedPercent:30,resetsAtMs:Date.now()+2*3600000,windowDurationMins:300},weekly:{usedPercent:15,resetsAtMs:Date.now()+3*86400000},observedAtMs:Date.now()}),
     sendMessage:async message=>{update({items:[...state.items,{itemId:crypto.randomUUID(),kind:'userMessage',text:message.text,images:message.images},{itemId:crypto.randomUUID(),kind:'agentMessage',status:'completed',text:'Sample response only. To change Mora, send your browser annotations to Codex.'}]});return {accepted:true};},
     stopTurn:async()=>state,queueCommand:async()=>state,connect:async()=>state,pickImages:async()=>[],
     chooseWorkspace:unavailable,chooseMuse:unavailable,projectCommand:unavailable,createProject:unavailable,chooseProjectParent:unavailable,accountCommand:unavailable,exportProject:unavailable,revealProjectExport:unavailable,checkpointCommand:unavailable,

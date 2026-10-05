@@ -7,6 +7,7 @@ import { EventEmitter } from 'node:events';
 import { createState, assertIdle, applyEvent } from '../src/state.js';
 import { validateImages } from '../src/images.js';
 import {HistoryWindow} from '../src/history-window.js';
+import {validateMediaSelection} from '../src/video-frames.js';
 import { snapshotProject, compareProject } from '../src/changes.js';
 import * as changesApi from '../src/changes.js';
 import { projectPathFor, groupConversations } from '../src/projects.js';
@@ -30,13 +31,13 @@ function harness(overrides = {}) {
   }
   const handlers = {};
   const context = vm.createContext({
-    path, Buffer, setTimeout, clearTimeout, HistoryWindow, ExecRunner: Runner,accountState,AccountLogin,parseTesterCommand,parseWebsiteTesterCommand,reportForRevision,projectRevision,
+    path, Buffer, setTimeout, clearTimeout, HistoryWindow,validateMediaSelection, ExecRunner: Runner,accountState,AccountLogin,parseTesterCommand,parseWebsiteTesterCommand,reportForRevision,projectRevision,
     readProjectBrief:async()=>({text:'',revision:null}),
     discoverContextPerformanceArgs:async()=>[],
     Checkpoints:class {async create(){return {id:"checkpoint"};}async seal(){}},
     createState, assertIdle, applyEvent, validateImages, projectPathFor, groupConversations, applyExecRecord: () => {},
     uuid7: () => 'session', app: { getPath: () => 'C:/temp' },
-    mkdir: async () => {}, stat: async () => ({isDirectory:()=>true}),
+    mkdir: async () => {}, stat: async file => {if(String(file).includes('mora-mode'))throw Object.assign(Error('Not found'),{code:'ENOENT'});return {isDirectory:()=>true};},
     mkdtemp: async () => 'C:/temp/muse-desktop-input-test',
     writeFile: async () => {}, rename: async () => {}, rm: async () => {},
     saveConversations: async () => {},
@@ -51,7 +52,7 @@ function harness(overrides = {}) {
   const body = source.slice(source.indexOf('const directory ='), source.indexOf('\nfunction handle('))
     .replace(/^const directory =[^\n]+/, 'const directory = "C:/Projects/example/src";');
   vm.runInContext(body + '\n' + source.split('\n').find(line => line.includes("handle('stop',")) +
-    '\nglobalThis.subject = {state, runner, sendMessage, resumeChat, newChat, save, connect, reconcileModel, queueCommand, saveDraft, projectCommand, checkpointCommand, exportProjectCommand, setProjectRunner:value=>{projectRunner=value;},setWindow:value=>{window=value;}};', context);
+    '\nglobalThis.subject = {state, runner, sendMessage, resumeChat, newChat, save, connect, reconcileModel, queueCommand, saveDraft, projectCommand, checkpointCommand, exportProjectCommand, moraModeCommand, setMoraMode:value=>moraModes.set(state.sessionId,value),setProjectRunner:value=>{projectRunner=value;},pickMedia,setWindow:value=>{window=value;}};', context);
   const subject = context.subject;
   subject.state.connection = 'ready';
   subject.state.sessionId = 'session';
@@ -60,6 +61,46 @@ function harness(overrides = {}) {
   return { ...subject, stop: handlers.stop };
 }
 const tick = () => new Promise(resolve => setImmediate(resolve));
+
+test('native media picker preflights the entire selection before reading any content',async()=>{
+ let reads=0;
+ const h=harness({dialog:{showOpenDialog:async()=>({filePaths:['a.mp4','b.mov']})},stat:async()=>({isFile:()=>true,size:60*1024*1024}),open:async()=>{reads++;throw Error('Read must not happen');}});
+ await assert.rejects(h.pickMedia(),/100 MB/);assert.equal(reads,0);
+ const budget=harness({dialog:{showOpenDialog:async()=>({filePaths:['clip.webm']})},stat:async()=>({isFile:()=>true,size:1}),open:async()=>{reads++;throw Error('Read must not happen');}});
+ await assert.rejects(budget.pickMedia({imageCount:13,imageBytes:0}),/20/);assert.equal(reads,0);
+});
+test('native picker closes bounded file reads and refuses changed files',async()=>{
+ let closed=0,capacity=0;
+ const h=harness({dialog:{showOpenDialog:async()=>({filePaths:['a.mp4']})},stat:async()=>({isFile:()=>true,size:3}),open:async()=>({read:async buffer=>{capacity=buffer.length;buffer.fill(0);return {bytesRead:buffer.length};},close:async()=>closed++})});
+ await assert.rejects(h.pickMedia(),/changed/);assert.equal(capacity,4);assert.equal(closed,1);
+});
+test('Mora Mode refuses ordinary media before launching workers and preserves its draft',async()=>{
+ let calls=0;const h=harness();h.state.moraMode={enabled:true};h.setMoraMode({send:async()=>calls++});
+ h.state.draft={text:'Inspect clip',images:[{mediaType:'image/jpeg',base64Data:'/9j/'}]};
+ await assert.rejects(h.sendMessage(h.state.draft),/Mora Mode.*text/);assert.equal(calls,0);assert.equal(h.state.draft.images.length,1);
+});
+
+test('Mora Mode can toggle with an idle ready preview without stopping it or changing the draft',async()=>{
+ const h=harness();let enabled=false;const child={};const mode={sessionId:h.state.sessionId,state:{items:[]},enable:async value=>{enabled=value;},snapshot:()=>({enabled,tasks:[],replying:false})};
+ const preview={runChild:child,active:false,state:{root:h.state.projectPath,run:{status:'ready'}}};h.setMoraMode(mode);h.setProjectRunner(preview);h.state.draft={text:'Keep my draft',images:[]};
+ await h.moraModeCommand('enable',{enabled:true});assert.equal(h.state.moraMode.enabled,true);
+ await h.moraModeCommand('enable',{enabled:false});assert.equal(h.state.moraMode.enabled,false);assert.equal(h.state.draft.text,'Keep my draft');assert.equal(preview.runChild,child);assert.equal(preview.state.run.status,'ready');
+ await assert.rejects(h.newChat('C:/another'),/Stop Run and Test/);
+});
+
+test('Mora Mode toggle still blocks startup, active tests, other project previews and pending chat work',async()=>{
+ for(const scenario of ['starting','testing','other-project','queue','model','workers','tester']){
+  const h=harness();let enabled=false;h.setMoraMode({state:{items:[]},enable:async()=>{enabled=true;},snapshot:()=>({enabled,tasks:[],replying:false})});
+  h.setProjectRunner({runChild:{},active:scenario==='testing',state:{root:scenario==='other-project'?'C:/another':h.state.projectPath,run:{status:scenario==='starting'?'starting':'ready'}}});
+  if(scenario==='queue')h.state.pendingQueue=[{queueId:'q',text:'Keep pending',images:[]}];
+  if(scenario==='model')h.state.busy=true;if(scenario==='workers')h.state.moraMode={tasks:[{status:'running'}]};if(scenario==='tester')h.state.testerActive=true;
+  await assert.rejects(h.moraModeCommand('enable',{enabled:true}));assert.equal(enabled,false,scenario);
+ }
+});
+
+test('an ordinary turn preserves anchored Mora Mode messages when native history replaces live rows',async()=>{
+ const native={itemId:'native-before',turnId:'before',kind:'agentMessage',text:'Before'},modeItem={itemId:'mora-reply-r1',turnId:'r1',kind:'agentMessage',text:'Mode reply',anchorItemId:'native-before'};const h=harness({readHistory:async()=>[native,{itemId:'native-after',turnId:'after',kind:'agentMessage',text:'After'}]});h.setMoraMode({state:{items:[modeItem]}});h.state.items=[native,modeItem];await h.sendMessage({text:'Ordinary follow-up'});for(let i=0;i<100&&h.state.busy;i++)await tick();assert.deepEqual(Array.from(h.state.items,item=>item.itemId),['native-before','mora-reply-r1','native-after']);
+});
 
 test('legacy work presets never override an explicitly saved native reasoning effort',()=>{
  const h=harness();Object.assign(h.state,{modelId:'native',models:[{modelId:'native',variants:['low','medium','high'],defaultReasoningEffort:'medium'}],reasoningEffort:'high',speedPreset:'quick'});
@@ -616,7 +657,7 @@ test('Fix failures requires Full access and a failed test result',async()=>{
 test('pending checkpoint restore reserves project work until success or failure',async()=>{
  for(const fail of [false,true]){let release;const gate=new Promise(r=>release=r),h=harness({Checkpoints:class{async restore(){await gate;if(fail)throw Error('restore failed');return {restored:1};}}});
  h.setProjectRunner({state:{run:{status:'stopped'}},active:false});const pending=h.checkpointCommand('restore',{});await tick();
- for(const attempt of [()=>h.sendMessage({text:'Edit'}),()=>h.projectCommand('run'),()=>h.queueCommand('resume'),()=>h.newChat('C:/another'),()=>h.checkpointCommand('restore',{})])await assert.rejects(attempt(),/project|Stop|Wait/i);
+ for(const attempt of [()=>h.sendMessage({text:'Edit'}),()=>h.projectCommand('run'),()=>h.queueCommand('resume'),()=>h.newChat('C:/another'),()=>h.checkpointCommand('restore',{}),()=>h.moraModeCommand('enable',{enabled:true})])await assert.rejects(attempt(),/project|Stop|Wait/i);
  release();if(fail)await assert.rejects(pending,/restore failed/);else await pending;assert.equal(h.state.projectOperation,false);
  }
 });

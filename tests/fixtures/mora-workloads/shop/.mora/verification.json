@@ -1,0 +1,1 @@
+{"browser":{"path":"/","steps":[{"action":"assert","role":"heading","name":"MiniShop","check":"visible","expected":"true"},{"action":"click","role":"button","name":"Add Café coffee"},{"action":"assert","role":"status","name":"Total","check":"text","expected":"EGP 155.00"}]}}

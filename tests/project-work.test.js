@@ -8,6 +8,11 @@ import {ProjectRunner,localURL} from '../src/project-work.js';
 async function fixture(fn){const root=await mkdtemp(path.join(tmpdir(),'mora-run-'));try{await fn(root);}finally{await rm(root,{recursive:true,force:true});}}
 async function project(root,scripts,body){await writeFile(path.join(root,'package.json'),JSON.stringify({scripts}));await writeFile(path.join(root,'work.cjs'),body);}
 const command=async(_root,_manager,name)=>({file:process.execPath,args:['work.cjs',name],env:process.env});
+
+test('long Windows process directories are refused before spawning invalid pipes',{skip:process.platform!=='win32'},()=>fixture(async root=>{
+ const cwd=path.join(root,...Array(3).fill('nested-'.repeat(14)));await mkdir(cwd,{recursive:true});
+ const worker=new ProjectRunner(()=>{});assert.throws(()=>worker.launch(cwd,{file:process.env.ComSpec,args:['/d','/c','exit 0'],env:process.env},()=>{}),/folder path is too long/);
+}));
 async function until(fn){for(let i=0;i<150;i++){if(fn())return;await new Promise(resolve=>setTimeout(resolve,20));}throw new Error('Timed out');}
 test('local preview parsing excludes external and credential-bearing URLs',()=>{
  assert.equal(localURL('ready http://localhost:4321/'),'http://localhost:4321/');assert.equal(localURL('https://evil.test/'),null);assert.equal(localURL('http://user:pass@localhost:3000'),null);

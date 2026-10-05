@@ -25,3 +25,24 @@ auth.json
 credentials.json
 secrets.json
 docs/superpowers/
+
+# Local assistant instructions, caches and generated review material.
+/AGENTS.md
+/AGENTS.override.md
+.codex/
+.agents/
+.cache/
+cache/
+caches/
+workplans/
+memories/
+visualizations/
+tmp/
+temp/
+test-results/
+playwright-report/
+coverage/
+.playwright-cli/
+imagegen/
+image-gen/
+docs/screenshots/

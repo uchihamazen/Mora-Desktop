@@ -33,6 +33,7 @@ function harness(overrides = {}) {
     discoverMuse: async () => 'C:/muse.exe',
     resolveSessionLogPath: (sessionId, museHome) => path.join(museHome || 'C:/muse', sessionId, 'session.jsonl'),
     app: { getPath: () => 'C:/temp' },
+    stat:async()=>{throw Object.assign(Error('Not found'),{code:'ENOENT'});},
     mkdtemp: async () => 'C:/temp/muse-desktop-input-test',
     writeFile: async (_file, text) => { writes.push(text); },
     rename: async () => {},

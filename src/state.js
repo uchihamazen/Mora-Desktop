@@ -1,8 +1,11 @@
 export function createState() {
-  return { items: [], busy: false, finishing: false, activity: '', activeTurnId: null, stopping: false, error: '', pendingApprovals: [], pendingQuestions: [], needsRecovery: false, pendingQueue: [], queuePaused: false, draft: {text:'',images:[]}, activeRequest: null, lastOutcome: null, workUnavailable: false, historyMissing: false };
+  // Reset mode ownership whenever the selected conversation changes.
+  const moraMode=null;
+  return { items: [], moraMode, busy: false, finishing: false, activity: '', activeTurnId: null, stopping: false, error: '', pendingApprovals: [], pendingQuestions: [], needsRecovery: false, pendingQueue: [], queuePaused: false, draft: {text:'',images:[]}, activeRequest: null, lastOutcome: null, workUnavailable: false, historyMissing: false };
 }
 
 export function assertIdle(state) {
+  if(state.moraMode?.replying||state.moraMode?.tasks?.some(task=>['pending','running'].includes(task.status)))throw Error('Stop Mora Mode work before changing chats, projects or settings.');
   if (state.testerActive||state.websiteActive) throw new Error('Stop testing before changing chats, projects or settings.');
   if (state.loading) throw new Error('A conversation is loading. Wait before switching or sending.');
   if (state.busy) throw new Error('A request is running. Stop it before switching chats or projects.');

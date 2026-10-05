@@ -2,13 +2,16 @@ import {setupLibrary} from './library-ui.js';
 import {setupConversationFind} from './find-ui.js';
 import {setupQuickActions} from './quick-actions.js';
 import { setupBrowser } from './browser-ui.js';
-import {stitchImageParts} from './images.js';
+import {stitchImageParts,validateImages} from './images.js';
+import {validateMediaSelection,extractVideoFrames,videoContext} from './video-frames.js';
+import {setupUsage} from './usage-ui.js';
 import {markdownBlocks, inlineParts} from './markdown.js';
 import {setupProjects} from './project-ui.js';
 import {setupProjectWork} from './work-ui.js';
 import {setupTester} from './tester-ui.js';
 import {setupWebsiteTester} from './website-ui.js';
 import {setupReadiness} from './setup-ui.js';
+import {setupMoraMode} from './mora-ui.js';
 import {setupWorkspaceMenus,setupSelectMenus,previewOccluded} from './menu-ui.js';
 
 const $ = id => document.getElementById(id);
@@ -29,9 +32,10 @@ $('sidebar-collapse').addEventListener('click',()=>setSidebar(true));
 const dismissedErrors = new Set();
 let state = { items: [], sessions: [], models: [], busy: false, connection: 'connecting' };
 let projectFailureNotice='';
-let attachments = [], sending = false, lastSignature = '', startedAt = 0,browserUI;
+let attachments = [], sending = false, lastSignature = '', startedAt = 0,browserUI,mediaOperation;
 let draftOwner, draftTimer, draftWrites=Promise.resolve();
 let updateProjects,updateProjectWork,updateTester,updateWebsiteTester,updateReadiness;
+const updateMoraMode=setupMoraMode(api,error);
 const messageRows=new Map();
 let visibleHistory=200,historyOwner;
 const older=document.createElement('button');older.id='load-older';older.className='load-older';older.hidden=true;$('messages').before(older);
@@ -52,6 +56,8 @@ async function stitchAction(name,payload) {
 let openReviewId = null, selectedReviewPath = null, openReviewSignature = '';
 const icon = name => { const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); const use = document.createElementNS('http://www.w3.org/2000/svg', 'use'); use.setAttribute('href', `#i-${name}`); svg.append(use); return svg; };
 const textNode = (tag, text, className) => { const node = document.createElement(tag); node.textContent = text; if (className) node.className = className; return node; };
+setupUsage(api);
+const mediaStatus=textNode('div','','media-status');mediaStatus.id='media-status';mediaStatus.hidden=true;mediaStatus.setAttribute('role','status');$('attachments').after(mediaStatus);
 const liveReview=textNode('button','','live-review');liveReview.id='live-review';liveReview.hidden=true;liveReview.setAttribute('aria-label','Review live file changes');$('composer').before(liveReview);
 let trelloConfigured=false,trelloChanging=false;
 const trello=textNode('section','');trello.id='trello-settings';trello.append(textNode('strong','Trello board'),Object.assign(textNode('p','Checking connection…'),{id:'trello-status'}));trello.querySelector('p').setAttribute('role','status');
@@ -201,7 +207,7 @@ function renderMessages() {
   older.hidden=historyCount<=visibleHistory;older.textContent=`Load older messages (${Math.max(0,historyCount-visibleHistory)} remaining)`;
   const rows=[...history.slice(-visibleHistory),...(state.pendingQueue || []).map(entry=>({...entry,itemId:'queue-'+entry.queueId,kind:'queued'}))];
   if(state.lastOutcome && !state.busy)rows.push({...state.lastOutcome,itemId:'outcome-'+state.lastOutcome.turnId,kind:'outcome',previewReady:state.projectWork?.root===state.projectPath&&state.projectWork?.run?.status==='ready',tools:state.lastOutcomeOperations??(state.items || []).filter(item=>item.turnId===state.lastOutcome.turnId && (item.kind==='toolCall' || item.kind==='userShell')),review:state.lastOutcomeReview??(state.items || []).find(item=>item.turnId===state.lastOutcome.turnId && item.kind==='fileChanges'),activeRequest:state.activeRequest});
-  const seen=new Set();let position=0;
+  const seen=new Set();let position=0,queuePosition=0;
   for(const item of rows) {
     if(!['fileChanges','activity','toolCall','userShell','agentMessage','userMessage','queued','outcome'].includes(item.kind))continue;
     const key=item.itemId,signature=JSON.stringify({...item,images:undefined,queuePaused:item.kind==='queued'?state.queuePaused:undefined});
@@ -215,18 +221,25 @@ function renderMessages() {
         node.className='timeline-operation';
         if(!sameKind){node.replaceChildren();const details=document.createElement('details');details.className='tool-card';details.dataset.id=key;details.open=item.status==='inProgress';const summary=document.createElement('summary');summary.append(icon('terminal'),textNode('span',''),textNode('span','','tool-status'));details.append(summary);node.append(details);details.addEventListener('toggle',()=>renderToolOutput(node));}
         const summary=node.querySelector('summary');summary.children[1].textContent=item.description || item.tool || item.commandText || 'Project operation';summary.children[2].textContent=item.status==='inProgress'?'Running':item.status || 'Completed';renderToolOutput(node);
-      }else if(item.kind==='agentMessage' || item.kind==='userMessage' || item.kind==='queued') {
-        const user=item.kind!=='agentMessage';node.className='message '+(user?'user':'assistant')+(item.kind==='queued'?' queued':'');
+      }else if(item.kind==='queued') {
+        node.className='message user queued';node.setAttribute('role','group');node.setAttribute('aria-label',state.queuePaused?'Paused queued message':'Queued message');
+        if(!sameKind){
+          node.replaceChildren();const line=textNode('div','','queue-row'),mark=icon('queue'),badge=textNode('span','','queue-badge'),body=textNode('div','','message-body'),images=textNode('button','','queue-images'),actions=textNode('div','','queue-actions');
+          mark.classList.add('queue-mark');images.addEventListener('click',()=>editQueued(node));
+          const edit=textNode('button','Edit','queue-edit-button'),remove=textNode('button','','queue-remove');edit.title='Edit this queued message';remove.append(icon('trash'));remove.setAttribute('aria-label','Remove');remove.title='Remove queued message';
+          edit.addEventListener('click',()=>editQueued(node));remove.addEventListener('click',()=>action(()=>api.queueCommand('remove',{queueId:node.currentItem.queueId})));
+          actions.append(edit,remove);line.append(mark,badge,body,images,actions);node.append(line);
+        }
+        node.querySelector('.queue-badge').textContent=state.queuePaused?'Paused':'Queued';node.classList.toggle('paused',!!state.queuePaused);
+        const body=node.querySelector('.message-body');body.textContent=item.displayText || item.text || '';body.dir='auto';body.title=body.textContent;
+        const count=item.images?.length || 0,images=node.querySelector('.queue-images');images.hidden=!count;images.textContent=count+' '+(count===1?'image':'images');images.setAttribute('aria-label','View '+count+' queued '+(count===1?'image':'images'));
+      }else if(item.kind==='agentMessage' || item.kind==='userMessage') {
+        const user=item.kind!=='agentMessage';node.className='message '+(user?'user':'assistant');
         if(!sameKind){node.replaceChildren();const avatar=textNode('div',user?'Y':'','avatar');if(!user){const logo=document.createElement('img');logo.src='assets/mora-mark.svg';logo.alt='Mora';avatar.append(logo);}const content=textNode('div','','message-content');content.append(textNode('div',user?'You':'Mora','message-label'),textNode('div','','message-images'),textNode('div','','message-body'));node.append(avatar,content);}
         if(!sameImages){const imgs=node.querySelector('.message-images');imgs.replaceChildren();for(const image of item.images || []){const img=document.createElement('img');img.src='data:'+image.mediaType+';base64,'+image.base64Data;img.alt='Attached image';imgs.append(img);}}
         if(!user)node.querySelector('.message-label').textContent=item.status==='completed'?'Completed':item.status==='inProgress'?'Working':'Mora';
         node.setAttribute('aria-label',user?'Your message':'Mora reply');
         renderText(node.querySelector('.message-body'),item.displayText || item.text || '',item.status==='inProgress');
-        if(item.kind==='queued') {
-          const label=node.querySelector('.message-label');label.replaceChildren(document.createTextNode('You'),textNode('span',state.queuePaused?'Paused':'Queued','queue-badge'));
-          node.querySelector('.queue-actions')?.remove();const actions=textNode('div','','queue-actions');
-          for(const name of ['Edit','Remove']){const button=textNode('button',name);button.addEventListener('click',()=>name==='Remove'?action(()=>api.queueCommand('remove',{queueId:item.queueId})):editQueued(node));actions.append(button);}node.querySelector('.message-content').append(actions);
-        }
       }else {
         node.replaceChildren();
         if(item.kind==='fileChanges') {
@@ -247,11 +260,13 @@ function renderMessages() {
       record.images=item.images;
     }
     for(const button of node.querySelectorAll('.request-actions button,.timeline-preview-card button'))button.disabled=!!(state.busy || state.loading || state.projectOperation || state.projectRepair || state.testerActive || state.websiteActive);
-    if($('messages').children[position]!==node)$('messages').insertBefore(node,$('messages').children[position] || null);
-    seen.add(key);position++;
+    const parent=$(item.kind==='queued'?'queue-messages':'messages'),index=item.kind==='queued'?queuePosition++:position++;
+    if(parent.children[index]!==node)parent.insertBefore(node,parent.children[index] || null);
+    seen.add(key);
   }
   for(const [key,record] of messageRows)if(!seen.has(key)){record.node.remove();messageRows.delete(key);}
-  const queue=$('queue-controls');queue.hidden=!(state.pendingQueue || []).length;$('queue-status').textContent=(state.pendingQueue || []).length+' pending · '+(state.queuePaused?'paused':'runs in order');$('queue-toggle').textContent=state.queuePaused?'Resume queue':'Pause queue';$('queue-toggle').disabled=state.loading || state.stopping || state.connection!=='ready' || state.historyMissing || state.workUnavailable;
+  const queue=$('queue-controls');queue.hidden=$('queue-dock').hidden=!(state.pendingQueue || []).length;if(queue.hidden)$('queue-menu').open=false;
+  $('queue-status').textContent=(state.pendingQueue || []).length+' pending · '+(state.queuePaused?'paused':'runs in order');$('queue-toggle').textContent=state.queuePaused?'Resume queue':'Pause queue';$('queue-toggle').disabled=state.loading || state.stopping || state.connection!=='ready' || state.historyMissing || state.workUnavailable;
   if(nearBottom && !conversationFind.isOpen())requestAnimationFrame(()=>{area.scrollTop=area.scrollHeight;});
 }
 function renderToolOutput(node) {
@@ -263,7 +278,11 @@ function renderToolOutput(node) {
 }
 function editQueued(node) {
   if(node.querySelector('textarea'))return;
-  const form=textNode('div','','queue-edit'),input=document.createElement('textarea');input.value=node.currentItem.text;input.setAttribute('aria-label','Edit queued message');const save=textNode('button','Save queued message'),cancel=textNode('button','Cancel edit');save.addEventListener('click',()=>action(async()=>{await api.queueCommand('edit',{queueId:node.currentItem.queueId,text:input.value});form.remove();update(await api.getState());}));cancel.addEventListener('click',()=>form.remove());form.append(input,save,cancel);node.append(form);input.focus();
+  const form=textNode('div','','queue-edit'),input=document.createElement('textarea');input.value=node.currentItem.text;input.dir='auto';input.setAttribute('aria-label','Edit queued message');const save=textNode('button','Save queued message'),cancel=textNode('button','Cancel edit');
+  const close=()=>{form.remove();node.querySelector('.queue-edit-button').focus();};
+  save.addEventListener('click',()=>action(async()=>{await api.queueCommand('edit',{queueId:node.currentItem.queueId,text:input.value});update(await api.getState());close();}));cancel.addEventListener('click',close);form.addEventListener('keydown',event=>{if(event.key==='Escape'){event.preventDefault();close();}});
+  const images=textNode('div','','message-images');for(const image of node.currentItem.images || []){const view=textNode('button','','image-preview-button'),img=document.createElement('img');img.src='data:'+image.mediaType+';base64,'+image.base64Data;img.alt='Queued image';view.setAttribute('aria-label','Enlarge queued image');view.append(img);view.addEventListener('click',()=>showImage(img.src,img.alt));images.append(view);}
+  form.append(input,images,save,cancel);node.append(form);input.focus();
 }
 function fillSelect(node, options, value) {
   const signature = JSON.stringify(options);
@@ -271,6 +290,7 @@ function fillSelect(node, options, value) {
   node.value = value;
 }
 function update(next) {
+  if(mediaOperation && (next.loading||next.workUnavailable||next.sessionId!==state.sessionId))cancelMedia();
   if (next.sessionId === state.sessionId && state.error && state.error !== next.error) dismissedErrors.delete(errorKey(state.error));
   if (next.sessionId !== state.sessionId) closeChanges();
   if (next.sessionId !== state.sessionId || (state.error && !next.error)) $('error-banner').hidden = true;
@@ -280,6 +300,7 @@ function update(next) {
   updateTester?.(state);
   updateWebsiteTester?.(state);
   updateReadiness?.(state);
+  updateMoraMode(state);
   const account=state.account || {status:'unknown',message:'Uses your existing Muse login.'};
   $('account-settings').hidden=!api.accountCommand;
   $('account-status').textContent=account.message;
@@ -312,7 +333,7 @@ function update(next) {
   if (state.busy && !wasBusy) { startedAt = Date.now(); $('elapsed').textContent = '0s'; }
   $('send-button').hidden = false; $('stop-button').hidden = !state.busy; $('stop-button').disabled = state.stopping;
   for (const id of ['new-chat','add-project','workspace-button','model','effort','execution-mode','choose-muse','reconnect']) $(id).disabled = state.busy || state.loading || sending || state.connection==='connecting';
-  $('attach-button').disabled = state.loading || sending || state.workUnavailable;
+  $('attach-button').disabled = state.loading || sending || !!mediaOperation || state.workUnavailable;
   $('prompt').disabled = state.loading || sending || state.workUnavailable;
   $('prompt').placeholder = state.busy && state.finishing ? 'Write your next message while Muse finishes…' : state.busy ? 'Queue a follow-up while Muse works…' : general ? 'Ask Muse anything, or attach an image…' : 'Describe what you want to change…';
   $('composer').classList.toggle('full-mode', !general && state.executionMode === 'full');
@@ -335,12 +356,18 @@ function update(next) {
   updateLibrary(state,sending);updateQuickActions();
   renderMessages(); conversationFind.update(state.sessionId);refreshSend();refreshStitch();
 }
-function refreshSend() { $('send-button').disabled = sending || state.loading || state.testerActive || state.websiteActive || state.projectOperation || state.projectRepair || state.historyMissing || state.workUnavailable || ['required','pending'].includes(state.account?.status) || state.connection !== 'ready' || (!$('prompt').value.trim() && !attachments.length);const count=attachments.filter(image=>image.annotationRef).length;$('browser-send-notes').hidden=!count;$('browser-send-notes').textContent=`Send notes (${count})`;$('browser-send-notes').disabled=$('send-button').disabled;browserUI?.setSending(sending);for(const button of $('attachments').querySelectorAll('button'))button.disabled=sending; }
+function refreshSend() { $('send-button').disabled = sending || !!mediaOperation || (state.moraMode?.enabled&&!!attachments.length) || state.loading || state.testerActive || state.websiteActive || state.projectOperation || state.projectRepair || state.historyMissing || state.workUnavailable || ['required','pending'].includes(state.account?.status) || state.connection !== 'ready' || (!$('prompt').value.trim() && !attachments.length);const count=attachments.filter(image=>image.annotationRef).length;$('browser-send-notes').hidden=!count;$('browser-send-notes').textContent=`Send notes (${count})`;$('browser-send-notes').disabled=$('send-button').disabled;browserUI?.setSending(sending);for(const button of $('attachments').querySelectorAll('button'))button.disabled=sending;
+  $('attach-button').disabled=state.loading||sending||!!mediaOperation||state.workUnavailable;
+  mediaStatus.replaceChildren();mediaStatus.hidden=!mediaOperation&&!(state.moraMode?.enabled&&attachments.length);
+  if(mediaOperation){mediaStatus.append(textNode('span','Preparing attachments…'));const cancel=textNode('button','Cancel');cancel.addEventListener('click',cancelMedia);mediaStatus.append(cancel);}
+  else if(!mediaStatus.hidden)mediaStatus.textContent='Turn off Mora Mode to send images or video frames. Your draft is saved.';
+}
 function renderAttachments(persist=true) {
   $('attachments').replaceChildren(); $('attachments').hidden = !attachments.length;
   for (const [index,image] of attachments.entries()) {
     const box = textNode('div', '', 'attachment'); const img = document.createElement('img'); img.src = `data:${image.mediaType};base64,${image.base64Data}`; img.alt = image.name || 'Attached image';
     const remove = textNode('button', '×'); remove.setAttribute('aria-label', 'Remove image'); remove.addEventListener('click', () => { attachments.splice(index,1); renderAttachments(); }); box.append(img,remove);
+    if(image.sourceVideo){box.classList.add('video-frame');box.title=`${image.sourceVideo} · ${image.frameTime}s`;box.append(textNode('small',`${image.frameTime}s`));}
     if(image.annotationRef){box.classList.add('saved-annotation');const number=attachments.slice(0,index+1).filter(item=>item.annotationRef).length;const edit=textNode('button',`Note ${number}: ${image.note}`,'saved-note-edit');edit.title=image.note;edit.setAttribute('aria-label',`Edit note ${number}`);edit.addEventListener('click',()=>action(()=>api.browserCommand('note-edit',{id:image.annotationRef.id})));box.append(edit);}
     else if(image.contextText){box.classList.add('browser-attachment');box.append(textNode('strong',`Selection ${index+1}`),textNode('small',image.sourceUrl || '', 'annotation-source'));const note=document.createElement('textarea');note.value=image.note || '';note.maxLength=10000;note.placeholder='What should change here?';note.setAttribute('aria-label',`Note for selection ${index+1}`);note.addEventListener('input',()=>{image.note=note.value;scheduleDraft();});box.append(note);const context=textNode('details','','attachment-context');context.append(textNode('summary',image.name || 'Browser annotation'),textNode('pre',image.contextText));box.append(context);}
     $('attachments').append(box);
@@ -348,12 +375,36 @@ function renderAttachments(persist=true) {
 }
 function addImages(images) {
   const next = [...attachments,...images];
-  let total = 0;
-  for (const image of next) { const bytes = image.base64Data.length * 3/4 - (image.base64Data.endsWith('==') ? 2 : image.base64Data.endsWith('=') ? 1 : 0); if (bytes > 10*1024*1024) throw new Error('Each image must be 10 MB or smaller.'); total += bytes; }
-  if (next.length > 20 || total > 20*1024*1024) throw new Error('Attach up to 20 MB of images per message.');
+  validateImages(next);
   attachments = next; renderAttachments();
 }
-async function pickImages() { await action(async () => addImages(await api.pickImages())); }
+function imageBudget(){return {imageCount:attachments.length,imageBytes:attachments.reduce((sum,image)=>sum+image.base64Data.length*3/4-(image.base64Data.endsWith('==')?2:image.base64Data.endsWith('=')?1:0),0)};}
+function cancelMedia(){mediaOperation?.controller.abort();mediaOperation=null;refreshSend();}
+function readFileData(file,signal){return new Promise((resolve,reject)=>{
+  const reader=new FileReader(),abort=()=>reader.abort(),cleanup=()=>signal.removeEventListener('abort',abort);
+  reader.onload=()=>{cleanup();resolve(String(reader.result).split(',',2)[1]);};reader.onerror=()=>{cleanup();reject(Error(`Could not read ${file.name}.`));};reader.onabort=()=>{cleanup();reject(new DOMException('Attachment cancelled','AbortError'));};
+  if(signal.aborted){reject(signal.reason);return;}signal.addEventListener('abort',abort,{once:true});reader.readAsDataURL(file);
+});}
+async function attachMedia(getFiles){
+  if(mediaOperation||sending||state.loading||state.workUnavailable)return;
+  const operation={owner:state.sessionId,controller:new AbortController()};mediaOperation=operation;refreshSend();
+  try{
+    await flushDraft();operation.controller.signal.throwIfAborted();
+    const files=await getFiles();operation.controller.signal.throwIfAborted();
+    const selected=validateMediaSelection(files,imageBudget()),images=[];
+    for(const file of selected){
+      operation.controller.signal.throwIfAborted();
+      if(file.mediaType.startsWith('video/'))images.push(...await extractVideoFrames(file,{signal:operation.controller.signal}));
+      else images.push({mediaType:file.mediaType,base64Data:file.base64Data||await readFileData(file.file,operation.controller.signal),name:file.name});
+    }
+    operation.controller.signal.throwIfAborted();if(operation.owner!==state.sessionId)return;
+    addImages(images);await flushDraft();
+  }catch(e){if(!operation.controller.signal.aborted&&operation.owner===state.sessionId)error(e);}
+  finally{if(mediaOperation===operation){mediaOperation=null;refreshSend();}}
+}
+function pickImages(){return attachMedia(async()=>{const files=await api.pickImages(imageBudget());return files.map(file=>({...file,size:file.size??file.base64Data.length*3/4-(file.base64Data.endsWith('==')?2:file.base64Data.endsWith('=')?1:0)}));});}
+function attachFiles(files){return attachMedia(async()=>files.map(file=>({file,mediaType:file.type,name:file.name,size:file.size})));}
+window.addEventListener('pagehide',cancelMedia);
 function scheduleDraft() {clearTimeout(draftTimer);draftTimer=setTimeout(()=>flushDraft().catch(error),200);}
 function flushDraft() {
   clearTimeout(draftTimer);if(!api.saveDraft || state.workUnavailable || draftOwner===undefined)return Promise.resolve();
@@ -367,7 +418,7 @@ async function send() {
   try {
     await flushDraft();
     const sentImages=attachments.map(image=>({...image})),sentPrompt=$('prompt').value;
-    let noteNumber=0;const text=[$('prompt').value,...attachments.map((image,index)=>image.contextText ? `${image.annotationRef?`Note ${++noteNumber}`:`Selection ${index+1}`}${image.note ? ` — requested change: ${image.note}` : ''}\n${image.contextText}` : '').filter(Boolean)].filter(Boolean).join('\n\n');
+    let noteNumber=0;const text=[$('prompt').value,...attachments.map((image,index)=>image.contextText ? `${image.annotationRef?`Note ${++noteNumber}`:`Selection ${index+1}`}${image.note ? ` — requested change: ${image.note}` : ''}\n${image.contextText}` : '').filter(Boolean),videoContext(attachments)].filter(Boolean).join('\n\n');
     await api.sendMessage({ text, images: attachments.map(({ mediaType, base64Data }) => ({ mediaType, base64Data })) });
     if($('prompt').value===sentPrompt){$('prompt').value = ''; $('prompt').style.height = '';}
     attachments=attachments.filter(image=>!sentImages.some(sent=>['mediaType','base64Data','contextText','note'].every(key=>sent[key]===image[key]) && sent.annotationRef?.id===image.annotationRef?.id));renderAttachments(false);await flushDraft();$('error-banner').hidden=true;
@@ -377,10 +428,14 @@ async function send() {
 $('prompt').addEventListener('input', () => { const prompt=$('prompt'),minimum=parseFloat(getComputedStyle(prompt).minHeight);prompt.style.height='auto';prompt.style.height=`${Math.min(200,Math.max(minimum,prompt.scrollHeight))}px`; refreshSend();scheduleDraft(); });
 $('prompt').addEventListener('keydown', event => { if (event.key === 'Enter' && !event.shiftKey && !event.isComposing && event.keyCode !== 229) { event.preventDefault(); send(); } });
 $('prompt').addEventListener('paste', event => {
-  const files = [...event.clipboardData.items].filter(item => item.kind === 'file' && item.type.startsWith('image/')).map(item => item.getAsFile());
+  const files = [...event.clipboardData.items].filter(item => item.kind === 'file').map(item => item.getAsFile()).filter(Boolean);
   if (!files.length) return; event.preventDefault();
-  action(async () => { const images = []; for (const file of files) { if (!['image/png','image/jpeg','image/webp'].includes(file.type)) throw new Error('Use a PNG, JPEG, or WebP image.'); if (file.size > 10*1024*1024) throw new Error('Each image must be 10 MB or smaller.'); const url = await new Promise((resolve,reject) => { const reader = new FileReader(); reader.onload = () => resolve(reader.result); reader.onerror = reject; reader.readAsDataURL(file); }); images.push({ mediaType: file.type, base64Data: url.split(',')[1], name: file.name }); } addImages(images); });
+  attachFiles(files);
 });
+document.addEventListener('dragover',event=>event.preventDefault());document.addEventListener('drop',event=>event.preventDefault());
+$('composer').addEventListener('dragover',event=>{if([...event.dataTransfer.types].includes('Files')){event.preventDefault();$('composer').classList.add('dragging');}});
+$('composer').addEventListener('dragleave',()=>$('composer').classList.remove('dragging'));
+$('composer').addEventListener('drop',event=>{event.preventDefault();$('composer').classList.remove('dragging');attachFiles([...(event.dataTransfer?.files||[])]);});
 $('send-button').addEventListener('click', send);
 $('queue-toggle').addEventListener('click',()=>action(()=>api.queueCommand(state.queuePaused?'resume':'pause')));
 $('queue-clear').addEventListener('click',()=>action(()=>api.queueCommand('clear')));

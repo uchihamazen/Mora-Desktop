@@ -167,7 +167,7 @@ export class ExecRunner extends EventEmitter {
     if (reasoningEffort) args.push('--reasoning-effort', reasoningEffort);
     if (providerId) args.push('--provider', providerId);
     if (executionMode === 'full') args.push('--yolo');
-    else args.push('--disable-shell', '--disable-write', '--approval-mode', 'on-request');
+    else args.push('--disable-shell', '--disable-write', ...(executionMode==='scoped'?[]:['--approval-mode', 'on-request']));
     for (const image of images) args.push('--image', image);
     args.push(...extraArgs);
     // Muse 1.4.1's Meta exec future overflows Windows' default Rust thread stack.

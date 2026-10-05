@@ -13,6 +13,10 @@ export function validateDraft(value = {}) {
         image[key] = source[key];
       }
     }
+    if(['sourceVideo','frameIndex','frameTime'].some(key=>source[key]!==undefined)){
+      if(typeof source.sourceVideo!=='string'||!source.sourceVideo||source.sourceVideo.length>200||!Number.isInteger(source.frameIndex)||source.frameIndex<0||source.frameIndex>=8||!Number.isFinite(source.frameTime)||source.frameTime<0||source.frameTime>600)throw Error('Invalid video frame metadata.');
+      Object.assign(image,{sourceVideo:source.sourceVideo,frameIndex:source.frameIndex,frameTime:source.frameTime});
+    }
     if(source.annotationRef!==undefined) {
       const ref=source.annotationRef;
       if(!ref || !['id','tabId','documentId'].every(key=>typeof ref[key]==='string' && /^[\w-]{1,100}$/.test(ref[key])) || !['element','region'].includes(ref.mode) || !ref.rect || !ref.viewport || ![ref.rect.x,ref.rect.y,ref.rect.width,ref.rect.height,ref.viewport.width,ref.viewport.height].every(number=>Number.isFinite(number)&&Math.abs(number)<=10000000) || ref.rect.width<=0 || ref.rect.height<=0 || ref.viewport.width<=0 || ref.viewport.height<=0)throw Error('Invalid annotation reference.');

@@ -3,7 +3,20 @@ import assert from 'node:assert/strict';
 import {mkdtemp, readFile, writeFile, readdir, rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {loadWork, saveWork, deleteWork} from '../src/work.js';
+import {loadWork, saveWork, deleteWork,validateDraft} from '../src/work.js';
+
+const frame={mediaType:'image/jpeg',base64Data:'/9j/',name:'demo.webm · frame 2/8',sourceVideo:'demo.webm',frameIndex:1,frameTime:1.5};
+test('video frame ownership and timestamps survive draft and queue reload',async()=>{
+ const directory=await mkdtemp(path.join(tmpdir(),'mora-video-work-'));
+ try{
+  await saveWork(directory,'video',{draft:{text:'Inspect clip',images:[frame]},pendingQueue:[{queueId:'q',text:'Video demo.webm at 1.5s',images:[frame]}]});
+  const restored=await loadWork(directory,'video');
+  for(const image of [restored.draft.images[0],restored.pendingQueue[0].images[0]]){assert.equal(image.sourceVideo,'demo.webm');assert.equal(image.frameIndex,1);assert.equal(image.frameTime,1.5);}
+ }finally{await rm(directory,{recursive:true,force:true});}
+});
+test('invalid video metadata is refused instead of corrupting saved work',()=>{
+ for(const metadata of [{sourceVideo:'x'.repeat(201)},{frameIndex:-1},{frameIndex:8},{frameTime:NaN},{frameTime:601},{sourceVideo:undefined,frameIndex:0}])assert.throws(()=>validateDraft({text:'',images:[{...frame,...metadata}]}),/video/i);
+});
 
 test('drafts, queued images and active receipts survive independently per conversation', async () => {
   const directory = await mkdtemp(path.join(tmpdir(), 'mora-work-'));

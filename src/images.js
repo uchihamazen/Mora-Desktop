@@ -22,14 +22,15 @@ export function validateImages(images = []) {
     const { mediaType, base64Data } = image || {};
     if (typeof base64Data !== 'string' || !base64Data.length || !/^[A-Za-z0-9+/]*={0,2}$/.test(base64Data) || base64Data.length % 4 !== 0) throw new Error('Invalid base64 image.');
     if (base64Data.length > Math.ceil(10 * 1024 * 1024 / 3) * 4) throw new Error('Each image must be 10 MB or smaller.');
-    const bytes = Buffer.from(base64Data, 'base64');
-    if (bytes.toString('base64') !== base64Data) throw new Error('Invalid base64 image.');
+    const bytes = typeof Buffer === 'function' ? Buffer.from(base64Data, 'base64') : Uint8Array.fromBase64 ? Uint8Array.fromBase64(base64Data) : Uint8Array.from(atob(base64Data),char=>char.charCodeAt(0));
+    const canonical = typeof Buffer === 'function' ? bytes.toString('base64') : bytes.toBase64 ? bytes.toBase64() : btoa(atob(base64Data));
+    if (canonical !== base64Data) throw new Error('Invalid base64 image.');
     if (bytes.length > 10 * 1024 * 1024) throw new Error('Each image must be 10 MB or smaller.');
     total += bytes.length;
     if (total > 20 * 1024 * 1024) throw new Error('Images must total 20 MB or less per message.');
-    const valid = mediaType === 'image/png' && bytes.subarray(0, 8).equals(Buffer.from([137,80,78,71,13,10,26,10]))
+    const valid = mediaType === 'image/png' && [137,80,78,71,13,10,26,10].every((value,index)=>bytes[index]===value)
       || mediaType === 'image/jpeg' && bytes[0] === 255 && bytes[1] === 216 && bytes[2] === 255
-      || mediaType === 'image/webp' && bytes.toString('ascii', 0, 4) === 'RIFF' && bytes.toString('ascii', 8, 12) === 'WEBP';
+      || mediaType === 'image/webp' && String.fromCharCode(...bytes.subarray(0,4)) === 'RIFF' && String.fromCharCode(...bytes.subarray(8,12)) === 'WEBP';
     if (!valid) throw new Error('Image format does not match its content. Use PNG, JPEG, or WebP.');
     return { type: 'image', mediaType, base64Data };
   });

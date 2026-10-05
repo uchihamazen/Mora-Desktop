@@ -9,7 +9,7 @@ const {chromium}=require('./runtime-packages.cjs').runtimeRequire('playwright');
 const png='iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+ip1sAAAAASUVORK5CYII=';
 const server=createServer(async(req,res)=>{
   const file={'/':'index.html','/style.css':'style.css','/renderer.js':'renderer.js','/markdown.js':'markdown.js','/project-ui.js':'project-ui.js','/work-ui.js':'work-ui.js','/images.js':'images.js','/projects.js':'projects.js','/browser-ui.js':'browser-ui.js','/assets/mora-mark.svg':'assets/mora-mark.svg'}[req.url];
-  if(['/tester-ui.js','/website-ui.js','/website-coverage.js','/library-ui.js','/find-ui.js','/quick-actions.js','/setup-ui.js','/menu-ui.js'].includes(req.url)){res.setHeader('Content-Type','application/javascript');res.end(await readFile('src'+req.url));return;}
+  if(['/tester-ui.js','/website-ui.js','/website-coverage.js','/library-ui.js','/find-ui.js','/quick-actions.js','/setup-ui.js','/menu-ui.js','/mora-ui.js','/usage-ui.js','/usage.js','/video-frames.js'].includes(req.url)){res.setHeader('Content-Type','application/javascript');res.end(await readFile('src'+req.url));return;}
   if(req.url==='/workspace.css'){res.setHeader('Content-Type','text/css');res.end(await readFile('src/workspace.css'));return;}
   if(!file){res.writeHead(404).end();return;}
   res.setHeader('Content-Type',file.endsWith('.svg')?'image/svg+xml':file.endsWith('.css')?'text/css':file.endsWith('.js')?'application/javascript':'text/html');
@@ -24,6 +24,15 @@ try{
   let callback;window.smoke={projectActions:[],restores:[],accountActions:[],projectsCreated:[],stopCalls:0,failDraft:false,sent:[],copied:'',deleted:[],created:[],emit:next=>{state={...state,...next};callback?.({type:'state',state});}};
   window.muse={projectCommand:async action=>{window.smoke.projectActions.push(action);},checkpointCommand:async(action,payload)=>{if(action==='list')return [{id:'cp1',label:'Before request',fileCount:1,createdAt:new Date().toISOString(),manual:false}];if(action==='preview')return {token:'token',checkpoint:{label:'Before request',manual:false},changes:[{path:'app.js',status:'restore original',conflict:true}]};if(action==='restore'){window.smoke.restores.push(payload);return {restored:1};}},chooseProjectParent:async()=> 'C:\\Projects',createProject:async payload=>{window.smoke.projectsCreated.push(payload);return state;},accountCommand:async action=>{window.smoke.accountActions.push(action);window.smoke.emit({account:action==='login'?{status:'pending',message:'Approve the code',userCode:'DEMO-CODE'}:{status:'required',message:'Sign in required'}});},getState:async()=>state,onEvent:cb=>{callback=cb;return()=>{}},copyText:async text=>{window.smoke.copied=text},setOptions:async options=>{state={...state,...options};return state},pickImages:async()=>[{mediaType:'image/png',base64Data:png,name:'image.png'}],newChat:async projectPath=>{window.smoke.created.push(projectPath);return state},resumeChat:async()=>state,deleteChat:async id=>{window.smoke.deleted.push(id);return state},chooseWorkspace:async()=>state,chooseMuse:async()=>state,connect:async()=>state,stopTurn:async()=>{window.smoke.stopCalls++;window.smoke.emit({busy:false,stopping:false,queuePaused:true});},sendMessage:async value=>{window.smoke.sent.push(value);return{accepted:true}},saveDraft:async value=>{if(window.smoke.failDraft)throw new Error('Disk save failed');window.smoke.draft=value;},queueCommand:async action=>{if(action==='clear')window.smoke.emit({pendingQueue:[]});return state;}};
   window.smoke.testerCalls=[];
+  window.smoke.queueCalls=[];window.muse.queueCommand=async(action,payload={})=>{
+    window.smoke.queueCalls.push({action,payload});
+    let pendingQueue=state.pendingQueue,queuePaused=state.queuePaused;
+    if(action==='clear')pendingQueue=[];
+    if(action==='pause'||action==='resume')queuePaused=action==='pause';
+    if(action==='remove')pendingQueue=pendingQueue.filter(entry=>entry.queueId!==payload.queueId);
+    if(action==='edit')pendingQueue=pendingQueue.map(entry=>entry.queueId===payload.queueId?{...entry,text:payload.text}:entry);
+    window.smoke.emit({pendingQueue,queuePaused});return state;
+  };
   window.smoke.reconnects=0;window.muse.connect=async()=>{window.smoke.reconnects++;window.smoke.emit({connection:'ready',error:''});return state;};
   window.muse.exportProject=async()=>{if(window.smoke.exportFails)throw Error('Source limits exceeded.');return {destination:'C:\\Exports\\App.zip',fileCount:2,sha256:'a'.repeat(64)};};
   window.muse.revealProjectExport=async()=>{window.smoke.revealed=true;};
@@ -193,11 +202,44 @@ try{
  await page.evaluate(()=>window.smoke.emit({pendingQueue:[{queueId:'q1',text:'Draft the next message',images:[]}]}));
  await page.waitForFunction(()=>document.querySelectorAll('.queue-badge').length===1);
  assert.equal(await page.locator('.queue-badge').textContent(),'Queued');
+ assert.equal(await page.locator('#queue-messages .message.queued').count(),1,'Pending messages belong next to the composer');
+ assert.equal(await page.locator('#messages .message.queued').count(),0,'Pending messages should not fill the conversation');
+ const queuedBounds=await page.locator('.message.queued').boundingBox(),queuedComposerBounds=await page.locator('#composer').boundingBox();
+ assert.ok(queuedBounds.height<=44,'A short queued message is one compact line');
+ assert.ok(queuedBounds.y+queuedBounds.height<=queuedComposerBounds.y && queuedComposerBounds.y-queuedBounds.y-queuedBounds.height<=12,'The queue sits immediately above the composer');
+ await page.locator('.message.queued').getByRole('button',{name:'Edit',exact:true}).click();
+ await page.getByRole('textbox',{name:'Edit queued message',exact:true}).fill('Keep my unsaved edit');
+ await page.evaluate(()=>window.smoke.emit({activity:'Another tool is working',queuePaused:true}));
+ assert.equal(await page.getByRole('textbox',{name:'Edit queued message',exact:true}).inputValue(),'Keep my unsaved edit','Progress and pause updates preserve the queue editor');
+ await page.keyboard.press('Escape');assert.equal(await page.getByRole('textbox',{name:'Edit queued message',exact:true}).count(),0);
+ assert.equal(await page.locator('.queue-edit-button').evaluate(node=>node===document.activeElement),true);
+ await page.evaluate(({png})=>window.smoke.emit({queuePaused:false,pendingQueue:[{queueId:'q1',text:'Hi',images:[]},{queueId:'q2',text:'Please fix this image',images:[{mediaType:'image/png',base64Data:png}]}]}),{png});
+ await page.getByRole('button',{name:'View 1 queued image',exact:true}).click();
+ await page.getByRole('button',{name:'Enlarge queued image',exact:true}).click();await page.getByRole('dialog').waitFor();await page.getByRole('button',{name:'Close image',exact:true}).click();
+ await page.getByRole('textbox',{name:'Edit queued message',exact:true}).fill('Edited follow-up');await page.getByRole('button',{name:'Save queued message',exact:true}).click();
+ await page.waitForFunction(()=>document.querySelectorAll('.queue-edit').length===0);
+ assert.deepEqual(await page.evaluate(()=>window.smoke.queueCalls.at(-1)),{action:'edit',payload:{queueId:'q2',text:'Edited follow-up'}});
+ assert.equal(await page.getByRole('button',{name:'View 1 queued image',exact:true}).count(),1,'Editing text keeps its queued image');
+ await page.locator('.message.queued').nth(1).getByRole('button',{name:'Remove',exact:true}).click();await page.waitForFunction(()=>document.querySelectorAll('.message.queued').length===1);
+ assert.deepEqual(await page.evaluate(()=>window.smoke.queueCalls.at(-1)),{action:'remove',payload:{queueId:'q2'}});
+ await page.locator('.composer-area').screenshot({path:'artifacts/mora-queue.png'});
+ await page.locator('#queue-menu > summary').click();assert.equal(await page.getByRole('button',{name:'Pause queue',exact:true}).isVisible(),true);
+ await page.keyboard.press('Escape');assert.equal(await page.locator('#queue-menu').getAttribute('open'),null);assert.equal(await page.locator('#queue-menu > summary').evaluate(node=>node===document.activeElement),true);
+ await clickControl(page,'queue-toggle');await page.waitForFunction(()=>document.querySelector('.queue-badge').textContent==='Paused');
+ await clickControl(page,'queue-toggle');await page.waitForFunction(()=>document.querySelector('.queue-badge').textContent==='Queued');
+ await page.setViewportSize({width:860,height:640});
+ await page.evaluate(()=>window.smoke.emit({pendingQueue:Array.from({length:8},(_,i)=>({queueId:'long-'+i,text:'A long queued message with lines\n'+'More text '.repeat(100),images:[]}))}));
+ assert.ok((await page.locator('#queue-messages').boundingBox()).height<=180,'Many queued messages leave room for typing');
+ assert.ok(await page.locator('.message.queued').evaluateAll(nodes=>nodes.every(node=>node.scrollWidth<=node.clientWidth)),'Long prompts fit the strip');
+ await page.locator('#queue-menu > summary').click();
+ const queueMenuBounds=await page.locator('#queue-menu .menu-content').boundingBox();assert.ok(queueMenuBounds.x>=0&&queueMenuBounds.y>=0&&queueMenuBounds.x+queueMenuBounds.width<=860,'The small-window queue menu stays visible');await page.keyboard.press('Escape');
+ await page.evaluate(()=>window.smoke.emit({pendingQueue:[{queueId:'q1',text:'Hi',images:[]}]}));await page.setViewportSize({width:1200,height:820});
  assert.equal(await page.locator('#send-button').isVisible(),true);
  await page.locator('#stop-button').click();
  assert.equal(await page.locator('.queue-badge').count(),1);
- await page.getByRole('button',{name:'Clear queue',exact:true}).click();
+ await clickControl(page,'queue-clear');
  await page.waitForFunction(()=>document.querySelectorAll('.queue-badge').length===0);
+ assert.equal(await page.locator('#queue-dock').isVisible(),false);assert.equal(await page.locator('#queue-menu').getAttribute('open'),null);
  await page.evaluate(()=>window.smoke.emit({busy:true,finishing:false}));
  await page.locator('#stop-button').click();
  await page.waitForFunction(()=>document.querySelector('#stop-button').hidden);

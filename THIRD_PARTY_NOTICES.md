@@ -41,6 +41,16 @@ license to OpenAI's product code, artwork or trademarks.
 
 ## Runtime, dependencies and services
 
+Mora Mode uses unmodified LangChain, LangGraph, their core/checkpoint/SDK packages,
+and Deep Agents by LangChain, Inc., distributed under the MIT License. Zod by
+Colin McDonnell is also distributed under MIT. Their original LICENSE files remain
+in the installed and packaged dependencies; exact versions are recorded in
+`pnpm-lock.yaml`. Source: [LangChain.js](https://github.com/langchain-ai/langchainjs),
+[LangGraph.js](https://github.com/langchain-ai/langgraphjs),
+[Deep Agents.js](https://github.com/langchain-ai/deepagentsjs), and
+[Zod](https://github.com/colinhacks/zod). These libraries do not include Muse account
+credentials or grant rights to the separately installed model service.
+
 Electron, Chromium, Node.js and other dependencies retain their original licenses
 and notices. Windows packages preserve `LICENSE.electron.txt` and
 `LICENSES.chromium.html` from the Electron distribution. Development dependencies

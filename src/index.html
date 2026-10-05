@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: https://lh3.googleusercontent.com; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: https://lh3.googleusercontent.com; media-src 'self' blob:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
   <title>Mora Desktop</title>
   <link rel="icon" href="assets/mora-mark.svg" type="image/svg+xml">
   <link rel="stylesheet" href="style.css">
@@ -20,6 +20,8 @@
     <symbol id="i-copy" viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V4H4v12h4"/></symbol>
     <symbol id="i-x" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></symbol>
     <symbol id="i-terminal" viewBox="0 0 24 24"><path d="m4 6 6 6-6 6m9 0h7"/></symbol>
+    <symbol id="i-queue" viewBox="0 0 24 24"><path d="M7 5H4v13h14v-3M10 10h10m-4-4 4 4-4 4"/></symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 6h16M9 6V3h6v3M6 6l1 15h10l1-15M10 10v7m4-7v7"/></symbol>
   </defs></svg>
   <aside id="navigation-sidebar" class="sidebar" aria-label="Navigation">
     <div class="brand"><img class="brand-mark" src="assets/mora-mark.svg" alt="Mora"><div><strong>Mora</strong><span class="brand-caption">DESKTOP</span></div><button id="sidebar-collapse" class="sidebar-collapse" aria-label="Hide sidebar" aria-controls="navigation-sidebar" title="Hide sidebar · Ctrl+B"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m14 6-6 6 6 6"/></svg></button></div>
@@ -36,6 +38,8 @@
     </nav>
     <div class="sidebar-bottom">
       <div class="engine-card"><span id="connection-dot" class="connection-dot"></span><div><strong id="engine-label">Connecting to Muse</strong><small id="engine-detail">Your engine, your projects</small></div></div>
+      <button id="usage-button" class="usage-button" popovertarget="usage-popover" aria-expanded="false">Usage remaining <small id="usage-summary">Not checked</small></button>
+      <section id="usage-popover" class="usage-popover" popover aria-label="Usage remaining"><div id="usage-body" role="status"></div></section>
       <button id="settings-button" class="settings-button" aria-haspopup="dialog" aria-controls="settings-panel"><svg><use href="#i-settings"/></svg>Settings</button>
       <dialog id="settings-panel" aria-labelledby="settings-title"><header class="settings-heading"><h2 id="settings-title">Settings</h2><button id="settings-close" aria-label="Close settings"><svg aria-hidden="true"><use href="#i-x"/></svg></button></header><div class="settings-content"><label class="notification-setting"><input id="completion-sound" type="checkbox" checked> Play a short sound when work finishes</label><section id="account-settings"><strong>Muse account</strong><p id="account-status" role="status">Checking sign-in…</p><output id="login-code" hidden></output><button id="sign-in">Sign in to Muse</button><button id="cancel-sign-in" hidden>Cancel sign-in</button><button id="refresh-account">Refresh account</button><button id="install-muse" hidden>Get Muse Code</button></section><p>Uses your installed Muse and existing login.</p><small>Mora Desktop is an independent interface for Muse Code, not affiliated with or endorsed by Meta.</small><button id="choose-muse">Choose Muse executable</button><button id="reconnect">Reconnect</button><small>This Muse version supports Read only and Full access. Per-action approvals are available in the Muse terminal.</small><section id="stitch-settings"><strong>Google Stitch · MCP</strong><p id="stitch-status" role="status">Checking connection…</p><label for="stitch-key">Stitch API key</label><input id="stitch-key" type="password" autocomplete="off" spellcheck="false" placeholder="Paste your Stitch key" maxlength="512"><div class="stitch-buttons"><button id="stitch-connect">Connect</button><button id="stitch-test" disabled>Test</button><button id="stitch-disconnect" disabled>Disconnect</button><button id="stitch-open">Open Stitch</button></div><small>Profile → Stitch settings → API key. Stored in your local Muse settings; available in Desktop and PowerShell on the next request.</small></section></div></dialog>
     </div>
@@ -69,19 +73,28 @@
         <div class="suggestions">
           <button id="explore-suggestion" data-prompt="Explore this project and explain its structure. Do not modify anything."><svg><use href="#i-folder"/></svg><strong>Explore my project</strong><small>Get the lay of the land</small><span>↗</span></button>
           <button id="explain-suggestion" data-prompt="Inspect this project for a concrete bug. Explain what you find before making changes."><svg><use href="#i-terminal"/></svg><strong>Find a bug</strong><small>Make the next fix clearer</small><span>↗</span></button>
-          <button id="image-suggestion"><svg><use href="#i-image"/></svg><strong>Bring an image</strong><small>A screenshot says a lot</small><span>↗</span></button>
+          <button id="image-suggestion"><svg><use href="#i-image"/></svg><strong>Bring media</strong><small>A screenshot or clip says a lot</small><span>↗</span></button>
         </div>
       </section>
       <section id="messages" class="messages" aria-live="polite" aria-label="Conversation"></section>
       <div id="working" class="working" hidden><span class="working-dot"></span><span id="working-label">Muse is working on it</span><span id="elapsed"></span></div>
     </div>
     <div class="composer-area">
-      <div id="queue-controls" class="queue-controls" hidden><span id="queue-status"></span><button id="queue-toggle">Pause queue</button><button id="queue-clear">Clear queue</button></div>
+      <section id="mora-mode-panel" class="mora-mode-panel" aria-label="Mora Mode tasks" hidden><div class="mora-mode-heading"><span id="mora-mode-status" role="status"></span><button id="mora-mode-stop" class="mora-task-action" hidden>Stop all</button></div><div id="mora-task-list"></div></section>
+      <div id="queue-dock" class="queue-dock" hidden>
+        <section id="queue-messages" aria-label="Queued messages" aria-live="polite"></section>
+        <div id="queue-controls" class="queue-controls" hidden>
+          <details id="queue-menu" class="workspace-menu" data-workspace-menu>
+            <summary aria-label="Queue actions" title="Queue actions">⋯</summary>
+            <div class="menu-content"><span id="queue-status" class="menu-label"></span><button id="queue-toggle">Pause queue</button><button id="queue-clear">Clear queue</button></div>
+          </details>
+        </div>
+      </div>
       <div class="composer" id="composer">
         <div id="attachments" class="attachments" hidden></div>
         <textarea id="prompt" dir="auto" rows="2" placeholder="Ask Muse to build, fix, or explain…" aria-label="Message Muse"></textarea>
         <div class="composer-toolbar">
-          <div class="composer-left"><button id="attach-button" class="icon-button" title="Attach images" aria-label="Attach images"><svg><use href="#i-plus"/></svg></button><span class="toolbar-divider"></span><select id="model" aria-label="Model"></select><select id="effort" aria-label="Reasoning effort" title="How much thinking the selected model should use"></select></div>
+          <div class="composer-left"><button id="attach-button" class="icon-button" title="Attach images or videos" aria-label="Attach images or videos"><svg><use href="#i-plus"/></svg></button><span class="toolbar-divider"></span><select id="model" aria-label="Model"></select><select id="effort" aria-label="Reasoning effort" title="How much thinking the selected model should use"></select><button id="mora-mode-toggle" class="mora-mode-toggle" aria-pressed="false" title="Keep chatting while Mora coordinates up to 3 coding workers">Mora Mode</button></div>
           <div class="composer-right"><select id="execution-mode" aria-label="Execution mode" title="Read only inspects files. Full access can change files and run commands."><option value="readonly">Read only</option><option value="full">Full access</option></select><button id="send-button" class="send-button" aria-label="Send message" title="Send message"><svg><use href="#i-up"/></svg></button><button id="stop-button" class="stop-button" aria-label="Stop request" title="Stop request" hidden><span></span></button></div>
         </div>
       </div>

@@ -1,5 +1,5 @@
 import { app, BrowserWindow, ipcMain, dialog, clipboard, nativeImage, shell, safeStorage, screen, Menu } from 'electron';
-import { readFile, writeFile, mkdir, rename, stat, mkdtemp, rm } from 'node:fs/promises';
+import { readFile, writeFile, mkdir, rename, stat, mkdtemp, rm,open } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { MspClient, discoverMuse, uuid7 } from './msp.js';
@@ -34,10 +34,43 @@ import {checkTrello,configureTrello,readTrelloSettings,trelloStatus} from './tre
 import {restoreWindowBounds,CompletionSignals} from './desktop-workspace.js';
 import {HistoryWindow} from './history-window.js';
 import {discoverContextPerformanceArgs} from './context-policy.js';
+import {MoraMode} from './mora-mode.js';
+import {projectFile} from './project.js';
+import {validateMediaSelection} from './video-frames.js';
+import {resolveApiKey,fetchUsage} from './usage.js';
 
 const directory = path.dirname(fileURLToPath(import.meta.url));
 let window, prefsPath, museHome, executable, connectionAttempt, quitting = false;
 const runner = new ExecRunner();
+const moraModes=new Map();
+function mergeMoraHistory(history,mode=moraModes.get(state.sessionId)){
+  if(!mode)return history;const result=history.filter(item=>!item.itemId.startsWith('mora-')),tails=new Map();
+  for(const item of mode.state.items){const anchor=tails.get(item.anchorItemId)||item.anchorItemId,index=anchor?result.findIndex(row=>row.itemId===anchor):-1;result.splice(index<0?result.length:index+1,0,{...item});tails.set(item.anchorItemId,item.itemId);}return result;
+}
+function syncMora(mode){if(state.sessionId!==mode.sessionId)return;state.moraMode=mode.snapshot();let changed=false;for(const item of mode.state.items)if(!Object.hasOwn(item,'anchorItemId')){item.anchorItemId=state.items.findLast(row=>!row.itemId.startsWith('mora-'))?.itemId||null;changed=true;}if(changed)mode.persist().catch(report);state.items=mergeMoraHistory(state.items,mode);publish();}
+async function getMora(create=false){
+  if(!state.sessionId||!state.projectPath){if(create)throw Error('Open a project chat before using Mora Mode.');return null;}
+  if(moraModes.has(state.sessionId))return moraModes.get(state.sessionId);
+  if(!create){try{await stat(path.join(app.getPath('userData'),'mora-mode',state.sessionId,'conversation.backup.json'));}catch(error){if(error.code==='ENOENT')return null;throw error;}}
+  const mode=new MoraMode({profile:app.getPath('userData'),sessionId:state.sessionId,project:state.projectPath,executable,options:{modelId:state.modelId,reasoningEffort:state.reasoningEffort,executionMode:state.executionMode,browserOptions:app.isPackaged?{executablePath:path.join(process.resourcesPath,'website-browser','chrome.exe')}:{}}});await mode.open();moraModes.set(state.sessionId,mode);
+  mode.on('change',event=>{syncMora(mode);if(event.error)report(Error(event.error));if(event.type==='completed')completionNotices?.complete(state,{turnId:'mora-'+event.runId,status:'finished'});});if(projectRunner?.state.root===mode.project&&projectRunner.state.run.status==='ready')await mode.requireBrowser();return mode;
+}
+async function moraModeCommand(action,payload={}){
+  if(action==='enable'){
+    assertIdle(state);
+    if(projectOperation||repairInProgress||projectRunner?.active||projectRunner?.runChild&&(projectRunner.state.root!==state.projectPath||projectRunner.state.run.status!=='ready'))throw Error('Finish or stop the active project operation before changing Mora Mode.');
+    if(!state.sessionId)await newChat();const mode=await getMora(true);if(state.pendingQueue.length||state.activeRequest)throw Error('Resolve the ordinary chat queue before enabling Mora Mode.');if(payload.enabled&&state.connection!=='ready')throw Error('Connect to Muse first.');await mode.enable(payload.enabled);syncMora(mode);return state;
+  }
+  const mode=await getMora();if(!mode)throw Error('Enable Mora Mode first.');const result=await mode.command(action,payload);if(action==='evidence')return result;syncMora(mode);return state;
+}
+async function deleteMoraHistory(session){
+  if(!/^[a-zA-Z0-9-]{1,100}$/.test(session.sessionId))throw Error('Invalid conversation identity.');
+  let mode=moraModes.get(session.sessionId);
+  const profile=app.getPath('userData'),directory=path.join(profile,'mora-mode',session.sessionId);
+  if(!mode){try{await stat(directory);}catch(error){if(error.code==='ENOENT')return;throw error;}if(projectPathFor(session)){mode=new MoraMode({profile,sessionId:session.sessionId,project:projectPathFor(session)});await mode.open();}}
+  if(mode){await mode.close();for(const thread of mode.backend.snapshot().threads){const relative=path.relative(profile,mode.workspace.threadDirectory(thread.thread_id));const target=await projectFile(profile,relative);await rm(target,{recursive:true,force:true});}}
+  moraModes.delete(session.sessionId);await rm(await projectFile(profile,path.relative(profile,directory)),{recursive:true,force:true});
+}
 const historyWindow=new HistoryWindow();
 let contextPerformanceArgs=[];
 const state = { ...createState(), connection: 'connecting', workspace: '', projectPath: null, projects: [], modelId: 'muse-spark-1.3-contributor', reasoningEffort: '', executionMode: 'readonly', models: [], sessions: [], sessionId: null, engineVersion: '', transport: 'exec' };
@@ -323,6 +356,7 @@ async function connectEngine() {
     reconcileModel();
     await save();
     state.connection = 'ready';
+    for(const mode of moraModes.values())mode.executable=executable;
     publish();
   } catch (error) { state.connection = 'disconnected'; report(error); }
   finally { await client.close(); publish(); }
@@ -372,6 +406,7 @@ async function resumeChat(sessionId) {
     }
   }
   await restoreWork(sessionId);
+  const mode=await getMora();if(mode){syncMora(mode);if(nativeHistoryMissing&&session.hasMessages===false){state.historyMissing=false;state.error='';}}
   session.unread=false;
   if(nativeHistoryMissing && state.activeRequest?.phase==='admitted'){state.historyMissing=true;state.error='The original engine log is missing for an accepted request. Restore it from a backup or start a new chat.';}
   reconcileModel();
@@ -404,7 +439,7 @@ async function removeProject(projectPath) {
     if(active)desktopBrowser?.selectSession(null);
     let failures=0;
     for(const id of ids){
-      for(const cleanup of [()=>deleteChangeSummaries(app.getPath('userData'),id),()=>deleteWork(app.getPath('userData'),id),...(museHome?[()=>removeNativeHistory(id)]:[])]){
+      for(const cleanup of [()=>deleteMoraHistory(previous.sessions.find(session=>session.sessionId===id)),()=>deleteChangeSummaries(app.getPath('userData'),id),()=>deleteWork(app.getPath('userData'),id),...(museHome?[()=>removeNativeHistory(id)]:[])]){
         try{await cleanup();}catch{failures++;}
       }
     }
@@ -416,11 +451,15 @@ async function deleteChat(sessionId) {
   if (typeof sessionId !== 'string' || !sessionId) throw new Error('Choose a conversation to delete.');
   const index = state.sessions.findIndex(item => item.sessionId === sessionId);
   if (index === -1) throw new Error('This conversation is not in Mora Desktop.');
+  const deletedSession=state.sessions[index];
   if (state.loading) throw new Error('A conversation is loading. Wait before deleting.');
   if (state.busy && sessionId === state.sessionId) throw new Error('A request is running. Stop it before deleting this chat.');
+  if(sessionId===state.sessionId)assertIdle(state);
+  const mode=moraModes.get(sessionId);if(mode){await mode.close();moraModes.delete(sessionId);}
   state.sessions.splice(index, 1);
   if (state.sessionId === sessionId){Object.assign(state, createState(), { sessionId: null });desktopBrowser?.selectSession(null);}
   await save();
+  await deleteMoraHistory(deletedSession).catch(report);
   await deleteChangeSummaries(app.getPath('userData'), sessionId).catch(report);
   await deleteWork(app.getPath('userData'),sessionId).catch(report);
   if (museHome) {
@@ -451,6 +490,7 @@ async function sendMessage({ text, images = [] } = {},{repair=false}={}) {
   const tester=parseTesterCommand(text);
   if(tester){if(state.busy)throw Error('Wait for the current request before starting AI Tester.');if(validated.length)throw Error('Use a text testing request.');return testerCommand(tester.mode==='report'?'start':'solve',{request:tester.request});}
   if (!text.trim() && !validated.length) throw new Error('Write a message or attach an image.');
+  if(state.moraMode?.enabled){if(validated.length)throw Error('Mora Mode currently accepts text requests. Your image draft is saved.');const mode=await getMora(),accepted=await mode.send(text),session=currentSession();session.hasMoraMessages=true;if(!session.customTitle&&session.title==='New conversation')session.title=text.trim().slice(0,65);await save();syncMora(mode);return accepted;}
   if (state.busy) {
     if (state.pendingQueue.length + queueReservation >= 10) throw new Error('The send queue is full (10 messages). Wait for the current request to finish.');
     const entry = { queueId: uuid7(), text, images: validated, queuedAt: new Date().toISOString() };
@@ -605,7 +645,7 @@ async function executeTurn(text, validated, hooks) {
               for (const item of historic) { const live = state.items.find(row => row.itemId === item.itemId); if (live?.images) item.images = live.images; }
               if (historic.length) {
                 const liveReview = state.items.find(item => item.itemId === `changes-${state.activeTurnId}`);
-                state.items = historic; await attachChangeSummaries(state.items, state.sessionId);
+                state.items = mergeMoraHistory(historic); await attachChangeSummaries(state.items, state.sessionId);
                 if (liveReview) state.items.push(liveReview);
               }
             } catch (error) { if (error.code !== 'ENOENT') report(error); }
@@ -645,10 +685,36 @@ async function executeTurn(text, validated, hooks) {
   finally {if(checkpoint)await checkpointStore().seal(checkpoint.id).then(()=>{if(state.lastOutcome?.turnId===state.activeTurnId)state.lastOutcome.checkpointId=checkpoint.id;}).catch(error=>{state.queuePaused=true;report(new Error(`Checkpoint needs review: ${error.message}`));});}
 }
 
+let usageRunning=false;
+async function usageCommand(){
+  if(usageRunning)throw Error('A usage refresh is already running.');
+  usageRunning=true;
+  try{
+    const apiKey=await resolveApiKey({env:process.env,readFile,homedir:()=>app.getPath('home')});
+    return await fetchUsage({apiKey,model:state.modelId});
+  }finally{usageRunning=false;}
+}
+async function pickMedia(budget={}){
+  const result=await dialog.showOpenDialog(window,{properties:['openFile','multiSelections'],filters:[{name:'Images and videos',extensions:['png','jpg','jpeg','webp','mp4','mov','webm']},{name:'Images',extensions:['png','jpg','jpeg','webp']},{name:'Videos',extensions:['mp4','mov','webm']}]});
+  if(result.canceled)return [];
+  const files=[];
+  for(const filename of result.filePaths){const info=await stat(filename);if(!info.isFile())throw Error('Choose an image or video file.');files.push({filename,name:path.basename(filename),size:info.size});}
+  const selected=validateMediaSelection(files,budget),picked=[];
+  for(const item of selected){
+    const file=await open(item.filename,'r');
+    try{
+      const bytes=Buffer.alloc(item.size+1);let length=0;
+      while(length<bytes.length){const read=await file.read(bytes,length,bytes.length-length,null);if(!read.bytesRead)break;length+=read.bytesRead;}
+      if(length!==item.size)throw Error('This file changed while attaching it. Select it again.');
+      picked.push({mediaType:item.mediaType,base64Data:bytes.subarray(0,length).toString('base64'),name:item.name,size:length});
+    }finally{await file.close();}
+  }
+  validateImages(picked.filter(item=>item.mediaType.startsWith('image/')));return picked;
+}
 function handle(name, fn) {
   ipcMain.handle(`muse:${name}`, async (event, ...args) => {
     if (!window || event.sender !== window.webContents || event.senderFrame !== window.webContents.mainFrame) throw new Error('Untrusted request.');
-    try { const result=await fn(...args);return result===state?historyWindow.project(state):result; } catch (error) { if (!['browser','stitch','load-older'].includes(name)) report(error); throw error; }
+    try { const result=await fn(...args);return result===state?historyWindow.project(state):result; } catch (error) { if (!['browser','stitch','load-older','usage'].includes(name)) report(error); throw error; }
   });
 }
 
@@ -716,6 +782,7 @@ else {
   desktopBrowser=browser;
   let openedRunURL;
   projectRunner=new ProjectRunner(work=>{
+    if(work.run.status==='ready')for(const mode of moraModes.values())if(mode.project===work.root)mode.requireBrowser().catch(report);
     state.projectWork=work;publish();
     if(work.run.status!=='ready')openedRunURL=null;
     if(work.run.status==='ready' && openedRunURL!==work.run.url){openedRunURL=work.run.url;browser.navigate(work.run.url).catch(report);}
@@ -734,6 +801,7 @@ else {
   handle('browser', (action, payload) => browser.command(action, payload));
   handle('stitch', stitchCommand);
   handle('trello', trelloCommand);
+  handle('usage',usageCommand);
   handle('get-state', () => state);
   handle('load-older',sessionId=>historyWindow.older(state,sessionId));
   handle('checkpoints',checkpointCommand);
@@ -757,6 +825,7 @@ else {
   handle('chat-metadata',async(sessionId,action,title)=>{changeConversation(state,sessionId,action,title);await save();publish();return state;});
   handle('completion-sound-options',async enabled=>{if(typeof enabled!=='boolean')throw new Error('Choose whether to play the completion sound.');preferences.completionSound=enabled;state.completionSound=enabled;completionNotices.enabled=enabled;await save();publish();return state;});
   handle('send',async message=>{browser.sendingNotes=(browser.sendingNotes || 0)+1;try{return await sendMessage(message);}finally{browser.sendingNotes--;}});
+  handle('mora-mode',moraModeCommand);
   handle('stop', async () => { state.queuePaused = true; applyEvent(state, 'stop/requested', {}); publish(); try { await persistWork(); } finally { await runner.stop(); } });
   handle('queue', queueCommand);
   handle('save-draft', saveDraft);
@@ -771,9 +840,10 @@ else {
     reconcileModel();
     if (options.executionMode !== undefined) { if (!['readonly','full'].includes(options.executionMode)) throw new Error('Invalid execution mode.'); state.executionMode = options.executionMode; }
     const session=currentSession();if(session)Object.assign(session,{modelId:state.modelId,reasoningEffort:state.reasoningEffort});
+    const mode=moraModes.get(state.sessionId);if(mode){await mode.native?.close();mode.native=null;mode.supervisor=null;mode.options={...mode.options,modelId:state.modelId,reasoningEffort:state.reasoningEffort,executionMode:state.executionMode};}
     await save(); publish(); return state;
   });
-  handle('pick-images', async () => { const result = await dialog.showOpenDialog(window, { properties: ['openFile','multiSelections'], filters: [{ name: 'Images', extensions: ['png','jpg','jpeg','webp'] }] }); if (result.canceled) return []; const images = []; for (const filename of result.filePaths) { if ((await stat(filename)).size > 10*1024*1024) throw new Error('Each image must be 10 MB or smaller.'); const ext = path.extname(filename).toLowerCase(); images.push({ mediaType: ext === '.png' ? 'image/png' : ext === '.webp' ? 'image/webp' : 'image/jpeg', base64Data: (await readFile(filename)).toString('base64'), name: path.basename(filename) }); } validateImages(images); return images; });
+  handle('pick-images',pickMedia);
   handle('copy-text', text => { if (typeof text !== 'string' || text.length > 1000000) throw new Error('Invalid text.'); clipboard.writeText(text); });
   handle('open-link', url => { const target = new URL(url); if(!['http:','https:'].includes(target.protocol) || target.username || target.password) throw new Error('Use an HTTP or HTTPS link.'); return shell.openExternal(target.href); });
   await restoreWork('new');
@@ -785,7 +855,7 @@ else {
   if(!window.isVisible()) window.show();
   publish();
   await engineReady;
-  app.on('before-quit', event => { if (!quitting && runner.child) { event.preventDefault(); quitting = true; runner.stop().finally(() => app.quit()); } });
-  app.on('window-all-closed', () => {Promise.allSettled([login.cancel(),projectRunner.shutdown(),runner.stop()]).then(()=>app.quit());});
+  app.on('before-quit', event => { if (!quitting && (runner.child||moraModes.size)) { event.preventDefault(); quitting = true; Promise.allSettled([runner.stop(),...moraModes.values()].map(value=>value instanceof MoraMode?value.close():value)).finally(() => app.quit()); } });
+  app.on('window-all-closed', () => {Promise.allSettled([login.cancel(),projectRunner.shutdown(),runner.stop(),...Array.from(moraModes.values(),mode=>mode.close())]).then(()=>app.quit());});
   }).catch(error => { dialog.showErrorBox('Mora Desktop could not start', error.message); app.quit(); });
 }

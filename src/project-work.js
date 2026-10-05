@@ -43,6 +43,7 @@ export class ProjectRunner {
   }
   publish(){this.onChange(this.state);}
   launch(root,settings,onOutput) {
+    if(process.platform==='win32'&&path.resolve(root).length>=260)throw Error('This project folder path is too long for Windows commands. Open it from a shorter path.');
     const child=spawn(settings.file,settings.args,{cwd:root,env:settings.env,windowsHide:true,windowsVerbatimArguments:settings.windowsVerbatimArguments,detached:process.platform!=='win32',stdio:['ignore','pipe','pipe']});
     const done=new Promise(resolve=>{let error;child.once('error',value=>{error=value;});child.once('close',(code,signal)=>resolve({code,signal,error:error?.message}));});
     this.children.set(child,done);child.stdout.on('data',chunk=>onOutput(clean(chunk)));child.stderr.on('data',chunk=>onOutput(clean(chunk)));return child;

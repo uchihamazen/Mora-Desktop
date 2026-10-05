@@ -1,11 +1,32 @@
 # Features
 
+## Mora Mode
+- Opt-in text chat remains open while up to three coding workers run. The mode can toggle with the current project's ready preview still running; active tests/work remain protected. Uses LangChain `createAgent` and Deep Agents asynchronous subagent middleware directly, with the installed Muse account and Mora's authenticated task backend. Small or dependent changes use fewer workers; model, reasoning and access settings retain their meaning.
+- Workers receive isolated source copies, exact file ownership and dependencies. Conflicts are refused and dependencies wait for verified integration. Installed Ponytail Full and Superpowers guidance is selected by role and loaded on demand; test-driven guidance requires assigned test paths. Missing skills use explicit native fallback; skills grant no extra permissions or hooks. Cancelled or stale changes cannot apply.
+- Saved, Delivered and Applied receipts offer Steer, Stop, Resume and Stop all. Durable requests, task IDs and backups survive context shortening; restart pauses unfinished work. Failed replies recover existing tasks instead of dispatching duplicates. Completion appears in chat with the existing one-second sound preference.
+- Verification runs original/current project typecheck/check, build, test and flow commands in disposable copies with Full access. Discovered Node regressions remain protected; Python unittest discovery is available when its runtime is installed. Missing checks, empty suites, altered commands, source mutation and failed outcomes leave changes isolated. See [verification configuration and limits](verification.md).
+- Every recognized web app and successful Run my app preview requires browser checks before integration, including server-rendered/built apps and non-UI edits; unavailable or failing previews leave changes isolated. Smoke checks loading/errors; configured workflows check interactions. Results retain checks, screenshots, skills and checkpoints. Verify `tests/mora-*.test.js`, sample UI smoke and native workloads; speed claims require benchmark evidence.
+
 ## Chat and project operations
 - Chat, image attachments, saved native Muse conversations, and project selection. Timeline styling uses right-aligned midnight-navy user bubbles with a subtle blue border and a cyan rail for replies, expandable operations and compact change cards. Status comes from engine messages; live elapsed time stays available while working. Running-project outcomes offer an Open preview card; file review and checkpoint Undo retain their existing guards.
 - Requires the installed and signed-in Muse engine; reconnects share one discovery attempt, reject malformed catalogs and reconcile the selected effort after model fallback.
 - Read only inspects; Full access permits project edits and commands under the user's Windows permissions.
 - Uses Muse 1.4.1's working `exec --json` interface and excludes foreign personal rules/skills on every turn; native workspace instructions and engine settings still apply. Interactive per-command approvals remain available in the native terminal.
 - Verify with the existing frontend and real-engine smoke scripts; these operate on temporary projects where they write files.
+
+## Media attachments
+- Pick, paste or drop PNG/JPEG/WebP images and MP4/MOV/WebM clips. Supported video codecs decode locally into eight evenly sampled JPEG frames, with timestamp badges and ordered image context; original video/audio are never sent.
+- Each clip must be at most 100 MiB and ten minutes; a selection totals at most 100 MiB. Image uploads and extracted frames share the existing 20-image/20-MiB message budget and 10-MiB per-image limit. Unsupported, empty or non-finite-duration clips fail visibly.
+- Attachment batches append atomically to their original draft; Cancel, chat switching/loading and page teardown release the decoder. Failed or cancelled batches keep existing attachments; saved drafts retain frame names and times across reopening.
+- Ordinary chat and its durable queue send the frames through native image input. Mora Mode remains text-only: media drafts stay saved, with guidance to turn the mode off before sending.
+- Verify unit/work/lifecycle tests and `node scripts/media-ui-smoke.js path/to/finite.webm path/to/finite.mp4`; that browser check covers actual decode, picker/paste/drop, ownership cancellation, reload, limits and quota UI. Container support alone does not guarantee every codec.
+
+## Usage remaining
+- The sidebar opens a current-window/weekly quota snapshot with remaining bars, provider window duration, reset estimates, tier ID and last-successful-check time. Unknown or incomplete windows show Unavailable; failed refreshes label retained data Stale.
+- Uses the installed Muse credential in the main process and the selected model for one small streaming request on the first open or manual refresh. No background polling; checking consumes a small amount of account usage.
+- Null, empty, negative or malformed percentages never become 100% remaining. Stream parsing handles split/final events, limits response bytes and cancels/releases timed-out readers; requests are serialized.
+- The native popover supports Escape and outside-click dismissal, keeps keyboard navigation, and hides the embedded preview while overlapping menus are open. The local UI preview uses labelled sample quota data.
+- Verify `tests/usage.test.js`, the media UI smoke, and a signed-in account check. Snapshots are last observed provider values, not a live counter; provider or network failures are shown without credentials or response bodies.
 
 ## Conversation retention
 - All normal launches, including Windows Search, use `%APPDATA%\Muse Desktop`; builds and workspace changes retain conversations until explicit deletion.
@@ -152,7 +173,7 @@
 - Sending during a request queues text/images in order, with a maximum of ten pending messages.
 - Pending requests persist separately per chat, including images; queued-to-active receipts preserve interrupted submissions without automatically replaying them.
 - Stop cancels only the current request and pauses the rest; failure, restart and recovered work require explicit Resume. A fresh send leaves a recovered queue paused.
-- Edit, remove, pause, resume or clear pending messages; save failures retain the unsent draft and report the error. Immediate steering awaits verified transport support.
+- Compact queued-message strips stay above the composer; edit or remove each message, view its images, and use the ⋯ menu to pause/resume or clear. Long text is truncated and the list scrolls. Save failures retain unsent work; immediate steering awaits verified transport support.
 - Draft text, images and annotation notes autosave and flush on close; loading another chat preserves draft ownership. Verify storage/lifecycle tests, frontend smoke and `scripts/work-smoke.js [EXE]`; real ordered replies use `scripts/ui-smoke.js [EXE] --send`.
 
 ## Formatted answers and streaming
@@ -234,7 +255,7 @@
 - Grounded cases prioritize normal flows, new-page planning and newly revealed controls/ready cases before leaving their state. Bounded discovery retains queued checks; invalid plans get one correction with a 30-second cap. Starting checks must match before execution/replay; older cases retain whole-state matching. Reproduction requires fresh approval. Demonstrate up to eight actions with an expected outcome; Finish flushes pending input from the current document. Navigation during Finish remains unverified; demonstrations grant no permission.
 - Separate navigation/resource origins and path scopes constrain traversal. Sign in manually; encrypted login storage is per site/account. Provider text filters common secrets, local screenshots mask inputs, and report backups preserve evidence and uncertain interruptions. Use test accounts: arbitrary personal content may remain.
 - Persistent Setup/Overview/Tests/Findings/Explore/Evidence/Teach/Reports navigation separates setup from results. Budgets, inline errors, exact approvals and run controls remain accessible; case/feature/history filters, expected/actual details and evidence links support investigation. Keyboard focus survives report updates and compact windows reflow. Counts distinguish discovered controls, checked cases and remaining gaps.
-- Planning timeouts leave new plans untested; validated cases can still receive independent failure reviews and replay within the original budget. A review timeout stops further AI calls and leaves failures unconfirmed. Discovery prioritizes unvisited navigation; budget cleanup/uncertainty stays explicit. Native repeatability remains experimental; other roles need logins, unsupported interactions remain gaps and resets cannot undo live data.
+- Strict provider-compatible planning uses a compact root response with bounded cases/actions. Stop during initialization cleans up copied credentials; model startup or cleanup failures remain gaps. Replay distinguishes repeated failure, changed outcome, intermittent pass, blocked start and incomplete execution while preserving the first failure. Planning/review timeouts remain untested/unconfirmed. Native repeatability is experimental; other roles need logins, unsupported interactions remain gaps and resets cannot undo live data.
 
 ## Project tester reports (experimental)
 - Project tester and `/project-tester report` use native Spark with isolated skills/reminders disabled and no native tools; Mora executes generic actions in a dedicated visible browser, restricted to the running localhost origin. Account reuse is temporary; normal cleanup removes its credential copy without changing global settings.

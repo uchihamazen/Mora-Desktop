@@ -5,43 +5,23 @@
 Chat with your coding engine, work with local projects, inspect live file changes, and
 send selected browser designs to Muse with a cropped screenshot and HTML context.
 
-[Screenshots](#screenshots) · [Features](#features) · [Installation](#installation) · [Technology stack](#technology-stack) ·
+[Features](#features) · [Installation](#installation) · [Technology stack](#technology-stack) ·
 [Build from source](#build-from-source) · [Privacy](#privacy-and-local-data) ·
 [License & attribution](#license-and-attribution)
 
-Mora Desktop is an independent desktop interface for Muse Code, with a
-Codex-inspired workflow. It is not affiliated with or endorsed by Meta or OpenAI.
+Mora Desktop is an independent desktop interface for Muse Code.
+It is not affiliated with or endorsed by Meta or OpenAI.
 It uses your separately installed Muse engine and that engine's existing login.
 Mora Desktop uses its own name and original M icon.
-
-## Screenshots
-
-Captured from Mora Desktop using an isolated profile and a local demo page.
-No personal chats, API keys, or private project data are shown.
-
-### Desktop workspace
-
-![Mora Desktop welcome screen and chat workspace](docs/screenshots/desktop-overview.png)
-
-### Browser annotations
-
-Select a page element or region, write a note in the popup, and save it as a numbered marker.
-Save more notes, then send them together with their screenshots and HTML context.
-
-![Trusted annotation popup with a note and Save and Cancel controls](docs/screenshots/annotation-note-popup.png)
-
-### Engine settings
-
-Choose your Muse executable, reconnect the engine, and configure your own Google Stitch MCP connection.
-
-![Engine settings and Google Stitch MCP controls with an empty API key field](docs/screenshots/engine-settings.png)
 
 ## Features
 
 | Feature | What it does |
 | --- | --- |
 | Chat workspace | Saved drafts, safe Markdown headings/lists/tables, copyable code, images and automatic text direction. |
-| Image attachments | Pick or paste PNG, JPEG and WebP images into the main chat. |
+| Media attachments | Pick, paste or drop PNG/JPEG/WebP images and MP4/MOV/WebM clips; videos become local image frames for ordinary chat. |
+| Usage remaining | Check the last observed current-window and weekly quota from your installed Muse account, with manual refresh. |
+| Mora Mode | Keep chatting while up to three isolated coding workers prepare, check and integrate project changes. [Verification and limits](docs/verification.md). |
 | Muse sign-in | Uses the existing engine login or opens native Meta browser sign-in, with cancellation and clear account status. |
 | Run my app | Starts a configured Node app or plain HTML/CSS/JS website, waits for readiness and opens its preview; supports Stop/Restart. |
 | Export project | Saves eligible source and run instructions in a local ZIP, with a SHA-256 checksum. Review your code before sharing. |
@@ -64,7 +44,7 @@ Choose your Muse executable, reconnect the engine, and configure your own Google
 | Execution controls | Read only for inspection, Full access for project operations, and Stop for the active request. |
 | Integrated browser | Browse websites and local development servers in a Chromium panel with Desktop/Mobile previews and an expanded view. |
 | Design annotations | Save notes in a trusted popup, reopen numbered page markers, edit/delete and send them together; compare before/after screenshots. |
-| Work speed | Quick, Balanced and Thorough use supported efforts on your selected model; explicit effort controls stay available. |
+| Model reasoning | Choose the selected model's native reasoning efforts; unsupported choices use its default. |
 | Google Stitch MCP | Connect, test and disconnect your own Stitch account; use design tools through Muse's native MCP integration. |
 | Image previews | Display supported Stitch image links in chat, enlarge them, or copy the original link. |
 | Windows integration | Per-user Setup, Start/Search shortcut, single-instance activation and minutes/seconds activity timing. |
@@ -83,7 +63,8 @@ For a first app, use **Check setup**, create a project with the starter, describ
 change in chat, then choose **Run my app**. Finished requests offer preview and source
 Undo actions. **Test my app** runs configured checks and optional `test:flows` or
 `test:e2e` assertions; a passing script covers only its assertions. AI exploration
-remains experimental. Fresh profiles use Balanced; saved effort choices remain.
+remains experimental. Fresh profiles use the selected model's default reasoning;
+saved supported effort choices remain.
 
 ### Live work and completion
 
@@ -293,8 +274,8 @@ navigation schemes are denied.
 ### Annotating Mora itself in a local browser
 
 Run `npm run preview:ui` (or `node scripts/ui-preview.js`) and open
-`http://127.0.0.1:4173` in Codex's browser. This serves Mora's actual UI with a clear
-sample-data banner and a small counter example. Use Codex's browser annotations to
+`http://127.0.0.1:4173` in a browser. This serves Mora's actual UI with a clear
+sample-data banner and a small counter example. Use browser annotations to
 point out changes, then send them to the coding chat for implementation.
 The local preview allows the styles injected by browser annotation tools so their
 note boxes display correctly. The desktop app keeps its original security policy.
@@ -462,8 +443,8 @@ thread-stack issue, without modifying global environment settings.
 
 Fork the repository, make a focused change, update [docs/features.md](docs/features.md),
 and run checks appropriate to the change. Keep feature entries concise. Include no
-real account keys, chat histories or personal screenshots. Check [AGENTS.md](AGENTS.md)
-for build and publication guidance. Rebuild and verify the installer when application
+real account keys, chat histories, personal screenshots, assistant instructions or
+generated review output. Rebuild and verify the installer when application
 behavior or packaged files change.
 
 ## Contributors

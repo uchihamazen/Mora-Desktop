@@ -37,3 +37,22 @@ test('accessibility findings keep incomplete checks and omit raw HTML/private de
  api.recordAccessibility(report,scan,{stateId:'s1',url:'https://site.example/',roleId:'guest'});api.recordAccessibility(report,scan,{stateId:'s2',url:'https://site.example/',roleId:'guest'});
  assert.equal(report.findings.length,1);assert.equal(report.accessibility[0].incomplete.length,1);assert.equal(JSON.stringify(report).includes('private@example.com'),false);assert.equal(JSON.stringify(report).includes('<input'),false);
 });
+
+test('replay reports intermittent, changed, blocked and mismatched outcomes without hiding the first failure',()=>{
+ const c=record(),report={findings:[]},replay=structuredClone(c.executions[0]);
+ replay.steps[0].result.status='passed';api.recordWebsiteFinding(report,c,replay);
+ assert.equal(c.status,'observed failure');assert.equal(c.replayStatus,'passed on replay');assert.match(c.reason,/intermittent/i);
+ assert.equal(report.findings[0].replay.status,'passed on replay');assert.equal(report.findings[0].actual,false);
+ replay.steps[0].result={status:'failed',actual:'Changed failure'};api.recordWebsiteFinding(report,c,replay);assert.equal(c.replayStatus,'changed outcome');
+ replay.steps[0].action.expected='Coffee';replay.steps[0].result.status='failed';api.recordWebsiteFinding(report,c,replay);
+ assert.equal(c.replayStatus,'changed outcome');
+ replay.steps[0].result.status='blocked';api.recordWebsiteFinding(report,c,replay);assert.equal(c.replayStatus,'blocked');
+ replay.startStateId='other';api.recordWebsiteFinding(report,c,replay);assert.equal(c.replayStatus,'different starting conditions');
+});
+
+test('an uncertain or pending replay cannot establish reproduction even with a matching failed assertion',()=>{
+ const c=record(),replay=structuredClone(c.executions[0]);replay.steps.push({action:{action:'click'},status:'uncertain',result:{status:'ok'}});
+ assert.equal(api.classifyWebsiteCase(c,replay).status,'observed failure');assert.equal(api.classifyWebsiteCase(c,replay).replayStatus,'blocked');
+ replay.steps[1]={action:{action:'click'},result:{status:'pending'}};
+ assert.equal(api.classifyWebsiteCase(c,replay).status,'observed failure');
+});
