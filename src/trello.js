@@ -1,4 +1,4 @@
-import {readFile,writeFile,mkdir,rename,rm} from 'node:fs/promises';
+import * as files from 'node:fs/promises';
 import path from 'node:path';
 
 export const TRELLO_API='https://api.trello.com';
@@ -16,37 +16,95 @@ export function boardIdFromLink(board) {
 }
 function snapshot(value) {
   if(!object(value) || typeof value.apiKey!=='string' || typeof value.token!=='string' || typeof value.board!=='string')throw new Error('Trello settings are unreadable. Disconnect and connect again.');
-  return value;
+  return {apiKey:credential(value.apiKey,'API key'),token:credential(value.token,'token'),...metadata(value)};
 }
-export async function readTrelloSettings(filename) {
-  let damaged=false;
-  for(const name of [path.join(path.dirname(filename),'trello.backup.json'),filename]) {
-    try{return snapshot(JSON.parse(await readFile(name,'utf8')));}
-    catch(error){if(error.code!=='ENOENT')damaged=true;}
+function metadata(value) {
+  return {board:boardIdFromLink(value.board),boardName:value.boardName,boardUrl:value.boardUrl,listCount:value.listCount,username:value.username};
+}
+function storageError(message,code) {
+  return Object.assign(new Error(message),{code});
+}
+function requireEncryption(crypto) {
+  let available=false;
+  try{available=crypto?.isEncryptionAvailable() && crypto.getSelectedStorageBackend?.()!=='basic_text';}catch{}
+  if(!available)throw storageError('Operating-system encryption is unavailable. Trello credentials were not changed.','TRELLO_ENCRYPTION_UNAVAILABLE');
+}
+function decode(value,crypto) {
+  if(!object(value) || !('version' in value || 'encryptedCredentials' in value))return snapshot(value);
+  requireEncryption(crypto);
+  try{
+    if(value.version!==1 || typeof value.encryptedCredentials!=='string' || !value.encryptedCredentials || value.encryptedCredentials.length>16384)throw Error();
+    const encrypted=Buffer.from(value.encryptedCredentials,'base64');
+    if(encrypted.toString('base64')!==value.encryptedCredentials)throw Error();
+    const credentials=JSON.parse(crypto.decryptString(encrypted));
+    return snapshot({...metadata(value),apiKey:credentials.apiKey,token:credentials.token});
+  }catch{throw storageError('Trello credentials could not be decrypted. Original settings were kept. Unlock operating-system storage or disconnect and connect again.','TRELLO_DECRYPTION_FAILED');}
+}
+function settingsNames(filename) {
+  const backup=path.join(path.dirname(filename),'trello.backup.json');
+  return [backup,filename,`${backup}.tmp`,`${filename}.tmp`];
+}
+async function loadStored(filename,{crypto,io=files}) {
+  const names=settingsNames(filename);
+  const originals=await Promise.all(names.map(async name=>{try{return await io.readFile(name);}catch(error){if(error.code==='ENOENT')return;throw Error('Trello settings are unreadable. Original settings were kept.');}}));
+  let saved=null,damaged=false,migrate=originals.slice(2).some(value=>value!==undefined);
+  for(let index=0;index<2;index++) {
+    if(originals[index]===undefined)continue;
+    try{
+      const value=JSON.parse(originals[index].toString('utf8'));
+      const decoded=decode(value,crypto);
+      saved ||= decoded;
+      migrate ||= value.version!==1 || 'apiKey' in value || 'token' in value;
+    }catch(error){if(error.code?.startsWith('TRELLO_'))throw error;damaged=true;}
   }
-  if(damaged)throw new Error('Trello settings are unreadable. Disconnect and connect again.');
-  return null;
+  if(!saved && damaged)throw Error('Trello settings are unreadable. Disconnect and connect again.');
+  return {saved,migrate,originals};
+}
+async function saveStored(filename,value,{crypto,io=files},originals) {
+  requireEncryption(crypto);
+  let data;
+  try{
+    const encrypted=crypto.encryptString(JSON.stringify({apiKey:value.apiKey,token:value.token}));
+    if(!Buffer.isBuffer(encrypted) || !encrypted.length)throw Error();
+    data=JSON.stringify({version:1,encryptedCredentials:encrypted.toString('base64'),...metadata(value)},null,2)+'\n';
+  }catch{throw Error('Trello credentials could not be encrypted. Original settings were kept.');}
+  const names=settingsNames(filename),changed=new Set();
+  try{
+    await io.mkdir(path.dirname(filename),{recursive:true});
+    for(let index=0;index<2;index++){
+      changed.add(index+2);
+      await io.writeFile(names[index+2],data,{mode:0o600,flush:true});
+    }
+    // The backup is authoritative after an interrupted replacement.
+    for(let index=0;index<2;index++){
+      await io.rename(names[index+2],names[index]);
+      changed.add(index);
+    }
+  }catch{
+    const restored=await Promise.allSettled([...changed].map(index=>originals[index]===undefined ? io.rm(names[index],{force:true}) : io.writeFile(names[index],originals[index],{mode:0o600,flush:true})));
+    if(restored.some(result=>result.status==='rejected'))throw Error('Trello settings could not be saved or fully restored. Keep the existing files and retry when storage is available.');
+    throw Error('Trello settings could not be saved. Original settings were kept.');
+  }
+}
+export async function readTrelloSettings(filename,options={}) {
+  const {saved,migrate,originals}=await loadStored(filename,options);
+  if(saved && migrate)await saveStored(filename,saved,options,originals);
+  return saved;
 }
 export function trelloStatus(saved) {
   if(!saved || !saved.apiKey || !saved.token || !saved.board)return {configured:false};
   return {configured:true,boardName:saved.boardName,boardUrl:saved.boardUrl,listCount:saved.listCount,username:saved.username};
 }
-export async function configureTrello(filename,value) {
+export async function configureTrello(filename,value,options={}) {
+  const io=options.io || files;
   if(value===null) {
-    const backup=path.join(path.dirname(filename),'trello.backup.json');
-    const removed=await Promise.allSettled([filename,backup,`${filename}.tmp`,`${backup}.tmp`].map(name=>rm(name,{force:true})));
+    const removed=await Promise.allSettled(settingsNames(filename).map(name=>io.rm(name,{force:true})));
     const failed=removed.find(result=>result.status==='rejected');if(failed)throw failed.reason;
     return {configured:false};
   }
-  value={apiKey:credential(value?.apiKey,'API key'),token:credential(value?.token,'token'),board:boardIdFromLink(value?.board),boardName:value.boardName,boardUrl:value.boardUrl,listCount:value.listCount,username:value.username};
-  await readTrelloSettings(filename);
-  await mkdir(path.dirname(filename),{recursive:true});
-  const data=JSON.stringify(value,null,2)+'\n';
-  for(const name of [path.join(path.dirname(filename),'trello.backup.json'),filename]) {
-    const temp=`${name}.tmp`;
-    await writeFile(temp,data,{mode:0o600});
-    await rename(temp,name);
-  }
+  value=snapshot(value);
+  const {originals}=await loadStored(filename,options);
+  await saveStored(filename,value,options,originals);
   return trelloStatus(value);
 }
 async function getJSON(url,signal,fetch) {

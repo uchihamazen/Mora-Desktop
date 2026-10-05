@@ -5,6 +5,8 @@ import { setupBrowser } from './browser-ui.js';
 import {stitchImageParts,validateImages} from './images.js';
 import {validateMediaSelection,extractVideoFrames,videoContext} from './video-frames.js';
 import {setupUsage} from './usage-ui.js';
+import {setupContextNavigation} from './context-ui.js';
+import {idleReason} from './action-status.js';
 import {markdownBlocks, inlineParts} from './markdown.js';
 import {setupProjects} from './project-ui.js';
 import {setupProjectWork} from './work-ui.js';
@@ -33,7 +35,7 @@ const dismissedErrors = new Set();
 let state = { items: [], sessions: [], models: [], busy: false, connection: 'connecting' };
 let projectFailureNotice='';
 let attachments = [], sending = false, lastSignature = '', startedAt = 0,browserUI,mediaOperation;
-let draftOwner, draftTimer, draftWrites=Promise.resolve();
+let draftOwner, draftGeneration=0, draftTimer, draftWrites=Promise.resolve();
 let updateProjects,updateProjectWork,updateTester,updateWebsiteTester,updateReadiness;
 const updateMoraMode=setupMoraMode(api,error);
 const messageRows=new Map();
@@ -53,9 +55,10 @@ async function stitchAction(name,payload) {
   }catch(error){$('stitch-status').textContent=(error.message || String(error)).replace(/^Error invoking remote method '[^']+': Error: /,'');}
   finally{stitchChanging=false;refreshStitch();}
 }
-let openReviewId = null, selectedReviewPath = null, openReviewSignature = '';
+let openReviewId = null, selectedReviewPath = null, openReviewSignature = '',externalReview=null,externalReviewGeneration=0,reviewSelectionGeneration=0;
 const icon = name => { const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); const use = document.createElementNS('http://www.w3.org/2000/svg', 'use'); use.setAttribute('href', `#i-${name}`); svg.append(use); return svg; };
 const textNode = (tag, text, className) => { const node = document.createElement(tag); node.textContent = text; if (className) node.className = className; return node; };
+const latest=textNode('button','Back to latest messages','load-older');latest.id='back-to-latest';latest.hidden=true;older.after(latest);latest.addEventListener('click',()=>action(async()=>api.contextCommand('jump',{sessionId:state.sessionId,itemId:'latest'})));
 setupUsage(api);
 const mediaStatus=textNode('div','','media-status');mediaStatus.id='media-status';mediaStatus.hidden=true;mediaStatus.setAttribute('role','status');$('attachments').after(mediaStatus);
 const liveReview=textNode('button','','live-review');liveReview.id='live-review';liveReview.hidden=true;liveReview.setAttribute('aria-label','Review live file changes');$('composer').before(liveReview);
@@ -67,7 +70,7 @@ for(const [name,label,placeholder] of [['key','API key','Paste your Trello API k
 }
 const trelloButtons=textNode('div','','trello-buttons');
 for(const name of ['connect','test','disconnect']){const button=textNode('button',name[0].toUpperCase()+name.slice(1));button.id='trello-'+name;button.addEventListener('click',()=>trelloAction(name,{apiKey:$('trello-key').value,token:$('trello-token').value,board:$('trello-board').value}));trelloButtons.append(button);}
-trello.append(trelloButtons,textNode('small','Your API key and token are saved locally in Mora. This connection only checks board access; it does not edit cards or give the AI access to Trello.'));$('stitch-settings').after(trello);
+trello.append(trelloButtons,textNode('small','Your API key and token are encrypted locally using Windows credential protection. This connection only checks board access; it does not edit cards or give the AI access to Trello.'));$('stitch-settings').after(trello);
 function refreshTrello(){
   if(!api.trelloCommand)return;
   const fields=['key','token','board'].map(name=>$('trello-'+name).value.trim()),provided=fields.some(Boolean),complete=fields.every(Boolean),blocked=trelloChanging||state.busy||state.loading||state.projectOperation||state.projectRepair||state.testerActive||state.websiteActive||['starting','ready'].includes(state.projectWork?.run?.status);
@@ -151,9 +154,9 @@ function renderText(parent, text, streaming=false) {
 function changeCounts(parent, added, removed) {
   parent.append(textNode('span', `+${added}`, 'change-added'), textNode('span', `-${removed}`, 'change-removed'));
 }
-function closeChanges() { const panel=document.querySelector('.changes-panel');panel?.remove();if(panel)api.browserCommand?.('occlude',{hidden:previewOccluded()}).catch(()=>{});openReviewId = null; selectedReviewPath = null; openReviewSignature = ''; }
+function closeChanges() { reviewSelectionGeneration++;externalReviewGeneration++;const panel=document.querySelector('.changes-panel');panel?.remove();if(panel)api.browserCommand?.('occlude',{hidden:previewOccluded()}).catch(()=>{});openReviewId = null; selectedReviewPath = null; openReviewSignature = '';externalReview=null; }
 function showChanges(item, refresh = false) {
-  if (!refresh) { closeChanges(); openReviewId = item.itemId; }
+  if (!refresh) { closeChanges(); openReviewId = item.itemId;if(item.itemId.startsWith('checkpoint-review-'))externalReview={item,sessionId:state.sessionId}; }
   if (!refresh) api.browserCommand?.('occlude',{hidden:true}).catch(()=>{});
   openReviewSignature = JSON.stringify(item);
   const panel = document.querySelector('.changes-panel') || textNode('aside', '', 'changes-panel');
@@ -169,19 +172,38 @@ function showChanges(item, refresh = false) {
   if (item.live) header.append(textNode('span', 'Live', 'change-live'));
   const close = textNode('button', '×', 'changes-close'); close.setAttribute('aria-label', 'Close file changes'); close.addEventListener('click', closeChanges); header.append(close); panel.append(header);
   if (item.partial) panel.append(textNode('p', 'Partial review: large, unreadable or excluded files may be missing.', 'changes-note'));
+  if(item.checkpointId)panel.append(textNode('p','Changes are already in your project. Keep records your review; Reject saves recovery before restoring.', 'changes-note'));
   const list = textNode('div', '', 'changes-files'), preview = textNode('div', '', 'changes-preview');
-  function select(file, button) {
+  reviewSelectionGeneration++;
+  async function select(file, button) {
+    const generation=++reviewSelectionGeneration,owner=state.sessionId,fileButton=button;
     selectedReviewPath = file.path;
     list.querySelectorAll('button').forEach(node => { node.classList.toggle('selected', node === button); node.setAttribute('aria-pressed', String(node === button)); });
     preview.replaceChildren(textNode('div', file.path, 'diff-filename'));
     const pre = textNode('pre', '', 'diff-code');
     for (const line of (file.patch || 'No text lines changed.').split('\n')) pre.append(textNode('div', line || ' ', `diff-line${line.startsWith('+') ? ' added' : line.startsWith('-') ? ' removed' : line.startsWith('@@') ? ' hunk' : ''}`));
     preview.append(pre);
+    if(item.checkpointId && api.checkpointCommand && !item.live){
+      const controls=textNode('div','','review-controls'),notice=textNode('p','Loading review…','changes-note');preview.append(controls,notice);
+      try{
+        const review=await api.checkpointCommand('review',{id:item.checkpointId,path:file.path});
+        if(generation!==reviewSelectionGeneration||owner!==state.sessionId||!panel.isConnected)return;
+        notice.textContent=review.stale?'Newer manual edits exist. They are preserved; use checkpoint review for recovery.':review.unchanged?'This file matches the original checkpoint.':review.decision||'Review this file or one change below.';
+        if(review.hunks.length)pre.replaceChildren(...review.hunks.flatMap(hunk=>hunk.patch.split('\n').map(line=>textNode('div',line||' ',`diff-line${line.startsWith('+')?' added':line.startsWith('-')?' removed':line.startsWith('@@')?' hunk':''}`))));
+        const blocked=state.busy||state.loading||state.projectOperation||state.projectRepair||state.testerActive||state.websiteActive;
+        const decideButton=(label,action,hunkId)=>{
+          const button=textNode('button',label);button.type='button';button.disabled=!!(review.stale||review.unchanged||blocked||(action==='reject'&&['starting','ready'].includes(state.projectWork?.run?.status)));button.title=review.stale?'Newer edits prevent this review action.':blocked?'Finish or stop current work before reviewing.':button.disabled?'Stop Run before rejecting changes.':label;
+          button.addEventListener('click',async()=>{for(const control of controls.querySelectorAll('button'))control.disabled=true;try{const result=await api.checkpointCommand('decision',{id:item.checkpointId,token:review.token,action,hunkId});if(owner!==state.sessionId||generation!==reviewSelectionGeneration||!panel.isConnected)return;notice.textContent=result.decision+(result.recovery?' · recovery checkpoint saved':'');await select(file,fileButton);if(generation+1===reviewSelectionGeneration)fileButton.focus({preventScroll:true});}catch(cause){if(owner===state.sessionId&&generation===reviewSelectionGeneration&&panel.isConnected){error(cause);notice.textContent=cause.message;fileButton.focus({preventScroll:true});}}});return button;
+        };
+        controls.append(decideButton('Keep file','keep'),decideButton('Reject file','reject'));
+        for(const hunk of review.hunks){const row=textNode('div','','review-hunk');row.append(textNode('span',hunk.label),decideButton(`Keep change ${hunk.id+1}`,'keep',hunk.id),decideButton(`Reject change ${hunk.id+1}`,'reject',hunk.id));controls.append(row);}
+      }catch(cause){if(generation===reviewSelectionGeneration&&owner===state.sessionId)notice.textContent=cause.message;}
+    }
   }
   for (const file of item.files) {
     const button = textNode('button', '', 'changes-file'); button.append(textNode('span', file.path, 'changes-path'));
     button.dataset.path = file.path;
-    if (file.binary) button.append(textNode('span', 'Binary', 'changes-note')); else changeCounts(button, file.added, file.removed);
+    if (file.binary) button.append(textNode('span', 'Binary', 'changes-note')); else changeCounts(button, file.added, file.removed);if(file.reviewDecision)button.append(textNode('span',file.reviewDecision,'changes-note'));
     button.addEventListener('click', () => select(file, button)); list.append(button);
   }
   panel.append(list, preview); document.body.append(panel);
@@ -196,7 +218,7 @@ function renderMessages() {
   liveReview.hidden=!live;liveReview.replaceChildren();
   if(live){liveReview.append(textNode('strong',live.files.length+' '+(live.files.length===1?'file':'files')+' changed'+(live.partial?' · partial':'')));changeCounts(liveReview,live.added,live.removed);liveReview.append(textNode('span','Live','change-live'));liveReview.onclick=()=>showChanges(live);}else liveReview.onclick=null;
   if (openReviewId) {
-    const review=state.items.find(item=>item.itemId===openReviewId) || (state.lastOutcomeReview?.itemId===openReviewId&&state.lastOutcomeReview);
+    const review=state.items.find(item=>item.itemId===openReviewId) || (state.lastOutcomeReview?.itemId===openReviewId&&state.lastOutcomeReview) || (externalReview?.sessionId===state.sessionId&&externalReview.item);
     if(!review)closeChanges();else if(JSON.stringify(review)!==openReviewSignature)showChanges(review,true);
   }
   const area=$('scroll-area'),nearBottom=area.scrollHeight-area.scrollTop-area.clientHeight<130;
@@ -204,7 +226,7 @@ function renderMessages() {
   if(Number.isInteger(state.historyWindowSize))visibleHistory=state.historyWindowSize;
   const history=(state.items || []).filter(item=>!item.retracted&&item!==live);
   const historyCount=state.historyCount??history.length;
-  older.hidden=historyCount<=visibleHistory;older.textContent=`Load older messages (${Math.max(0,historyCount-visibleHistory)} remaining)`;
+  const before=state.historyWindowBefore??Math.max(0,historyCount-visibleHistory);older.hidden=!before;older.textContent=`Load older messages (${before} remaining)`;latest.hidden=!state.historyWindowAfter;
   const rows=[...history.slice(-visibleHistory),...(state.pendingQueue || []).map(entry=>({...entry,itemId:'queue-'+entry.queueId,kind:'queued'}))];
   if(state.lastOutcome && !state.busy)rows.push({...state.lastOutcome,itemId:'outcome-'+state.lastOutcome.turnId,kind:'outcome',previewReady:state.projectWork?.root===state.projectPath&&state.projectWork?.run?.status==='ready',tools:state.lastOutcomeOperations??(state.items || []).filter(item=>item.turnId===state.lastOutcome.turnId && (item.kind==='toolCall' || item.kind==='userShell')),review:state.lastOutcomeReview??(state.items || []).find(item=>item.turnId===state.lastOutcome.turnId && item.kind==='fileChanges'),activeRequest:state.activeRequest});
   const seen=new Set();let position=0,queuePosition=0;
@@ -214,7 +236,7 @@ function renderMessages() {
     let record=messageRows.get(key);
     const sameImages=record && (record.images || []).length===(item.images || []).length && (item.images || []).every((image,index)=>image.mediaType===record.images[index].mediaType && image.base64Data===record.images[index].base64Data);
     if(!record){record={node:document.createElement('div')};messageRows.set(key,record);}
-    const node=record.node;node.currentItem=item;
+    const node=record.node;node.currentItem=item;node.dataset.messageId=item.itemId;
     if(record.signature!==signature || !sameImages) {
       const sameKind=record.kind===item.kind;record.signature=signature;record.kind=item.kind;
       if(item.kind==='toolCall' || item.kind==='userShell') {
@@ -301,6 +323,7 @@ function update(next) {
   updateWebsiteTester?.(state);
   updateReadiness?.(state);
   updateMoraMode(state);
+  updateContext?.(state);
   const account=state.account || {status:'unknown',message:'Uses your existing Muse login.'};
   $('account-settings').hidden=!api.accountCommand;
   $('account-status').textContent=account.message;
@@ -314,7 +337,7 @@ function update(next) {
   $('onboarding-status').textContent=account.message;
   $('onboarding-action').textContent=account.status==='missing'?'Get Muse Code':account.status==='pending'?'View sign-in code':account.status==='unknown'?'Check account':'Sign in to Muse';
   $('onboarding-action').disabled=state.busy || state.loading || state.connection==='connecting';
-  if(!state.loading && draftOwner!==state.sessionId){draftOwner=state.sessionId;const draft=state.draft || {text:'',images:[]};$('prompt').value=draft.text;attachments=draft.images || [];renderAttachments(false);}
+  if(!state.loading && draftOwner!==state.sessionId){draftOwner=state.sessionId;draftGeneration++;const draft=state.draft || {text:'',images:[]};$('prompt').value=draft.text;attachments=draft.images || [];renderAttachments(false);}
   const general = state.projectPath === null;
   $('project-name').textContent = general ? 'General chat' : (state.workspace || '').split(/[\\/]/).filter(Boolean).at(-1) || 'Your project';
   $('project-path').textContent = general ? 'No project attached' : state.workspace || 'Select a folder';
@@ -332,7 +355,7 @@ function update(next) {
   $('working').hidden = !state.busy && !state.loading; $('working-label').textContent = state.loading ? 'Opening conversation…' : state.stopping ? 'Stopping Muse…' : state.finishing ? 'Reply ready · finishing final checks' : state.activity || 'Muse is working on it';
   if (state.busy && !wasBusy) { startedAt = Date.now(); $('elapsed').textContent = '0s'; }
   $('send-button').hidden = false; $('stop-button').hidden = !state.busy; $('stop-button').disabled = state.stopping;
-  for (const id of ['new-chat','add-project','workspace-button','model','effort','execution-mode','choose-muse','reconnect']) $(id).disabled = state.busy || state.loading || sending || state.connection==='connecting';
+  const idle=idleReason(state);for (const id of ['new-chat','add-project','workspace-button','model','effort','execution-mode','choose-muse','reconnect']) {const control=$(id);control.disabled=!!(idle||sending||state.connection==='connecting');control.dataset.defaultTitle??=control.title;control.title=idle||(sending?'Wait for this message to be saved.':state.connection==='connecting'?'Wait for Muse to connect.':control.dataset.defaultTitle);}
   $('attach-button').disabled = state.loading || sending || !!mediaOperation || state.workUnavailable;
   $('prompt').disabled = state.loading || sending || state.workUnavailable;
   $('prompt').placeholder = state.busy && state.finishing ? 'Write your next message while Muse finishes…' : state.busy ? 'Queue a follow-up while Muse works…' : general ? 'Ask Muse anything, or attach an image…' : 'Describe what you want to change…';
@@ -350,7 +373,7 @@ function update(next) {
   const model = state.models?.find(model => model.modelId === state.modelId);
   const efforts=Array.isArray(model?.variants)?model.variants:[];
   fillSelect($('effort'), efforts.length?efforts.map(value => ({ value, label:value==='xhigh'?'Extra high':value[0].toUpperCase()+value.slice(1) })):[{value:'',label:'Not available'}], efforts.length?state.reasoningEffort:'');
-  $('effort').disabled=state.busy || state.loading || sending || !efforts.length || state.connection!=='ready';
+  $('effort').disabled=!!idle || sending || !efforts.length || state.connection!=='ready';
   $('execution-mode').value = state.executionMode || 'readonly';syncSelectMenus();
   $('completion-sound').checked=state.completionSound!==false;
   updateLibrary(state,sending);updateQuickActions();
@@ -414,16 +437,19 @@ function flushDraft() {
 window.flushMoraDraft = flushDraft;
 async function send() {
   if (sending || $('send-button').disabled) return;
+  let acceptedOwner;
+  const owner=draftOwner,generation=draftGeneration,sentImages=attachments.map(image=>({...image})),sentPrompt=$('prompt').value,sameOwner=()=>owner===draftOwner&&owner===state.sessionId&&generation===draftGeneration,ownsDraft=()=>sameOwner()||owner===null&&acceptedOwner!==undefined&&acceptedOwner===state.sessionId&&draftOwner===state.sessionId&&draftGeneration===generation+1;
   sending = true; refreshSend();
   try {
     await flushDraft();
-    const sentImages=attachments.map(image=>({...image})),sentPrompt=$('prompt').value;
-    let noteNumber=0;const text=[$('prompt').value,...attachments.map((image,index)=>image.contextText ? `${image.annotationRef?`Note ${++noteNumber}`:`Selection ${index+1}`}${image.note ? ` — requested change: ${image.note}` : ''}\n${image.contextText}` : '').filter(Boolean),videoContext(attachments)].filter(Boolean).join('\n\n');
-    await api.sendMessage({ text, images: attachments.map(({ mediaType, base64Data }) => ({ mediaType, base64Data })) });
+    if(!sameOwner()||state.loading)return;
+    let noteNumber=0;const text=[sentPrompt,...sentImages.map((image,index)=>image.contextText ? `${image.annotationRef?`Note ${++noteNumber}`:`Selection ${index+1}`}${image.note ? ` — requested change: ${image.note}` : ''}\n${image.contextText}` : '').filter(Boolean),videoContext(sentImages)].filter(Boolean).join('\n\n');
+    const accepted=await api.sendMessage({sessionId:owner??null,text,images:sentImages.map(({ mediaType, base64Data }) => ({ mediaType, base64Data }))});
+    acceptedOwner=accepted?.sessionId;if(!ownsDraft())return;
     if($('prompt').value===sentPrompt){$('prompt').value = ''; $('prompt').style.height = '';}
-    attachments=attachments.filter(image=>!sentImages.some(sent=>['mediaType','base64Data','contextText','note'].every(key=>sent[key]===image[key]) && sent.annotationRef?.id===image.annotationRef?.id));renderAttachments(false);await flushDraft();$('error-banner').hidden=true;
-  } catch (e) { error(e); }
-  finally { sending = false; update(await api.getState()); if (!state.busy) $('prompt').focus(); }
+    attachments=attachments.filter(image=>!sentImages.some(sent=>['mediaType','base64Data','contextText','note'].every(key=>sent[key]===image[key]) && sent.annotationRef?.id===image.annotationRef?.id));renderAttachments(false);await flushDraft();if(ownsDraft())$('error-banner').hidden=true;
+  } catch (e) { if(ownsDraft())error(e); }
+  finally { sending = false; update(await api.getState()); if (ownsDraft()&&!state.busy) $('prompt').focus(); }
 }
 $('prompt').addEventListener('input', () => { const prompt=$('prompt'),minimum=parseFloat(getComputedStyle(prompt).minHeight);prompt.style.height='auto';prompt.style.height=`${Math.min(200,Math.max(minimum,prompt.scrollHeight))}px`; refreshSend();scheduleDraft(); });
 $('prompt').addEventListener('keydown', event => { if (event.key === 'Enter' && !event.shiftKey && !event.isComposing && event.keyCode !== 229) { event.preventDefault(); send(); } });
@@ -482,7 +508,10 @@ setInterval(() => { if (state.busy && startedAt) { const seconds = Math.floor((D
 api.onEvent(event => { if (event.type === 'state') update(event.state);else if(event.type==='annotation-saved' && event.sessionId===(draftOwner||null)){attachments=event.images;renderAttachments(false);}else if(event.type==='completion-sound'){completionSound.currentTime=0;completionSound.play().catch(()=>{});} });
 browserUI=setupBrowser(api,capture=>{addImages([capture]);$('prompt').focus();},{flushDraft,send});
 const updateLibrary=setupLibrary(api,action);
-const conversationFind=setupConversationFind();
+const conversationFind=setupConversationFind(api,update);
+const updateContext=setupContextNavigation(api,{update,error,flushDraft:()=>flushDraft()});
+document.addEventListener('mora-review-checkpoint',event=>action(()=>updateProjectWork.reviewCheckpoint(event.detail)));
+document.addEventListener('mora-review-files',async event=>{const owner=state.sessionId,generation=++externalReviewGeneration;try{const item=await api.checkpointCommand('review-files',{id:event.detail});if(owner===state.sessionId&&generation===externalReviewGeneration)showChanges(item);}catch(cause){if(owner===state.sessionId&&generation===externalReviewGeneration)error(cause);}});
 const updateQuickActions=setupQuickActions(api,{find:conversationFind,sidebar:setSidebar});
 $('completion-sound').addEventListener('change',()=>action(()=>api.completionSoundOptions($('completion-sound').checked),{flush:false}));
 updateProjects=setupProjects(api,action);

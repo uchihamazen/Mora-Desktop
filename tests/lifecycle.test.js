@@ -7,6 +7,9 @@ import { EventEmitter } from 'node:events';
 import { createState, assertIdle, applyEvent } from '../src/state.js';
 import { validateImages } from '../src/images.js';
 import {HistoryWindow} from '../src/history-window.js';
+import {moraToggleReason} from '../src/action-status.js';
+import {parseContextReferences} from '../src/context-references.js';
+import {resolveProjectContext,searchChatHistory,searchProjectLogs,buildHandoff} from '../src/context-navigation.js';
 import {validateMediaSelection} from '../src/video-frames.js';
 import { snapshotProject, compareProject } from '../src/changes.js';
 import * as changesApi from '../src/changes.js';
@@ -31,7 +34,7 @@ function harness(overrides = {}) {
   }
   const handlers = {};
   const context = vm.createContext({
-    path, Buffer, setTimeout, clearTimeout, HistoryWindow,validateMediaSelection, ExecRunner: Runner,accountState,AccountLogin,parseTesterCommand,parseWebsiteTesterCommand,reportForRevision,projectRevision,
+    path, Buffer, setTimeout, clearTimeout, HistoryWindow,moraToggleReason,parseContextReferences,resolveProjectContext,searchChatHistory,searchProjectLogs,buildHandoff,validateMediaSelection, ExecRunner: Runner,accountState,AccountLogin,parseTesterCommand,parseWebsiteTesterCommand,reportForRevision,projectRevision,
     readProjectBrief:async()=>({text:'',revision:null}),
     discoverContextPerformanceArgs:async()=>[],
     Checkpoints:class {async create(){return {id:"checkpoint"};}async seal(){}},
@@ -80,6 +83,27 @@ test('Mora Mode refuses ordinary media before launching workers and preserves it
  await assert.rejects(h.sendMessage(h.state.draft),/Mora Mode.*text/);assert.equal(calls,0);assert.equal(h.state.draft.images.length,1);
 });
 
+test('Mora Mode admission reserves navigation until persistence finishes and protects message ownership',async()=>{
+  const h=harness();h.state.sessions[0].title='New conversation';h.state.sessions.push({sessionId:'other',title:'New conversation',workspace:'C:/other'});h.state.moraMode={enabled:true,tasks:[],requests:[]};
+  let release,entered=false;const gate=new Promise(resolve=>{release=resolve;}),mode={sessionId:'session',state:{items:[]},send:async()=>{entered=true;await gate;return {accepted:true};},snapshot:()=>({enabled:true,tasks:[],requests:[],replying:false})};h.setMoraMode(mode);
+  const sending=h.sendMessage({text:'Task for original chat'});while(!entered)await tick();
+  await assert.rejects(h.resumeChat('other'),/Mora Mode message.*saved/);await assert.rejects(h.newChat(),/Mora Mode message.*saved/);assert.equal(h.state.sessionId,'session');assert.equal(h.state.sessions[1].title,'New conversation');
+  release();await sending;assert.equal(h.state.sessions[0].title,'Task for original chat');assert.equal(h.state.sessions[0].hasMoraMessages,true);assert.equal(h.state.sessions[1].hasMoraMessages,undefined);assert.equal(h.state.moraAdmitting,0);
+});
+
+test('failed Mora Mode admission clears its reservation and keeps the draft and chat metadata',async()=>{
+  const h=harness();h.state.sessions[0].title='New conversation';h.state.moraMode={enabled:true};h.state.draft={text:'Keep this draft',images:[]};h.setMoraMode({send:async()=>{throw Error('Disk save failed');}});
+  await assert.rejects(h.sendMessage({text:'Request'}),/Disk save failed/);assert.equal(h.state.moraAdmitting,0);assert.equal(h.state.sessions[0].title,'New conversation');assert.equal(h.state.draft.text,'Keep this draft');assert.doesNotThrow(()=>assertIdle(h.state));
+});
+
+test('a send carrying an obsolete chat owner is refused before engine work',async()=>{
+  const h=harness();h.state.draft={text:'Current chat draft',images:[]};await assert.rejects(h.sendMessage({sessionId:'older-chat',text:'Stale request'}),error=>error.code==='MORA_STALE_CHAT');assert.equal(h.runner.spawned,0);assert.equal(h.state.draft.text,'Current chat draft');
+});
+
+test('the first general-chat send returns its created owner for safe draft cleanup',async()=>{
+  const h=harness();h.state.sessionId=null;h.state.sessions=[];h.state.projectPath=null;const result=await h.sendMessage({sessionId:null,text:'First general request'});assert.equal(result.accepted,true);assert.equal(result.sessionId,'session');for(let i=0;i<100&&h.state.busy;i++)await tick();assert.equal(h.runner.spawned,1);
+});
+
 test('Mora Mode can toggle with an idle ready preview without stopping it or changing the draft',async()=>{
  const h=harness();let enabled=false;const child={};const mode={sessionId:h.state.sessionId,state:{items:[]},enable:async value=>{enabled=value;},snapshot:()=>({enabled,tasks:[],replying:false})};
  const preview={runChild:child,active:false,state:{root:h.state.projectPath,run:{status:'ready'}}};h.setMoraMode(mode);h.setProjectRunner(preview);h.state.draft={text:'Keep my draft',images:[]};
@@ -94,7 +118,8 @@ test('Mora Mode toggle still blocks startup, active tests, other project preview
   h.setProjectRunner({runChild:{},active:scenario==='testing',state:{root:scenario==='other-project'?'C:/another':h.state.projectPath,run:{status:scenario==='starting'?'starting':'ready'}}});
   if(scenario==='queue')h.state.pendingQueue=[{queueId:'q',text:'Keep pending',images:[]}];
   if(scenario==='model')h.state.busy=true;if(scenario==='workers')h.state.moraMode={tasks:[{status:'running'}]};if(scenario==='tester')h.state.testerActive=true;
-  await assert.rejects(h.moraModeCommand('enable',{enabled:true}));assert.equal(enabled,false,scenario);
+  const reason={starting:/Finish or stop/,testing:/Finish or stop/,'other-project':/Finish or stop/,queue:/saved request.*queue/,model:/request is running/,workers:/Mora Mode work/,tester:/Stop testing/}[scenario];
+  await assert.rejects(h.moraModeCommand('enable',{enabled:true}),reason);assert.equal(enabled,false,scenario);
  }
 });
 

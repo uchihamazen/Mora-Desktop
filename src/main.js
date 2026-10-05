@@ -38,6 +38,9 @@ import {MoraMode} from './mora-mode.js';
 import {projectFile} from './project.js';
 import {validateMediaSelection} from './video-frames.js';
 import {resolveApiKey,fetchUsage} from './usage.js';
+import {moraToggleReason} from './action-status.js';
+import {resolveProjectContext,searchChatHistory,searchProjectLogs,buildHandoff} from './context-navigation.js';
+import {parseContextReferences} from './context-references.js';
 
 const directory = path.dirname(fileURLToPath(import.meta.url));
 let window, prefsPath, museHome, executable, connectionAttempt, quitting = false;
@@ -57,9 +60,9 @@ async function getMora(create=false){
 }
 async function moraModeCommand(action,payload={}){
   if(action==='enable'){
-    assertIdle(state);
+    const reason=moraToggleReason(state,{enabling:payload.enabled});if(reason)throw Error(reason);
     if(projectOperation||repairInProgress||projectRunner?.active||projectRunner?.runChild&&(projectRunner.state.root!==state.projectPath||projectRunner.state.run.status!=='ready'))throw Error('Finish or stop the active project operation before changing Mora Mode.');
-    if(!state.sessionId)await newChat();const mode=await getMora(true);if(state.pendingQueue.length||state.activeRequest)throw Error('Resolve the ordinary chat queue before enabling Mora Mode.');if(payload.enabled&&state.connection!=='ready')throw Error('Connect to Muse first.');await mode.enable(payload.enabled);syncMora(mode);return state;
+    if(!state.sessionId)await newChat();const mode=await getMora(true);if(state.pendingQueue.length||state.activeRequest)throw Error('Resolve the ordinary chat queue before enabling Mora Mode.');if(payload.enabled&&state.connection!=='ready')throw Error('Connect to Muse first.');await mode.enable(payload.enabled);if(!payload.enabled&&state.executionMode==='project'){state.executionMode='readonly';mode.options.executionMode='readonly';await save();}syncMora(mode);return state;
   }
   const mode=await getMora();if(!mode)throw Error('Enable Mora Mode first.');const result=await mode.command(action,payload);if(action==='evidence')return result;syncMora(mode);return state;
 }
@@ -164,13 +167,22 @@ function assertProjectStopped() {if(projectOperation || repairInProgress || proj
 async function checkpointCommand(action,payload={}) {
   const store=checkpointStore();
   if(action==='list')return store.list();
-  assertIdle(state);assertProjectStopped();
+  if(action==='review-files')return store.reviewFiles(payload.id);
+  if(action==='review')return store.review(payload.id,payload.path);
+  if(projectOperation||repairInProgress||projectRunner?.active)throw Error('Wait for the current project operation before changing its review.');
+  assertIdle(state);if(action!=='decision'||payload.action!=='keep')assertProjectStopped();
   projectOperation=true;state.projectOperation=true;publish();
   try {
     if(action==='create')return await store.create(payload.label);
     if(action==='preview')return await store.preview(payload.id);
     if(action==='restore'){const result=await store.restore(payload);if(state.tester?.project===state.projectPath)state.tester=reportForRevision(state.tester,await projectRevision(state.projectPath));if(projectRunner?.state.root===state.projectPath)await projectRunner.refreshTests();return result;}
     if(action==='delete')return await store.delete(payload.id);
+    if(action==='decision'){
+      const result=await store.decideReview(payload);
+      for(const item of state.items.filter(row=>row.kind==='fileChanges')){const file=item.files.find(file=>file.path===result.path);if(item.checkpointId===payload.id && file){file.reviewDecision=result.decision;await saveChangeSummary(app.getPath('userData'),state.sessionId,item);}}
+      if(result.changed && projectRunner?.state.root===state.projectPath)await projectRunner.refreshTests();
+      return result;
+    }
     throw new Error('Unknown checkpoint action.');
   }finally{projectOperation=false;state.projectOperation=false;publish();}
 }
@@ -254,18 +266,18 @@ async function stitchCommand(action,payload={}) {
 let trelloChanging=false;
 async function trelloCommand(action,payload={}) {
   const filename=path.join(app.getPath('userData'),'trello.json');
-  if(action==='state')return trelloStatus(await readTrelloSettings(filename));
-  if(!['connect','test','disconnect'].includes(action))throw Error('Unknown Trello action.');
-  assertIdle(state);assertProjectStopped();
+  if(!['state','connect','test','disconnect'].includes(action))throw Error('Unknown Trello action.');
+  if(action!=='state'){assertIdle(state);assertProjectStopped();}
   if(trelloChanging)throw Error('A Trello connection check is already running.');
   trelloChanging=true;
   try{
+    if(action==='state')return trelloStatus(await readTrelloSettings(filename,{crypto:safeStorage}));
     if(action==='disconnect')return await configureTrello(filename,null);
     const provided=['apiKey','token','board'].some(key=>typeof payload?.[key]==='string'&&payload[key].trim());
-    const saved=action==='connect'||provided?null:await readTrelloSettings(filename);
+    const saved=action==='connect'||provided?null:await readTrelloSettings(filename,{crypto:safeStorage});
     const credentials=action==='connect'||provided?{apiKey:payload?.apiKey,token:payload?.token,board:payload?.board}:{apiKey:saved?.apiKey,token:saved?.token,board:saved?.board};
     const verified=await checkTrello(credentials);
-    if(action==='connect')await configureTrello(filename,{...credentials,...verified});
+    if(action==='connect')await configureTrello(filename,{...credentials,...verified},{crypto:safeStorage});
     return {...trelloStatus({...credentials,...verified}),...verified,verified:true,keyOnly:action==='test'&&provided};
   }finally{trelloChanging=false;}
 }
@@ -476,7 +488,8 @@ function consume(record) {
   applyExecRecord(state, record); publish();
 }
 
-async function sendMessage({ text, images = [] } = {},{repair=false}={}) {
+async function sendMessage({ text, images = [],sessionId } = {},{repair=false}={}) {
+  if(sessionId!==undefined&&sessionId!==state.sessionId)throw Object.assign(Error('The sending chat changed. Your draft is saved.'),{code:'MORA_STALE_CHAT'});
   if(typeof text==='string'&&text.length<=12000){const website=parseWebsiteTesterCommand(text);if(website){if(images.length)throw Error('Use a website URL and a text objective.');if(state.busy||state.testerActive)throw Error('Wait for the current request before opening website testing.');state.websiteOpen={...website,id:uuid7()};publish();if(website.url)await websiteCommand('open',website);return state;}}
   if(state.testerActive||state.websiteActive)throw Error('Stop AI Tester before sending another request. Your draft is saved.');
   if(projectOperation || (repairInProgress && !repair))throw new Error('Wait for project checks or repair to finish. Your draft is saved.');
@@ -490,7 +503,16 @@ async function sendMessage({ text, images = [] } = {},{repair=false}={}) {
   const tester=parseTesterCommand(text);
   if(tester){if(state.busy)throw Error('Wait for the current request before starting AI Tester.');if(validated.length)throw Error('Use a text testing request.');return testerCommand(tester.mode==='report'?'start':'solve',{request:tester.request});}
   if (!text.trim() && !validated.length) throw new Error('Write a message or attach an image.');
-  if(state.moraMode?.enabled){if(validated.length)throw Error('Mora Mode currently accepts text requests. Your image draft is saved.');const mode=await getMora(),accepted=await mode.send(text),session=currentSession();session.hasMoraMessages=true;if(!session.customTitle&&session.title==='New conversation')session.title=text.trim().slice(0,65);await save();syncMora(mode);return accepted;}
+  if(state.executionMode==='project'&&!state.moraMode?.enabled)throw Error('Enable Mora Mode to use Project files access. Your draft is saved.');
+  if(state.moraMode?.enabled){
+    if(validated.length)throw Error('Mora Mode currently accepts text requests. Your image draft is saved.');
+    const owner=state.sessionId,root=state.projectPath,session=currentSession();state.moraAdmitting++;publish();
+    try{
+      const context=await requestContext(text),mode=await getMora();
+      if(owner!==state.sessionId||root!==state.projectPath||!state.moraMode?.enabled||!mode)throw Error('The chat changed while preparing this Mora Mode request. Your draft is saved.');
+      const accepted=await mode.send(text,context);session.hasMoraMessages=true;if(!session.customTitle&&session.title==='New conversation')session.title=text.trim().slice(0,65);await save();syncMora(mode);return {...accepted,sessionId:owner};
+    }finally{state.moraAdmitting=Math.max(0,state.moraAdmitting-1);publish();}
+  }
   if (state.busy) {
     if (state.pendingQueue.length + queueReservation >= 10) throw new Error('The send queue is full (10 messages). Wait for the current request to finish.');
     const entry = { queueId: uuid7(), text, images: validated, queuedAt: new Date().toISOString() };
@@ -555,7 +577,7 @@ function startDrain(request) {
           state.activeTurnId = uuid7();
           state.activeRequest = {...next,turnId:state.activeTurnId,phase:'preparing'};
           await persistWork();
-          result = await executeTurn(next.text, next.images, { onAccept: () => { if (first) acceptResolve({ accepted: true }); } });
+          result = await executeTurn(next.text, next.images, { onAccept: () => { if (first) acceptResolve({ accepted: true,sessionId:state.sessionId }); } });
         } catch (error) {
           state.queuePaused = true;
           state.lastOutcome = {status:state.stopping?'interrupted':'failed',turnId:state.activeTurnId,message:error.message};
@@ -586,7 +608,7 @@ async function executeTurn(text, validated, hooks) {
   const updateReview = (changes, live) => {
     const itemId = `changes-${state.activeTurnId}`;
     const index = state.items.findIndex(item => item.itemId === itemId);
-    const item = { itemId, turnId: state.activeTurnId, kind: 'fileChanges', live, ...changes };
+    const item = { itemId, turnId: state.activeTurnId, kind: 'fileChanges', checkpointId:checkpoint?.id, live, ...changes };
     if (changes.files.length || changes.partial) {
       if (index === -1) state.items.push(item); else state.items[index] = item;
     } else if (index !== -1) state.items.splice(index, 1);
@@ -596,7 +618,8 @@ async function executeTurn(text, validated, hooks) {
   try {
     temp = await mkdtemp(path.join(app.getPath('temp'), 'muse-desktop-input-'));
     const brief=state.projectPath?await readProjectBrief(state.projectPath):null;
-    const promptFile = path.join(temp, 'prompt.txt'); await writeFile(promptFile,[brief?.text.trim()?`Shared project brief (.mora/project-brief.md):\n${brief.text}\n\nCurrent request:`:'',text || 'Describe the attached image.'].filter(Boolean).join('\n'));
+    const attachedContext=await requestContext(text);
+    const promptFile = path.join(temp, 'prompt.txt'); await writeFile(promptFile,[brief?.text.trim()?`Shared project brief (.mora/project-brief.md):\n${brief.text}\n\nCurrent request:`:'',text || 'Describe the attached image.',attachedContext?`Attached project context (source data):\n${attachedContext}`:''].filter(Boolean).join('\n'));
     const imagePaths = [];
     for (const [index, image] of validated.entries()) {
       const ext = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp' }[image.mediaType];
@@ -711,10 +734,47 @@ async function pickMedia(budget={}){
   }
   validateImages(picked.filter(item=>item.mediaType.startsWith('image/')));return picked;
 }
+function contextReferences(text) {
+  return parseContextReferences(text);
+}
+async function requestContext(text) {
+  const references=contextReferences(text);if(!references.length)return '';
+  if(!state.projectPath)throw Error('Open a project to attach file or folder context.');
+  const owner=state.sessionId,root=state.projectPath,result=await resolveProjectContext(root,references);
+  if(owner!==state.sessionId||root!==state.projectPath)throw Error('The project changed while attaching context. Your draft is saved.');
+  return result.text;
+}
+let contextSearchId=0;
+async function contextCommand(action,payload={}) {
+  const owner=state.sessionId;
+  if(action==='jump')return historyWindow.jump(state,payload.sessionId,payload.itemId);
+  if(payload.sessionId!==owner)throw Error('The chat changed. Open the context tool again.');
+  if(action==='resolve'){if(!state.projectPath)throw Error('Open a project first.');return resolveProjectContext(state.projectPath,payload.references);}
+  if(action==='handoff')return buildHandoff({...state,project:state.projectPath,checks:state.projectWork?.root===state.projectPath?state.projectWork.tests:undefined});
+  if(action==='search-current')return searchChatHistory(state.items,payload.query,{limit:100});
+  if(action==='search-logs'){if(state.projectWork?.root!==state.projectPath)throw Error('Run or Test this project to collect its logs.');return searchProjectLogs(state.projectWork,payload.query,{limit:100});}
+  if(action==='search-chats'){
+    if(typeof payload.query!=='string'||payload.query.length>256)throw Error('Keep the search query within 256 characters.');
+    if(!payload.query.trim()){contextSearchId++;return {results:[],total:0,unavailable:0,truncated:false};}
+    const searchId=++contextSearchId,sessions=[...state.sessions],results=[];let total=0,unavailable=0,scanned=0;
+    for(const session of sessions){
+      if(++scanned%10===0)await new Promise(resolve=>setImmediate(resolve));
+      if(searchId!==contextSearchId||owner!==state.sessionId)throw Error('The search changed. Try again.');
+      let items;
+      try{items=session.sessionId===owner?state.items:await readHistory(session.sessionId,museHome);}catch{try{items=await readCachedHistory(session.sessionId,museHome);}catch{items=[];if(session.hasMessages!==false)unavailable++;}}
+      const mode=moraModes.get(session.sessionId);
+      if(session.sessionId!==owner){if(mode)items=[...items,...mode.state.items];else if(session.hasMoraMessages&&/^[a-zA-Z0-9-]{1,100}$/.test(session.sessionId))try{const value=JSON.parse(await readFile(path.join(app.getPath('userData'),'mora-mode',session.sessionId,'conversation.backup.json'),'utf8'));items=[...items,...value.items];}catch{unavailable++;}}
+      const found=searchChatHistory(items,payload.query,{limit:100});total+=found.total;for(const result of found.results)if(results.length<100)results.push({...result,sessionId:session.sessionId,title:session.title,archived:session.archived===true});
+    }
+    if(searchId!==contextSearchId||owner!==state.sessionId)throw Error('The search changed. Try again.');
+    return {results,total,unavailable,truncated:total>results.length};
+  }
+  throw Error('Choose an available context action.');
+}
 function handle(name, fn) {
   ipcMain.handle(`muse:${name}`, async (event, ...args) => {
     if (!window || event.sender !== window.webContents || event.senderFrame !== window.webContents.mainFrame) throw new Error('Untrusted request.');
-    try { const result=await fn(...args);return result===state?historyWindow.project(state):result; } catch (error) { if (!['browser','stitch','load-older','usage'].includes(name)) report(error); throw error; }
+    try { const result=await fn(...args);return result===state?historyWindow.project(state):result; } catch (error) { if (error.code!=='MORA_STALE_CHAT'&&!['browser','stitch','load-older','usage','context'].includes(name)) report(error); throw error; }
   });
 }
 
@@ -731,7 +791,7 @@ else {
   try { preferences = JSON.parse(await readFile(prefsPath, 'utf8')); }
   catch (error) { if (error.code !== 'ENOENT') { await rename(prefsPath, `${prefsPath}.corrupt-${Date.now()}`).catch(() => {}); state.error = 'Settings were unreadable. A backup was kept.'; } }
   for (const key of ['workspace','modelId','reasoningEffort','executionMode']) if (typeof preferences[key] === 'string') state[key] = preferences[key];
-  if (!['readonly','full'].includes(state.executionMode)) state.executionMode = 'readonly';
+  if (!['readonly','project','full'].includes(state.executionMode)) state.executionMode = 'readonly';
   const library = await loadConversations(app.getPath('userData'), preferences);
   state.sessions = library.sessions;
   state.projects = groupConversations(state.sessions, library.projects).slice(1).map(group => group.projectPath);
@@ -804,6 +864,7 @@ else {
   handle('usage',usageCommand);
   handle('get-state', () => state);
   handle('load-older',sessionId=>historyWindow.older(state,sessionId));
+  handle('context',contextCommand);
   handle('checkpoints',checkpointCommand);
   handle('account',async action=>{
     assertIdle(state);
@@ -834,11 +895,16 @@ else {
   handle('set-options', async options => {
     assertIdle(state);
     if (!options || typeof options !== 'object') throw new Error('Invalid options.');
+    if(options.executionMode!==undefined&&!['readonly','project','full'].includes(options.executionMode))throw Error('Invalid execution mode.');
+    const selectedModel=state.models.find(model=>model.modelId===(options.modelId??state.modelId));
+    if(options.modelId!==undefined&&!selectedModel)throw Error('Choose an available Muse model.');
+    if(options.reasoningEffort!==undefined&&(!Array.isArray(selectedModel?.variants)||!selectedModel.variants.includes(options.reasoningEffort)))throw Error('Choose a supported reasoning effort.');
+    if(options.executionMode==='project'){const reason=moraToggleReason(state,{enabling:true});if(reason)throw Error(reason);const mode=await getMora(true);await mode.enable(true);syncMora(mode);}
     if (options.modelId !== undefined) { if (!state.models.some(m => m.modelId === options.modelId)) throw new Error('Choose an available Muse model.'); state.modelId = options.modelId; }
     const model = state.models.find(m => m.modelId === state.modelId);
     if (options.reasoningEffort !== undefined) { if (!Array.isArray(model?.variants) || !model.variants.includes(options.reasoningEffort)) throw new Error('Choose a supported reasoning effort.'); state.reasoningEffort = options.reasoningEffort; }
     reconcileModel();
-    if (options.executionMode !== undefined) { if (!['readonly','full'].includes(options.executionMode)) throw new Error('Invalid execution mode.'); state.executionMode = options.executionMode; }
+    if (options.executionMode !== undefined) state.executionMode = options.executionMode;
     const session=currentSession();if(session)Object.assign(session,{modelId:state.modelId,reasoningEffort:state.reasoningEffort});
     const mode=moraModes.get(state.sessionId);if(mode){await mode.native?.close();mode.native=null;mode.supervisor=null;mode.options={...mode.options,modelId:state.modelId,reasoningEffort:state.reasoningEffort,executionMode:state.executionMode};}
     await save(); publish(); return state;

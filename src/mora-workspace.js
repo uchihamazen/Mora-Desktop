@@ -37,7 +37,7 @@ export function overlappingFiles(left,right){return left.some(a=>right.some(b=>a
 export class MoraWorkspace {
   constructor(profile,project,{projectCommands=false,browserOptions={},checkTimeoutMs=120000,browserTimeoutMs=45000,browserAssertionMs=2500}={}){Object.assign(this,{projectCommands,browserOptions,checkTimeoutMs,browserTimeoutMs,browserAssertionMs});this.profile=profile;this.project=path.resolve(project);this.checkpoints=new Checkpoints(profile,this.project);this.directory=path.join(profile,'mora-mode-workspaces',hash(this.project).slice(0,16));}
   threadDirectory(threadId){if(!safeId(threadId))throw Error('Invalid worker identity.');return path.join(this.directory,hash(threadId).slice(0,16));}
-  async prepare(threadId,runId,task){
+  async prepare(threadId,runId,task,{projectCommands=this.projectCommands}={}){
     if(!safeId(threadId)||!safeId(runId))throw Error('Invalid worker identity.');
     const baseline=await this.checkpoints.snapshot(),directory=path.join(this.threadDirectory(threadId),hash(runId).slice(0,16)),root=path.join(directory,'source');
     await mkdir(root,{recursive:true});const space=await statfs(directory);if(space.bavail*space.bsize<128*1024*1024)throw Error('Not enough free space for an isolated coding task.');
@@ -45,7 +45,7 @@ export class MoraWorkspace {
     for(const [name,data] of baseline.files){const file=await projectFile(root,name);await mkdir(path.dirname(file),{recursive:true});await writeFile(file,data,{flag:'wx'});}
     const base=Object.fromEntries([...baseline.files].map(([name,data])=>[name,data.toString('base64')]));
     await writeFile(path.join(directory,'baseline.json'),JSON.stringify({project:this.project,threadId,runId,task,files:base}),{flush:true});
-    return {root,directory,threadId,runId,task,baseline:baseline.files,verified:null,projectCommands:this.projectCommands};
+    return {root,directory,threadId,runId,task,baseline:baseline.files,verified:null,projectCommands};
   }
   async changed(job,files){
     const candidate=files?{files}:await snapshotProject(job.root,{filter:checkpointSource,refuseLinks:true});
@@ -125,6 +125,7 @@ export class MoraWorkspace {
     if(revision!==job.verified.inputRevision){await this.verify(job,{signal});if(!job.verified.passed)throw Error('Checks failed against newer project inputs. Changes remain isolated.');if(await this.refreshInputs(job)!==job.verified.inputRevision)throw Error('Project inputs changed during verification. Run checks again.');}
     const changes=await this.changed(job),fingerprint=hash(JSON.stringify(changes.map(change=>[change.path,hash(change.after)])));
     if(fingerprint!==job.verified.fingerprint)throw Error('Worker source changed after verification. Run checks again.');
+    if(job.review&&(!job.review.approved||job.review.fingerprint!==fingerprint||job.review.inputRevision!==job.verified.inputRevision))throw Error('Independent review is stale after project inputs changed. Changes remain isolated; resume to review current source.');
     for(const change of changes)if(hash(await this.checkpoints.physical(change.path))!==hash(change.before))throw Error(`Project file changed while the task was running: ${change.path}`);
     if(!changes.length)return {files:[],checkpointId:null,checks:job.verified.checks,browser:job.verified.browser,browserEvidence:job.verified.browserEvidence};
     const checkpoint=await this.checkpoints.create(`Before ${job.task.title}`,{manual:false}),applied=[];

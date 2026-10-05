@@ -2,6 +2,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('muse', {
   getState: () => ipcRenderer.invoke('muse:get-state'),
   loadOlderMessages: sessionId => ipcRenderer.invoke('muse:load-older',sessionId),
+  contextCommand: (action,payload) => ipcRenderer.invoke('muse:context',action,payload),
   connect: () => ipcRenderer.invoke('muse:connect'),
   accountCommand: action => ipcRenderer.invoke('muse:account',action),
   chooseProjectParent: () => ipcRenderer.invoke('muse:project-parent'),

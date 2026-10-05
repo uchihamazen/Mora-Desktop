@@ -3,6 +3,8 @@ import {createHash,randomUUID} from 'node:crypto';
 import path from 'node:path';
 import {snapshotProject} from './changes.js';
 import {projectFile} from './project.js';
+import {sourceHunks,rejectHunk} from './review-controls.js';
+import {compareProject} from './changes.js';
 
 const digest=value=>value===undefined?null:createHash('sha256').update(value).digest('hex');
 const excluded=new Set(['.git','.ssh','node_modules','.next','.cache','.venv','venv','__pycache__','coverage']);
@@ -65,6 +67,50 @@ export class Checkpoints {
     catch(error){if(error.code==='ENOENT')return [];throw error;}
   }
   async delete(id) {await this.load(id);await rm(this.file(id));}
+  async reviewFiles(id) {
+    const value=await this.load(id);if(!value.sealed||value.manual)throw Error('Choose a completed request checkpoint.');
+    const before=new Map(),after=new Map();
+    for(const name of new Set([...Object.keys(value.files),...Object.keys(value.expected||{})])){
+      if(!checkpointSource(name))continue;const original=Object.hasOwn(value.files,name)?Buffer.from(value.files[name],'base64'):undefined;
+      if(digest(original)===(value.expected[name]??null))continue;
+      if(original!==undefined)before.set(name,original);const current=await this.physical(name);if(current!==undefined)after.set(name,current);
+    }
+    const snapshot=files=>({files,skipped:new Set(),partial:false,excluded:[]});
+    return {itemId:'checkpoint-review-'+id,kind:'fileChanges',checkpointId:id,live:false,...await compareProject(this.root,snapshot(before),{after:snapshot(after)})};
+  }
+  async review(id,name) {
+    if(!checkpointSource(name))throw Error('Choose a source file from this checkpoint.');
+    const value=await this.load(id);if(!value.sealed || value.manual)throw Error('Wait for this request to finish saving its review.');
+    if(!Object.hasOwn(value.files,name)&&!Object.hasOwn(value.expected||{},name))throw Error('This file is outside the saved request.');
+    const current=await this.physical(name),before=Object.hasOwn(value.files,name)?Buffer.from(value.files[name],'base64'):undefined;
+    const hash=digest(current),stale=hash!==(value.expected[name]??null),hunks=stale?[]:await sourceHunks(this.root,name,before,current);
+    const token=randomUUID();this.previews.set(token,{review:true,id,name,hash,hunks,expires:Date.now()+10*60*1000});
+    for(const [key,item] of this.previews)if(item.expires<Date.now())this.previews.delete(key);
+    return {token,path:name,stale,decision:value.review?.[name]||null,unchanged:digest(before)===hash,hunks:hunks.map(({id,label,patch})=>({id,label,patch}))};
+  }
+  decideReview(payload) {const operation=(this.reviewWrites||Promise.resolve()).catch(()=>{}).then(()=>this.applyReviewDecision(payload));this.reviewWrites=operation;return operation;}
+  async applyReviewDecision({token,action,hunkId}) {
+    const preview=this.previews.get(token);
+    if(!preview?.review || preview.expires<Date.now())throw Error('Review expired. Open the file again.');
+    if(!['keep','reject'].includes(action))throw Error('Choose Keep or Reject.');
+    const value=await this.load(preview.id),current=await this.physical(preview.name);
+    if(digest(current)!==preview.hash || digest(current)!==(value.expected[preview.name]??null))throw Error('This file has newer edits. They were preserved; open its review again.');
+    const hunk=hunkId===undefined?null:preview.hunks.find(item=>item.id===hunkId);if(hunkId!==undefined&&!hunk)throw Error('Choose a change from this review.');
+    let recovery;
+    if(action==='reject') {
+      const content=hunk?rejectHunk(current,hunk):Object.hasOwn(value.files,preview.name)?Buffer.from(value.files[preview.name],'base64'):undefined;
+      recovery=await this.create(`Before rejecting ${preview.name}`,{manual:true,extraPaths:[preview.name]});
+      if(digest(await this.physical(preview.name))!==preview.hash)throw Error('This file changed while saving recovery. Newer edits were preserved.');
+      const file=await projectFile(this.root,preview.name);
+      try {
+        if(content===undefined)await rm(file,{force:true});else {await mkdir(path.dirname(file),{recursive:true});await projectFile(this.root,preview.name);await this.write(file,content);}
+        await this.seal(recovery.id);value.expected[preview.name]=digest(content);
+      }catch(error){await this.seal(recovery.id).catch(()=>{});throw Error(`Rejection could not finish. Recovery checkpoint ${recovery.id} preserves the earlier file. ${error.message}`);}
+    }
+    value.review||={};value.review[preview.name]=hunk?`${action==='keep'?'Kept':'Rejected'} change ${hunkId+1}`:action==='keep'?'Kept':'Rejected';
+    try {await atomic(this.file(value.id),JSON.stringify(value));}catch(error){throw Error(`Review could not be saved.${recovery?` Recovery checkpoint ${recovery.id} preserves the earlier file.`:''} ${error.message}`);}
+    this.previews.delete(token);return {path:preview.name,decision:value.review[preview.name],recovery:recovery?.id,changed:action==='reject'};
+  }
   async sourcePaths(names) {
     const source=[];
     for(const name of names){

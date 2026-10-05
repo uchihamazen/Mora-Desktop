@@ -11,11 +11,12 @@ export function setupQuickActions(api,{find,sidebar}) {
     {label:'Stop Muse request',id:'stop-button'}, {label:'Open or close browser',id:'browser-button'},
     {label:'Website tester',id:'website-tester'}, {label:'Project checkpoints',id:'checkpoints'},
     {label:'Engine settings',id:'settings-button'},
+    {label:'Saved message search, project logs and handoff',id:'context-tools'},
   ];
   const dialog=make('dialog','');dialog.className='quick-dialog';dialog.setAttribute('aria-labelledby','quick-heading');
   const heading=make('h2','Quick actions and shortcuts');heading.id='quick-heading';const input=make('input','');input.type='search';input.setAttribute('aria-label','Search quick actions');input.placeholder='Search actions…';
   const list=make('div',''),hint=make('p','Ctrl+K opens this menu. Enter selects; Tab or arrows move.'),close=make('button','Close');dialog.append(heading,input,hint,list,close);document.body.append(dialog);let returnFocus;
-  function available(command){return !command.id || (!$(command.id).disabled && (!['run-project','test-project','stop-button','checkpoints'].includes(command.id) || !$(command.id).closest('[hidden]')));}
+  function available(command){const target=command.id&&$(command.id);return !command.id || !!target && !target.disabled && (!['run-project','test-project','stop-button','checkpoints'].includes(command.id) || !target.closest('[hidden]'));}
   function run(command){if(!available(command))return;dialog.close();if(document.body.classList.contains('browser-expanded') && !['browser-button','website-tester'].includes(command.id))$('browser-expand').click();command.run?command.run():$(command.id).click();}
   function draw(){const focus=document.activeElement?.dataset.command;list.replaceChildren();const query=input.value.trim().toLowerCase();for(const command of commands.filter(command=>command.label.toLowerCase().includes(query))){const button=make('button',command.label);button.dataset.command=command.label;button.disabled=!available(command);if(command.shortcut)button.append(make('kbd',command.shortcut));button.addEventListener('click',()=>run(command));list.append(button);}if(!list.children.length)list.append(make('p','No matching actions.'));if(focus){const button=[...list.children].find(node=>node.dataset.command===focus);if(button && !button.disabled)button.focus({preventScroll:true});else input.focus();}}
   function open(){if(dialog.open){input.focus();return;}returnFocus=document.activeElement;draw();api.browserCommand?.('occlude',{hidden:true}).catch(()=>{});dialog.showModal();input.focus();}

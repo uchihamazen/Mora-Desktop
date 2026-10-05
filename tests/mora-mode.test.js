@@ -11,6 +11,10 @@ async function fixture(t,options={}){const profile=await mkdtemp(path.join(tmpdi
 const task=(files,key,dependsOn=[])=>JSON.stringify({title:key,objective:'Implement the requested change',files,key,dependsOn});
 const start=(mode,description)=>mode.backend.createThread().then(thread=>mode.backend.createRun(thread.thread_id,{assistant_id:'mora-worker',input:{messages:[{role:'user',content:description}]}}));
 
+test('completed task status does not retain its earlier checking progress',async t=>{
+  const mode=await fixture(t,{options:{executionMode:'readonly'},execute:async({job,progress})=>{progress('Checking changes');return {job,text:'Inspected'};}});await start(mode,task(['a.js'],'status-only'));await wait(()=>mode.snapshot().tasks[0]?.status==='success');assert.equal(mode.snapshot().tasks[0].detail,'');assert.equal(mode.snapshot().tasks[0].receipt,'Done');
+});
+
 test('failed backend persistence still closes the native coordinator and marks requests interrupted',async()=>{
  const mode=await fixture({after:()=>{}});let nativeClosed=false;mode.state.requests=[{id:'pending',status:'pending'}];
  const close=mode.backend.close.bind(mode.backend);mode.backend.close=async()=>{await close();throw Object.assign(Error('Task storage is full.'),{code:'ENOSPC'});};

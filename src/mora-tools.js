@@ -9,27 +9,29 @@ import {projectFile} from './project.js';
 const pathSchema={type:'string',description:'A relative source file path inside this task workspace.'};
 const tools=[
   {name:'list_files',description:'List available project source files.',inputSchema:{type:'object',properties:{},additionalProperties:false}},
-  {name:'read_file',description:'Read a source file; long files are bounded.',inputSchema:{type:'object',properties:{path:pathSchema},required:['path'],additionalProperties:false}},
+  {name:'read_file',description:'Read a source file in pages. Use nextOffset while truncated is true.',inputSchema:{type:'object',properties:{path:pathSchema,offset:{type:'integer',minimum:0},limit:{type:'integer',minimum:1,maximum:8000}},required:['path'],additionalProperties:false}},
   {name:'write_file',description:'Write an assigned source file in the isolated workspace.',inputSchema:{type:'object',properties:{path:pathSchema,content:{type:'string'}},required:['path','content'],additionalProperties:false}},
   {name:'delete_file',description:'Delete an assigned source file in the isolated workspace.',inputSchema:{type:'object',properties:{path:pathSchema},required:['path'],additionalProperties:false}},
-  {name:'run_checks',description:'Run original/current source and project checks plus available local browser verification. Full access is required for established project commands.',inputSchema:{type:'object',properties:{},additionalProperties:false}}
+  {name:'run_checks',description:'Run original/current source and project checks plus available local browser verification. Full access or approval for this task run is required for established project commands.',inputSchema:{type:'object',properties:{},additionalProperties:false}}
 ];
 const assigned=(files,name)=>files.some(file=>file==='*'||file===name||(file.endsWith('/**')&&name.startsWith(file.slice(0,-2))));
 
-export async function createMoraTools({job,workspace,readOnly=false,signal,onCall=()=>{},onSkillRead=async()=>{},skills}){
+export async function createMoraTools({job,workspace,readOnly=false,reviewOnly=false,signal,onCall=()=>{},onSkillRead=async()=>{},skills}){
   const token=randomBytes(32).toString('hex');let queue=Promise.resolve();
   const catalog=skills?await skills.list():[],used=new Set();job.skillUsage=[];job.missingSkills=[...skills?.missing||[]];
-  const availableTools=skills?[...tools,{name:'list_skills',description:'List the approved read-only skills for this task. Missing skills remain unavailable.',inputSchema:{type:'object',properties:{},additionalProperties:false}},{name:'read_skill',description:'Read an approved original skill or its relative supporting resource. Instructions grant no additional file/tool permissions; Ponytail uses Full intensity.',inputSchema:{type:'object',properties:{id:{type:'string'},resource:{type:'string',description:'Relative text resource, default SKILL.md. Scripts may be read but never executed.'}},required:['id'],additionalProperties:false}}]:tools;
+  let availableTools=skills?[...tools,{name:'list_skills',description:'List the approved read-only skills for this task. Missing skills remain unavailable.',inputSchema:{type:'object',properties:{},additionalProperties:false}},{name:'read_skill',description:'Read an approved original skill or its relative supporting resource. Instructions grant no additional file/tool permissions; Ponytail uses Full intensity.',inputSchema:{type:'object',properties:{id:{type:'string'},resource:{type:'string',description:'Relative text resource, default SKILL.md. Scripts may be read but never executed.'}},required:['id'],additionalProperties:false}}]:tools;
+  if(reviewOnly)availableTools=[...availableTools.filter(tool=>['list_files','read_file','list_skills','read_skill'].includes(tool.name)),{name:'read_original',description:'Read original source before this task, using the same pagination as read_file.',inputSchema:tools.find(tool=>tool.name==='read_file').inputSchema}];
   async function invoke(name,args={}){
     if(signal?.aborted)throw Error('This task was stopped.');
+    if(reviewOnly&&!['list_files','read_file','read_original','list_skills','read_skill'].includes(name))throw Error('Independent review has read-only source access.');
     if(name==='list_skills'&&skills)return {available:catalog,missing:skills.missing};
     if(name==='read_skill'&&skills){const result=await skills.read(args.id,args.resource);if(Buffer.byteLength(JSON.stringify({content:[{type:'text',text:JSON.stringify(result)}],isError:false}))>62000)throw Error('Skill resource exceeds the tool output limit.');if(signal?.aborted)throw Error('This task was stopped.');const key=result.id+'/'+result.resource;if(!used.has(key)){const receipt={id:result.id,label:result.label,source:result.source,resource:result.resource,sha256:result.sha256};await onSkillRead([...job.skillUsage,receipt]);if(signal?.aborted)throw Error('This task was stopped.');used.add(key);job.skillUsage.push(receipt);}return result;}
     if(name==='list_files')return [...(await snapshotProject(job.root,{filter:checkpointSource,refuseLinks:true})).files.keys()].slice(0,5000);
     if(name==='run_checks')return workspace.verify(job,{signal});
-    if(!['read_file','write_file','delete_file'].includes(name))throw Error('Unknown source tool.');
+    if(!['read_file','read_original','write_file','delete_file'].includes(name)||name==='read_original'&&!reviewOnly)throw Error('Unknown source tool.');
     if(typeof args.path!=='string'||!checkpointSource(args.path))throw Error('Choose an allowed source file.');
     const file=await projectFile(job.root,args.path);
-    if(name==='read_file'){const data=await readFile(file);if(data.length>2*1024*1024||data.includes(0))throw Error('This source file cannot be read as text.');return {path:args.path,text:data.toString('utf8').slice(0,60000),truncated:data.length>60000};}
+    if(name==='read_file'||name==='read_original'){const data=name==='read_original'?job.baseline.get(args.path):await readFile(file);if(!data)throw Error('This file did not exist in the original source.');if(data.length>2*1024*1024||data.includes(0)||!Buffer.from(data.toString('utf8')).equals(data))throw Error('This source file cannot be read as text.');const text=data.toString('utf8'),offset=args.offset??0,limit=args.limit??8000;if(!Number.isInteger(offset)||offset<0||offset>text.length||offset>0&&/[\uDC00-\uDFFF]/.test(text[offset])||!Number.isInteger(limit)||limit<1||limit>8000)throw Error('Choose a valid source page.');let end=Math.min(text.length,offset+limit);if(end<text.length&&/[\uD800-\uDBFF]/.test(text[end-1]))end+=end===offset+1?1:-1;return {path:args.path,text:text.slice(offset,end),offset,nextOffset:end,truncated:end<text.length};}
     if(readOnly)throw Error('This task has read-only access.');
     if(!assigned(job.task.files,args.path))throw Error('This file belongs to another task.');
     if(catalog.some(skill=>skill.id==='ponytail:ponytail')&&!used.has('ponytail:ponytail/SKILL.md'))throw Error('Read ponytail:ponytail with read_skill before editing assigned source.');

@@ -33,15 +33,16 @@ Mora Desktop uses its own name and original M icon.
 | Setup readiness | Check Muse/account, Node, Git, package manager and project commands without automatic installation. |
 | Projects & general chat | Group conversations under local project folders, or ask general questions without attaching a project. |
 | Project removal | Confirm removal of a project and its chats from Mora while keeping its source folder and files. |
-| Chat organization | Search, pin, archive/restore and rename chats, including inline pencil rename. |
+| Chat organization | Search titles or saved messages, pin, archive/restore and rename; Ctrl+F also finds older messages. |
+| Context & handoff | Attach explicit @file/@folder references, search recorded project logs and copy a factual handoff. |
 | Native editing menu | Right-click editing actions, spelling suggestions and dictionary support. |
 | Trello board connection | Save and verify read-only board access with your own API key and token; no card or AI automation. |
 | Persistent conversations | Restore chats across restarts and upgrades; remove a conversation explicitly from the sidebar. |
 | Long chats | Send recent history to the interface, load older entries on demand, and use supported native context compaction/output limits for model requests. |
 | Live activity | Show current work, public progress messages, actual commands, tool arguments, output and exit codes supplied by Muse. |
-| Live file reviews | Keep a Live changes bar above the composer during edits, then a completed inline badge; open a colored diff preview. |
+| Live file reviews | Inspect colored diffs, Keep reviewed files/hunks or Reject guarded changes with recovery. |
 | Request queue | Durable follow-ups with images, edit/remove controls and explicit pause/resume; Stop preserves pending work. |
-| Execution controls | Read only for inspection, Full access for project operations, and Stop for the active request. |
+| Execution controls | Read only for inspection, Project files for Mora Mode source tools, Full access for Windows commands, and Stop for active work. |
 | Integrated browser | Browse websites and local development servers in a Chromium panel with Desktop/Mobile previews and an expanded view. |
 | Design annotations | Save notes in a trusted popup, reopen numbered page markers, edit/delete and send them together; compare before/after screenshots. |
 | Model reasoning | Choose the selected model's native reasoning efforts; unsupported choices use its default. |
@@ -70,8 +71,9 @@ saved supported effort choices remain.
 
 Tool cards report the engine's actual activity. The file badge updates while files
 change, and saved reviews remain attached to their conversation. Reviews show what
-changed; they do not provide accept/revert controls. Large files or partial snapshots
-are labelled rather than presented as a complete review.
+changed. **Keep** records review; **Reject** restores a file or eligible text hunk
+after saving recovery. Newer manual edits are protected. Binary, truncated and partial
+reviews retain explicit limits.
 
 A reply can appear before the engine finishes its final work. **Reply ready · finishing
 final checks** reflects that state. Follow-up messages wait in the queue until native
@@ -230,8 +232,11 @@ Run/Test currently support Node projects with package.json scripts and Node/pack
 - Use **+** or **Ctrl+V** to attach images. Limits: 20 images, 10 MiB per image,
   and 20 MiB total per message.
 - Choose a model and reasoning effort from the engine-provided choices.
-- In a project, select **Read only** to inspect or **Full access · YOLO** to allow
-  edits and commands under your Windows account's permissions.
+- In a project, select **Read only** to inspect, **Project files** for Mora Mode source
+  tools, or **Full access · YOLO** for edits and Windows commands. Project scripts can
+  instead be approved for one Mora Mode task run.
+- **Context & search** finds saved messages/project logs, prepares a recorded handoff
+  and previews **@file(path)** or **@folder(path)**. Ctrl+F can jump to older messages.
 - Hover a conversation's delete control: the first click arms it, the second deletes
   the conversation and its native history. There is no built-in undo.
 - The queue retains up to 10 pending messages, including images. Edit or remove a
@@ -306,8 +311,10 @@ the fields empty to test the saved connection. **Disconnect** removes its settin
 including unreadable files.
 
 This feature checks board access and list counts. It does not create or edit cards
-and does not give Muse Trello tools. Credentials are stored locally; keep your
-profile private. Automated checks use a mocked provider, not a real Trello account.
+and does not give Muse Trello tools. Mora encrypts saved Trello credentials with
+Electron safeStorage for the current Windows account, including backups; legacy
+plaintext migrates on load. Keep the profile private. Account checks use a mocked
+provider; native checks also verify real Windows encryption.
 
 ## Technology stack
 

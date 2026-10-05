@@ -1,16 +1,16 @@
 # Features
 
 ## Mora Mode
-- Opt-in text chat remains open while up to three coding workers run. The mode can toggle with the current project's ready preview still running; active tests/work remain protected. Uses LangChain `createAgent` and Deep Agents asynchronous subagent middleware directly, with the installed Muse account and Mora's authenticated task backend. Small or dependent changes use fewer workers; model, reasoning and access settings retain their meaning.
-- Workers receive isolated source copies, exact file ownership and dependencies. Conflicts are refused and dependencies wait for verified integration. Installed Ponytail Full and Superpowers guidance is selected by role and loaded on demand; test-driven guidance requires assigned test paths. Missing skills use explicit native fallback; skills grant no extra permissions or hooks. Cancelled or stale changes cannot apply.
-- Saved, Delivered and Applied receipts offer Steer, Stop, Resume and Stop all. Durable requests, task IDs and backups survive context shortening; restart pauses unfinished work. Failed replies recover existing tasks instead of dispatching duplicates. Completion appears in chat with the existing one-second sound preference.
-- Verification runs original/current project typecheck/check, build, test and flow commands in disposable copies with Full access. Discovered Node regressions remain protected; Python unittest discovery is available when its runtime is installed. Missing checks, empty suites, altered commands, source mutation and failed outcomes leave changes isolated. See [verification configuration and limits](verification.md).
-- Every recognized web app and successful Run my app preview requires browser checks before integration, including server-rendered/built apps and non-UI edits; unavailable or failing previews leave changes isolated. Smoke checks loading/errors; configured workflows check interactions. Results retain checks, screenshots, skills and checkpoints. Verify `tests/mora-*.test.js`, sample UI smoke and native workloads; speed claims require benchmark evidence.
+- Opt-in text chat stays open while up to three workers use isolated source copies, assigned files and dependencies. Uses LangChain asynchronous subagents directly with the installed Muse account. Current-project ready previews can stay open when toggling; active work and saved ordinary queues must finish or stop first.
+- Installed Ponytail Full and relevant Superpowers guidance loads on demand by role; missing guidance has an explicit native fallback and grants no extra permissions. Read only prevents edits; Project files permits assigned source tools and restricted Node checks; scripts require Full access or approval for one task run.
+- Saved requests and Queued, Working, Checking, Applied, Blocked or Interrupted tasks offer Steer, Stop, Resume and Stop all. Backups pause unfinished work after restart and prevent duplicate dispatch. Updates retain steering drafts, focus and open results; completion uses the existing one-second sound preference.
+- Host verification protects original/current checks and revision coverage. Larger or sensitive candidates need fresh independent read-only review before integration; failed checks, findings, invalid decisions, conflicts or stale review leave changes isolated. Results expose checks, review, browser coverage and file review/undo. See [verification and limits](verification.md).
+- Recognized web apps and successful Run my app previews require browser verification, including non-UI edits. Smoke proves loading/errors; configured workflows prove their assertions. Verify Mora unit tests, sample UI smoke and native workloads; model review and checks do not prove every behavior.
 
 ## Chat and project operations
 - Chat, image attachments, saved native Muse conversations, and project selection. Timeline styling uses right-aligned midnight-navy user bubbles with a subtle blue border and a cyan rail for replies, expandable operations and compact change cards. Status comes from engine messages; live elapsed time stays available while working. Running-project outcomes offer an Open preview card; file review and checkpoint Undo retain their existing guards.
 - Requires the installed and signed-in Muse engine; reconnects share one discovery attempt, reject malformed catalogs and reconcile the selected effort after model fallback.
-- Read only inspects; Full access permits project edits and commands under the user's Windows permissions.
+- Read only inspects; Project files enables Mora Mode with assigned source tools and restricted Node checks; Full access permits edits and commands under the user's Windows permissions. Settings and navigation share the same active-work blockers.
 - Uses Muse 1.4.1's working `exec --json` interface and excludes foreign personal rules/skills on every turn; native workspace instructions and engine settings still apply. Interactive per-command approvals remain available in the native terminal.
 - Verify with the existing frontend and real-engine smoke scripts; these operate on temporary projects where they write files.
 
@@ -50,11 +50,25 @@
 - Verify brief/lifecycle tests, frontend editing/discard checks and `scripts/product-loop-smoke.js [EXE] --send` with an isolated profile.
 
 ## Chat organization and conversation find
-- Search filters chat titles and project names/paths in Active or Archived views; it does not search message history. Pins sort first within their project while preserving the remaining order.
-- Each chat has keyboard-accessible Options for rename, pin, archive and restore, plus a pencil for inline rename (Enter saves, Escape cancels). Both rename paths use the same metadata validation and preserve chosen titles. Archiving keeps its session, native history, draft, queue and project; current work must stop before its chat can be archived. Deletion remains separate.
-- Metadata uses the existing backed-up index, accepts older records and ignores malformed organization flags. Restore never creates a new native session; renamed titles stay chosen by the user.
-- Ctrl+F searches visible text in the current conversation, including formatted text and expanded operations; counts, Enter/Shift+Enter, arrows and Escape support navigation. Stream updates refresh safe native highlights; switching chats clears the query. Native page focus keeps its own shortcuts.
-- Verify grouping/persistence tests, frontend smoke and project restart smoke with an isolated profile, including primary-index corruption and draft retention.
+- Sidebar search filters chat titles and project names/paths in Active or Archived views. Context & search separately searches all saved message history, including archived chats. Pins sort first within their project.
+- Options supports rename, pin, archive and restore; inline rename uses Enter/Escape and the same validation. Archive retains history, draft, queue and project; work must stop first. Deletion stays separate and restore reuses the original session.
+- Metadata uses the backed-up index, accepts older records and ignores malformed organization flags. Chosen titles remain stable; delayed message saves or acceptance cannot send or clear another chat's draft.
+- Ctrl+F highlights visible formatted text and expanded operations, with counts, Enter/Shift+Enter, arrows and Escape. Saved-history results jump to older messages using a bounded timeline, with Back to latest. Switching chats clears the query; dismissed requests cannot navigate later.
+- Verify organization/persistence/lifecycle tests, frontend smoke and workflow native smoke, including an archived chat beyond the initial sidebar limit and draft retention.
+
+## Context, saved search and handoff
+- Context & search offers saved chats, project logs, a recorded handoff and explicit references. @file(path) attaches bounded UTF-8 text; @folder(path) attaches source names. Quoted paths preserve spaces, parentheses and mixed languages.
+- Resolve at send time against the current project: ten references, 16 KiB/file and 48 KiB total; folders stop at 200 entries, 1,000 visited items or four levels. Truncation is labelled; linked/outside paths, generated/binary files and known secret names are refused.
+- Literal Unicode search returns bounded excerpts across saved chats or recorded Run/Test output. Unavailable histories are counted. Opening a result saves the draft and loads a bounded timeline; superseded, closed or wrong-chat responses cannot attach or navigate.
+- Handoff cites recorded decisions, latest request, pending/interrupted requests/tasks and historical verification with its limits. It is a factual source summary rather than a model claim that all work passed.
+- Verify context/reference/history tests and workflow native smoke for old/archived messages, quoted attachments, draft retention and delayed responses.
+
+## Source reliability checks
+- Push/PR CI installs locked dependencies and runs sequential source tests, history performance measurements and isolated native browser/workspace checks. It builds no installer and uploads no profiles, reports or screenshots.
+- Fault tests cover network/auth retry, cancellation, engine/browser crashes, disk-full saves and interrupted rename recovery. Disposable fixtures preserve the user profile; automated recovery does not prove physical power-loss durability.
+- Performance reports measure 10,000/50,000-message projection, payload reduction and pending-request cleanup with explicit bounds. These measurements do not predict provider response latency.
+- Run node --test --test-concurrency=1 tests/*.test.js, scripts/source-performance.js, scripts/source-browser-reliability.js and scripts/workflow-native-smoke.js from source. Native GUI checks require Windows and Electron.
+- Local checks validate the source candidate. Hosted CI becomes evidence only after running on GitHub; source ZIP checksums identify the reviewed archive.
 
 ## Workspace actions and continuity
 - Actions / Ctrl+K lists existing workspace commands and shortcuts. Search/Enter/Tab/arrows/Escape work from the keyboard; unavailable commands remain disabled. Ctrl+Shift+F opens library search; Ctrl+F, Ctrl+B and Ctrl+N retain their existing purposes while Mora has focus.
@@ -126,11 +140,11 @@
 - Keep the installed EXE path stable so the Windows Search shortcut continues working.
 
 ## File change review
-- Full access requests keep a Live file count and green/red line totals above the composer during edits, returning the completed review inline afterward. An open diff updates while preserving the selected file, scroll and keyboard focus.
-- Live scans reuse unchanged file contents and diff results against the original baseline; ignore changes, unnamed events and watcher failures trigger full scans. The final full reconciliation also catches missed events and concurrent external edits.
-- Uses installed Git for diff calculations, with the existing Codex Git runtime as a fallback; works in ordinary folders and respects Git ignore rules in repositories.
-- Saves reviews per conversation until that chat is deleted; skips symlinks, generated folders outside Git, files over 2 MiB and snapshots over 32 MiB/5,000 files. Partial reviews are labelled; binary files have no line counts and long previews are truncated.
-- Verify with the change/lifecycle tests, frontend smoke, and `scripts/changes-smoke.js` (real Muse edit and saved review); the panel is read-only, without accept/revert controls.
+- Requests show live file/line counts and completed inline reviews. Updates preserve selection, scroll and focus; delayed responses cannot replace a newer file selection. Existing Git diff calculations work in ordinary folders and repositories.
+- Changes are already applied: Keep records review; Reject restores the original file after saving recovery. Eligible text hunks offer Keep/Reject while preserving line endings and final-newline state. Mora Mode results use the same checkpoint controls.
+- Decisions verify source hashes and refuse newer manual edits. Rejection requires idle project work and makes verification historical. Binary, invalid UTF-8, truncated, unchanged or uncheckpointed diffs have no hunk writes; partial reviews explain their limits.
+- Reviews persist per chat and use bounded snapshots: 2 MiB/file, 32 MiB and 5,000 files. Links and generated/secret files are excluded. Serialized decision saves preserve concurrent Keep records; interrupted writes report their recovery checkpoint.
+- Verify change/checkpoint/review-control tests and workflow native smoke for file/hunk decisions, recovery, newer-edit protection and delayed-selection races.
 
 ## Browser and design annotations
 - A Chromium panel opens HTTP/HTTPS pages and local servers; Desktop fits a minimum 1280px CSS viewport and Mobile centers a 390px viewport. Drag its left divider or use arrow keys to resize; double-click resets and Escape cancels dragging. Width is remembered and bounded to keep chat usable. Expand fills the window; Back to chat restores the split; tabs in the same chat share persistent cookies.
@@ -153,10 +167,11 @@
 - Verify frontend, `scripts/layout-smoke.js`, `scripts/layout-native-smoke.js [EXE]` and browser smoke for menus, five renderer sizes down to 860px, the native preview's 1080px minimum, trusted pointer input, captures, expansion and resize cancellation. Desktop preview retains its existing scaled viewport; sample pages can appear smaller than the surrounding interface.
 
 ## Trello board connection
-- Settings accepts a Trello API key, token and board link/ID. Test checks account, board and list access without saving new credentials; Connect verifies and saves them in Mora's local profile. Test with empty fields uses the saved connection.
-- This is read-only board verification, not card editing or an AI tool integration. Requests use only the fixed HTTPS Trello API origin, reject redirects, time out after 30 seconds and redact credentials from returned status/errors.
-- Credentials are stored locally in primary/backup JSON files; use your own key/token and keep the profile private. Password fields clear after Connect or Disconnect. Disconnect clears damaged settings and interrupted credential temp files, reporting failed deletion honestly.
-- Verify Trello unit tests and `scripts/features-native-smoke.js` for real IPC, profile saves and corrupt recovery with a mocked provider. Actual account/board access remains unverified without user-supplied credentials.
+- Settings accepts a Trello API key, token and board link/ID. Test verifies without saving pasted credentials; Connect verifies and saves. Empty fields use the saved connection. Credential fields clear after Connect or Disconnect.
+- Access is read-only board verification, without card editing or AI tools. Fixed-origin HTTPS requests reject redirects, time out after 30 seconds and redact credentials from status/errors.
+- Mora-owned credentials use Electron safeStorage encryption in primary, backup and staging files. Legacy plaintext migrates atomically; unavailable encryption or failed decryption refuses the connection. Disconnect clears damaged settings and credential temp files, reporting failed deletion.
+- Encryption uses the current Windows account; keep the profile private. Muse-owned Stitch credentials remain governed by Muse settings. Failed migration preserves existing bytes where filesystem recovery succeeds.
+- Verify Trello unit tests and workflow native smoke for Windows encryption, real IPC and disconnect with a mocked provider. Actual Trello access still requires user-supplied credentials.
 
 ## Native editing menu
 - Right-click editable fields for Cut/Copy/Paste/Select all, spelling suggestions and Add to dictionary; selected read-only text offers Copy. Uses Electron's native menu and spellchecker, with no extra dependency.

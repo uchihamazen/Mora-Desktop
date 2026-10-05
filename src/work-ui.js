@@ -1,4 +1,5 @@
 import {previewOccluded} from './menu-ui.js';
+import {idleReason} from './action-status.js';
 export function setupProjectWork(api,action) {
   const $=id=>document.getElementById(id),node=(tag,text)=>{const value=document.createElement(tag);value.textContent=text;return value;};
   let current,signature;
@@ -38,7 +39,8 @@ export function setupProjectWork(api,action) {
     $('project-toolbar').hidden=!state.projectPath || !api.projectCommand;
     $('project-tools').hidden=$('project-toolbar').hidden;
     $('project-work-status').hidden=$('project-toolbar').hidden;
-    const busy=state.testerActive || state.busy || state.loading || state.projectOperation || state.projectRepair;
+    const reason=idleReason(state),busy=!!reason || state.projectOperation || state.projectRepair;
+    for(const id of ['run-project','restart-project','test-project'])$(id).title=reason||(state.projectOperation?'Wait for the current project operation.':id==='test-project'?'Run the configured project checks.':'Run the configured project app.');
     $('run-project').hidden=['starting','ready','stopping'].includes(run.status);$('run-project').disabled=busy;
     preview.hidden=run.status!=='ready';preview.disabled=!!state.loading;
     $('restart-project').hidden=!['starting','ready','stopping'].includes(run.status);$('restart-project').disabled=busy;

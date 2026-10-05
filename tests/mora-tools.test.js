@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtemp,mkdir,writeFile,readFile} from 'node:fs/promises';
+import {mkdtemp,mkdir,writeFile,readFile,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {MoraWorkspace,validateMoraTask} from '../src/mora-workspace.js';
@@ -46,4 +46,16 @@ test('read-only worker cannot write or delete even when a model requests it',asy
   assert.equal((await call('read_file',{path:'a.js'})).isError,false);
   assert.equal((await call('write_file',{path:'a.js',content:'changed'})).isError,true);
   assert.equal((await call('delete_file',{path:'a.js'})).isError,true);
+});
+
+test('source pagination preserves Unicode and bounds escaped tool output',async t=>{
+  const {gateway,call,job}=await fixture(true,{reviewOnly:true});t.after(()=>gateway.close());
+  const text='🙂\u0001'.repeat(15000)+'\u0001'.repeat(16000);await writeFile(path.join(job.root,'a.js'),text);
+  let joined='',offset=0;
+  while(offset<text.length){const response=await call('read_file',{path:'a.js',offset,limit:8000});assert.equal(response.isError,false);assert.ok(Buffer.byteLength(JSON.stringify(response))<62000);const page=JSON.parse(response.content[0].text);assert.ok(page.nextOffset>offset);assert.ok(page.text.isWellFormed());joined+=page.text;offset=page.nextOffset;}
+  assert.equal(joined,text);
+  const smallest=JSON.parse((await call('read_file',{path:'a.js',limit:1})).content[0].text);assert.equal(smallest.text,'🙂');assert.equal(smallest.nextOffset,2);
+  assert.equal((await call('read_file',{path:'a.js',offset:1})).isError,true);
+  assert.equal((await call('run_checks',{})).isError,true);assert.equal((await call('write_file',{path:'a.js',content:'wrong'})).isError,true);
+  const original=job.baseline.get('a.js').toString('utf8');await rm(path.join(job.root,'a.js'));const result=await call('read_original',{path:'a.js'});assert.equal(JSON.parse(result.content[0].text).text,original);
 });

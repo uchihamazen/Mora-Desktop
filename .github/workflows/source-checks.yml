@@ -1,0 +1,49 @@
+name: Source checks
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: source-checks-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  source:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+      - uses: pnpm/action-setup@v6
+        with:
+          cache: true
+      - run: pnpm install --frozen-lockfile
+      - name: Isolate temporary profiles and reports
+        run: |
+          $fixtureTemp = Join-Path $env:RUNNER_TEMP 'mora-source-checks'
+          New-Item -ItemType Directory -Path $fixtureTemp -Force | Out-Null
+          "TEMP=$fixtureTemp" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "TMP=$fixtureTemp" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+      - name: Source tests
+        run: node --test --test-concurrency=1 tests/*.test.js
+      - name: Large-history projection and shutdown performance
+        run: node scripts/source-performance.js --report "$env:RUNNER_TEMP/mora-source-performance.json"
+      - name: Native browser fault recovery
+        run: node scripts/source-browser-reliability.js
+      - name: Combined workspace and review workflow
+        run: node scripts/workflow-native-smoke.js
